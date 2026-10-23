@@ -23,5 +23,15 @@ cmake --build build --config Release
 
 Then run `build\Release\Threadlight.exe`. If raylib is installed outside vcpkg, configure `CMAKE_PREFIX_PATH` to its package prefix instead.
 
+## Logic regression tests
+
+The focused state and spawn tests do not need raylib. Configure them with:
+
+```powershell
+cmake -S . -B build-tests -DTHREADLIGHT_BUILD_GAME=OFF
+cmake --build build-tests
+ctest --test-dir build-tests --output-on-failure
+```
+
 The included executable was built with MSVC 19.44.35229.0, Windows x64, and raylib 5.5. Raylib's license is included in `RAYLIB-LICENSE.txt`.
 
