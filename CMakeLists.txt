@@ -21,4 +21,12 @@ if(BUILD_TESTING)
   add_executable(ThreadlightLogicTests tests/game_logic_test.cpp)
   target_include_directories(ThreadlightLogicTests PRIVATE src)
   add_test(NAME ThreadlightLogicTests COMMAND ThreadlightLogicTests)
+
+  add_executable(ThreadlightAudioTests tests/audio_design_test.cpp)
+  target_include_directories(ThreadlightAudioTests PRIVATE src)
+  add_test(NAME ThreadlightAudioTests COMMAND ThreadlightAudioTests)
+
+  add_executable(ThreadlightVisualFeedbackTests tests/visual_feedback_test.cpp)
+  target_include_directories(ThreadlightVisualFeedbackTests PRIVATE src)
+  add_test(NAME ThreadlightVisualFeedbackTests COMMAND ThreadlightVisualFeedbackTests)
 endif()

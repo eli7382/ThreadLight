@@ -1,5 +1,7 @@
 #include "raylib.h"
 #include "game_logic.h"
+#include "game_audio.h"
+#include "visual_feedback.h"
 #include <algorithm>
 #include <cmath>
 #include <string>
@@ -16,16 +18,14 @@ struct Thread {V p; float age;}; struct Foe {V p,vel; float r,hp,maxhp,speed,hit
 int main(){
  SetConfigFlags(FLAG_WINDOW_HIGHDPI|FLAG_MSAA_4X_HINT); InitWindow(SW,SH,"THREADLIGHT | A small game of living silk"); SetExitKey(KEY_NULL); SetTargetFPS(60); InitAudioDevice();
  const bool audioReady=IsAudioDeviceReady();
- constexpr unsigned int SR=22050; auto tone=[&](float hz,float sec,float vol){int n=(int)(SR*sec); if(!audioReady||n<=0)return Sound{}; short* d=(short*)MemAlloc(n*sizeof(short)); if(!d)return Sound{}; for(int i=0;i<n;i++){float t=(float)i/SR, env=std::exp(-t*7.0f);d[i]=(short)(std::sin(2*PI*hz*t)*env*vol*32767);} const auto format=threadlight::toneWaveFormat((unsigned int)n,SR); Wave w{format.frameCount,format.sampleRate,format.sampleSize,format.channels,d}; Sound s=LoadSoundFromWave(w); UnloadWave(w); return s;};
- Sound ping=tone(880,.10f,.22f), cut=tone(180,.18f,.24f), level=tone(520,.28f,.22f), hurt=tone(110,.22f,.25f);
- if(!audioReady)TraceLog(LOG_WARNING,"Audio device unavailable; event sounds are disabled.");else if(!IsSoundValid(ping)||!IsSoundValid(cut)||!IsSoundValid(level)||!IsSoundValid(hurt))TraceLog(LOG_WARNING,"One or more event sounds could not be initialized.");
- auto playSoundIfReady=[&](Sound sound){if(audioReady&&IsSoundValid(sound))PlaySound(sound);};
+ threadlight::GameAudio sfx;
+ if(!sfx.initialize(audioReady))TraceLog(LOG_WARNING,"Audio device unavailable; event sounds are disabled.");
  using threadlight::Mode;
- Mode mode=Mode::Title; V player{SW/2.f,SH/2.f}; float hp=100, energy=0, hitInvuln=0,dashCd=0,dashTime=0, spawnT=0, waveT=0, shake=0, pulse=0; int wave=0, score=0, kills=0, levelN=1, choice=0; float speed=255, trailDmg=1, radius=12; bool dashUpgrade=false;
+ Mode mode=Mode::Title; V player{SW/2.f,SH/2.f}; float hp=100, energy=0, hitInvuln=0,dashCd=0,dashTime=0, spawnT=0, waveT=0, shake=0, pulse=0, damageFeedback=0; int wave=0, score=0, kills=0, levelN=1, choice=0; float speed=255, trailDmg=1, radius=12; bool dashUpgrade=false;
  std::vector<Thread> thread; std::vector<Foe> foes; std::vector<Spark> sparks; std::vector<Particle> particles; std::vector<V> stars;
  for(int i=0;i<110;i++) stars.push_back({(float)GetRandomValue(20,SW-20),(float)GetRandomValue(20,SH-20)});
  auto burst=[&](V p,Color col,int n,float force){for(int i=0;i<n;i++){float a=(float)GetRandomValue(0,6283)/1000.f,s=(float)GetRandomValue(25,(int)force);particles.push_back({p,{std::cos(a)*s,std::sin(a)*s},.65f,.65f,(float)GetRandomValue(2,6),col});}};
- auto reset=[&](){player={SW/2.f,SH/2.f};hp=100;energy=0;hitInvuln=dashCd=dashTime=spawnT=waveT=shake=pulse=0;wave=0;score=kills=0;levelN=1;speed=255;trailDmg=1;radius=12;dashUpgrade=false;thread.clear();foes.clear();sparks.clear();particles.clear();mode=Mode::Play;};
+ auto reset=[&](){player={SW/2.f,SH/2.f};hp=100;energy=0;hitInvuln=dashCd=dashTime=spawnT=waveT=shake=pulse=damageFeedback=0;wave=0;score=kills=0;levelN=1;speed=255;trailDmg=1;radius=12;dashUpgrade=false;thread.clear();foes.clear();sparks.clear();particles.clear();mode=Mode::Play;};
  auto addFoe=[&](int w){float a=(float)GetRandomValue(0,6283)/1000.f;int k=(GetRandomValue(0,9)<(w>2?3:2))?1:0;float r=k?20:14;auto spawn=threadlight::chooseSafeSpawn(a,player.x,player.y,(float)SW,(float)SH,25.f,680.f,480.f,radius+r+70.f);V p{spawn.x,spawn.y};foes.push_back({p,{},r,k?3.f:1.f,k?3.f:1.f,k?66.f:95.f,0,a,k});};
  auto segDist=[](V p,V a,V b){V ab=b-a;float q=ab.x*ab.x+ab.y*ab.y;float t=q>0?std::clamp(((p.x-a.x)*ab.x+(p.y-a.y)*ab.y)/q,0.f,1.f):0;return dist(p,a+ab*t);};
  auto drawText=[&](const char* s,int x,int y,int size,Color c){DrawText(s,x,y,size,c);};
@@ -34,56 +34,81 @@ int main(){
   if(mode==Mode::Title){if(IsKeyPressed(KEY_ENTER)||IsKeyPressed(KEY_SPACE))reset();}
   else if(mode==Mode::Play){
    if(threadlight::beginPlayFrame(mode,IsKeyPressed(KEY_ESCAPE)||IsKeyPressed(KEY_P))){
-   hitInvuln=std::max(0.f,hitInvuln-dt);dashCd=std::max(0.f,dashCd-dt);pulse=std::max(0.f,pulse-dt);shake=std::max(0.f,shake-dt*22);
+   hitInvuln=std::max(0.f,hitInvuln-dt);dashCd=std::max(0.f,dashCd-dt);pulse=std::max(0.f,pulse-dt);damageFeedback=std::max(0.f,damageFeedback-dt);shake=std::max(0.f,shake-dt*22);
    V mv{(float)(IsKeyDown(KEY_D)||IsKeyDown(KEY_RIGHT))-(float)(IsKeyDown(KEY_A)||IsKeyDown(KEY_LEFT)),(float)(IsKeyDown(KEY_S)||IsKeyDown(KEY_DOWN))-(float)(IsKeyDown(KEY_W)||IsKeyDown(KEY_UP))}; if(len(mv)>0)mv=norm(mv);
-   if(IsKeyPressed(KEY_SPACE)&&dashCd<=0&&len(mv)>0){dashTime=threadlight::kDashDurationSeconds;dashCd=dashUpgrade?threadlight::kUpgradedDashCooldownSeconds:threadlight::kDashCooldownSeconds;burst(player,C(132,244,255),10,150);playSoundIfReady(cut);}
+   if(IsKeyPressed(KEY_SPACE)&&dashCd<=0&&len(mv)>0){dashTime=threadlight::kDashDurationSeconds;dashCd=dashUpgrade?threadlight::kUpgradedDashCooldownSeconds:threadlight::kDashCooldownSeconds;burst(player,C(132,244,255),10,150);sfx.play(threadlight::audio::Event::Dash);}
    const bool dashActiveThisFrame=threadlight::dashProtectsCollisionThisFrame(dashTime);float mult=dashActiveThisFrame?3.7f:1.f; if(dashActiveThisFrame)dashTime=std::max(0.f,dashTime-dt);player=player+mv*(speed*mult*dt);player.x=std::clamp(player.x,40.f,SW-40.f);player.y=std::clamp(player.y,95.f,SH-40.f);
-   if(thread.empty()||dist(thread.back().p,player)>9)thread.push_back({player,0});for(auto &t:thread)t.age+=dt;while(!thread.empty()&&(thread.front().age>5.5f||thread.size()>520))thread.erase(thread.begin());
+   if(thread.empty()||dist(thread.back().p,player)>9)thread.push_back({player,0});
+   for(auto &t:thread)t.age+=dt;
+   while(!thread.empty()&&(thread.front().age>5.5f||thread.size()>520))thread.erase(thread.begin());
     waveT+=dt;spawnT-=dt;const bool spawnDue=spawnT<=0;if(spawnDue&&wave<threadlight::kWaveCount){addFoe(wave);spawnT=std::max(.30f,1.08f-wave*.09f);}
    for(auto &f:foes){V d=norm(player-f.p);f.phase+=dt;f.hitCd=std::max(0.f,f.hitCd-dt);float wob=std::sin(f.phase*3)*.28f;f.vel=f.vel+(d+V{-d.y*wob,d.x*wob})*(f.speed*dt*2.5f);float vl=len(f.vel);if(vl>f.speed)f.vel=f.vel*(f.speed/vl);f.p=f.p+f.vel*dt;
-    for(size_t i=1;i<thread.size();i++){if(thread[i].age>1.2f)continue;if(segDist(f.p,thread[i-1].p,thread[i].p)<f.r+5&&f.hitCd<=0){f.hp-=trailDmg;f.hitCd=.27f;burst(f.p,C(83,255,226,220),4,70);if(f.hp<=0){sparks.push_back({f.p,0});score+=f.kind?35:10;kills++;burst(f.p,C(255,123,186),15,180);f.r=0;playSoundIfReady(ping);}break;}}
-    if(f.r>0&&dist(f.p,player)<f.r+radius&&!dashActiveThisFrame&&hitInvuln<=0){hp-=f.kind?16:10;hitInvuln=.78f;shake=7;playSoundIfReady(hurt);burst(player,C(255,92,119),13,170);}
+    for(size_t i=1;i<thread.size();i++){if(thread[i].age>1.2f)continue;if(segDist(f.p,thread[i-1].p,thread[i].p)<f.r+5&&f.hitCd<=0){f.hp-=trailDmg;f.hitCd=.27f;burst(f.p,C(83,255,226,220),4,70);if(f.hp<=0){sparks.push_back({f.p,0});score+=f.kind?35:10;kills++;burst(f.p,C(255,123,186),15,180);f.r=0;sfx.play(threadlight::audio::Event::EnemyDeath);}else{sfx.play(threadlight::audio::Event::EnemyHit);}break;}}
+    if(f.r>0&&dist(f.p,player)<f.r+radius&&!dashActiveThisFrame&&hitInvuln<=0){hp-=f.kind?16:10;hitInvuln=.78f;damageFeedback=threadlight::visual::kDamageFeedbackDuration;shake=7;sfx.play(threadlight::audio::Event::PlayerDamage);burst(player,C(255,92,119),13,170);}
    }
    foes.erase(std::remove_if(foes.begin(),foes.end(),[](Foe f){return f.r<=0;}),foes.end());
-   for(auto &s:sparks){s.t+=dt;if(dist(s.p,player)<110){V v=norm(player-s.p);s.p=s.p+v*(220*dt);}if(dist(s.p,player)<radius+12){energy+=1;score+=5;s.t=-1;playSoundIfReady(ping);burst(s.p,C(255,218,125),8,100);}}
+   for(auto &s:sparks){s.t+=dt;if(dist(s.p,player)<110){V v=norm(player-s.p);s.p=s.p+v*(220*dt);}if(dist(s.p,player)<radius+12){energy+=1;score+=5;s.t=-1;sfx.play(threadlight::audio::Event::Spark);burst(s.p,C(255,218,125),8,100);}}
    sparks.erase(std::remove_if(sparks.begin(),sparks.end(),[](Spark s){return s.t<0||s.t>12;}),sparks.end());
    for(auto &p:particles){p.life-=dt;p.p=p.p+p.v*dt;p.v=p.v*.96f;}particles.erase(std::remove_if(particles.begin(),particles.end(),[](Particle p){return p.life<=0;}),particles.end());
    const bool waveComplete=threadlight::waveIsComplete(wave,waveT,spawnDue);
    const auto outcome=threadlight::resolvePlayOutcome(wave,hp,waveComplete,energy>=8);
    if(waveComplete)waveT=0;
    threadlight::applyProgress(outcome,wave,energy,levelN,choice);
+   const Mode priorMode=mode;
    mode=outcome.mode;
-   if(mode==Mode::Upgrade||mode==Mode::Won)playSoundIfReady(level);
+   if(mode!=priorMode){
+    if(mode==Mode::Upgrade)sfx.play(threadlight::audio::Event::Evolution);
+    else if(mode==Mode::Won)sfx.play(threadlight::audio::Event::Victory);
+    else if(mode==Mode::Lost)sfx.play(threadlight::audio::Event::Defeat);
    }
-  } else if(mode==Mode::Pause){if(IsKeyPressed(KEY_ESCAPE)||IsKeyPressed(KEY_P))mode=Mode::Play;if(IsKeyPressed(KEY_R))reset();}
+   }
+  } else if(mode==Mode::Pause){
+   const int volumeDirection=threadlight::audio::volumeAdjustmentDirection(true,IsKeyPressed(KEY_LEFT),IsKeyPressed(KEY_RIGHT));
+   if(volumeDirection!=0)sfx.adjustMasterVolume(volumeDirection);
+   if(IsKeyPressed(KEY_ESCAPE)||IsKeyPressed(KEY_P))mode=Mode::Play;
+   if(IsKeyPressed(KEY_R))reset();
+  }
   else if(mode==Mode::Upgrade){if(IsKeyPressed(KEY_ONE)||IsKeyPressed(KEY_A))choice=0; if(IsKeyPressed(KEY_TWO)||IsKeyPressed(KEY_D))choice=1;if(IsKeyPressed(KEY_THREE)||IsKeyPressed(KEY_S))choice=2;if(IsKeyPressed(KEY_ENTER)||IsKeyPressed(KEY_SPACE)){if(choice==0){hp=std::min(100.f,hp+35);}if(choice==1){trailDmg+=.65f;}if(choice==2){speed+=24;dashUpgrade=true;}mode=Mode::Play;}}
   else if(mode==Mode::Lost||mode==Mode::Won){if(IsKeyPressed(KEY_ENTER)||IsKeyPressed(KEY_R))reset();if(IsKeyPressed(KEY_ESCAPE))mode=Mode::Title;}
 
   BeginDrawing();ClearBackground(C(7,12,27));
   for(int i=0;i<4;i++){float x=200+i*310;DrawCircleGradient(x,310+(i%2)*180,210,C(13,33,57,45),C(7,12,27,0));}
   for(size_t i=0;i<stars.size();i++){float tw=.4f+.6f*(.5f+.5f*std::sin((float)GetTime()*(.6f+(i%7)*.13f)+i));DrawCircleV(cv(stars[i]),i%11==0?2:1,C(114,183,213,(unsigned char)(40+tw*130)));}
-  for(int x=32;x<SW;x+=48)DrawLine(x,82,x,SH,C(34,66,83,26));for(int y=96;y<SH;y+=48)DrawLine(0,y,SW,y,C(34,66,83,22));
+  for(int x=32;x<SW;x+=48)DrawLine(x,82,x,SH,C(34,66,83,26));
+  for(int y=96;y<SH;y+=48)DrawLine(0,y,SW,y,C(34,66,83,22));
   for(int x=80;x<SW;x+=120){float b=.5f+.5f*std::sin(GetTime()*1.7+x);DrawCircle(x,88,3,C(68,226,207,(unsigned char)(90+b*120)));DrawCircle(x,88,9,C(45,194,198,18));}
   if(thread.size()>1){for(int pass=0;pass<3;pass++){for(size_t i=1;i<thread.size();i++){float life=1-thread[i].age/5.5f;Color c=pass==0?C(20,244,216,(unsigned char)(life*50)):pass==1?C(45,239,228,(unsigned char)(life*100)):C(204,255,235,(unsigned char)(life*210));DrawLineEx(cv(thread[i-1].p),cv(thread[i].p),pass==0?15:pass==1?7:2,c);}}}
   for(auto s:sparks){float r=8+2*std::sin(GetTime()*6+s.t);DrawPoly(cv(s.p),4,r,45,C(255,209,115));DrawCircleV(cv(s.p),r+8,C(255,185,95,25));}
   for(auto f:foes){Color c=f.kind?C(255,116,178):C(255,97,132);float bob=std::sin(f.phase*5)*3;DrawCircleV({f.p.x,f.p.y+bob},f.r+10,C(255,63,123,20));DrawPoly({f.p.x,f.p.y+bob},f.kind?6:4,f.r,GetTime()*40,C(25,22,45));DrawPolyLinesEx({f.p.x,f.p.y+bob},f.kind?6:4,f.r,GetTime()*40,2,c);DrawCircleV({f.p.x-4,f.p.y+bob-2},2,C(255,224,201));DrawCircleV({f.p.x+4,f.p.y+bob-2},2,C(255,224,201));if(f.hp<f.maxhp){DrawRectangle((int)(f.p.x-f.r),(int)(f.p.y-f.r-9),(int)(2*f.r),3,C(50,48,71));DrawRectangle((int)(f.p.x-f.r),(int)(f.p.y-f.r-9),(int)(2*f.r*f.hp/f.maxhp),3,C(255,118,157));}}
   for(auto p:particles){float a=std::clamp(p.life/p.maxLife,0.f,1.f);DrawCircleV(cv(p.p),p.size*a,Fade(p.color,a));}
-  if(mode!=Mode::Title){float flash=(hitInvuln>0||dashTime>0)?(.45f+.45f*std::sin(GetTime()*24)):1;DrawCircleV(cv(player),31,C(45,230,214,22));DrawCircleV(cv(player),21,C(51,230,221,40));DrawCircleV(cv(player),radius+4,C(164,255,232,220));DrawCircleV(cv(player),radius,C(221,255,245,(unsigned char)(flash*255)));}
+  if(mode!=Mode::Title){
+   const float impact=threadlight::visual::damageImpactStrength(damageFeedback);
+   const bool dashVisual=dashTime>0;
+   DrawCircleV(cv(player),31,C(45,230,214,22));
+   DrawCircleV(cv(player),21,C(51,230,221,40));
+   if(impact>0)DrawCircleV(cv(player),radius+13,C(242,76,101,(unsigned char)(35*impact)));
+   const Color rim=dashVisual?C(126,239,255,245):ColorLerp(C(164,255,232,220),C(255,133,151,235),impact*.72f);
+   const Color core=dashVisual?C(224,251,255,255):ColorLerp(C(221,255,245,255),C(255,171,181,255),impact*.48f);
+   DrawCircleV(cv(player),radius+4,rim);
+   DrawCircleV(cv(player),radius,core);
+   if(impact>0){
+    const float ringRadius=threadlight::visual::damageRingRadius(radius,damageFeedback);
+    DrawRing(cv(player),ringRadius,ringRadius+1.6f,0,360,48,C(255,118,139,(unsigned char)(100*impact)));
+   }
+  }
   DrawRectangle(0,0,SW,76,C(5,10,24,235));DrawLine(0,76,SW,76,C(60,152,156,80));drawText("THREADLIGHT",34,22,25,C(200,255,243));drawText("THE BRIAR CIRCUIT",224,31,13,C(91,167,179));
   DrawText("VITALITY",390,17,11,C(120,164,178));DrawRectangle(390,38,180,10,C(34,49,67));DrawRectangle(390,38,(int)(180*std::clamp(hp/100,0.f,1.f)),10,hp>35?C(72,225,190):C(255,91,127));
   drawText(TextFormat("WAVE %d / 5",std::min(wave+1,threadlight::kWaveCount)),615,22,18,C(217,239,242));drawText(TextFormat("SPARKS  %d / 8",(int)energy),800,24,15,C(255,213,131));drawText(TextFormat("SCORE  %06d",score),1033,24,17,C(177,208,221));
-  if(mode==Mode::Play){DrawRectangle(20,SH-52,SW-40,32,C(5,10,24,185));drawText("WASD MOVE",36,SH-43,12,C(149,191,199));drawText("SPACE DASH",185,SH-43,12,C(149,191,199));drawText("YOUR SILK CUTS THE HUNTERS. LOOP BACK THROUGH YOUR WAKE.",364,SH-43,12,C(102,219,207));drawText("P / ESC PAUSE",1055,SH-43,12,C(149,191,199));}
+  if(mode==Mode::Play){DrawRectangle(20,SH-52,SW-40,32,C(5,10,24,185));drawText("WASD MOVE",36,SH-43,12,C(149,191,199));drawText("SPACE DASH",185,SH-43,12,C(149,191,199));drawText("YOUR SILK CUTS THE HUNTERS. LOOP BACK THROUGH YOUR WAKE.",364,SH-43,12,C(102,219,207));drawText("SFX: ADJUST IN PAUSE",845,SH-43,12,C(149,191,199));drawText("P / ESC PAUSE",1055,SH-43,12,C(149,191,199));}
   auto panel=[&](const char* kicker,const char* title,const char* sub){DrawRectangle(0,0,SW,SH,C(3,7,18,195));DrawRectangleRounded({SW/2.f-310,SH/2.f-186,620,372},.04f,12,C(11,22,40,245));DrawRectangleRoundedLines({SW/2.f-310,SH/2.f-186,620,372},.04f,12,C(91,216,197,130));DrawText(kicker,SW/2-255,SH/2-139,13,C(107,228,206));DrawText(title,SW/2-255,SH/2-101,42,C(226,255,247));DrawText(sub,SW/2-255,SH/2-43,17,C(162,193,204));};
-  if(mode==Mode::Title){panel("A LUMINOUS SURVIVAL STORY","THREADLIGHT","A small game of living silk");DrawText("Move to weave a fading thread. Circle the hunters; let the silk do the cutting.",SW/2-255,SH/2+15,16,C(175,211,213));DrawText("WASD move     SPACE dash     P pause",SW/2-255,SH/2+53,16,C(121,196,197));DrawText("Collect 8 sparks to evolve. Survive five waves.",SW/2-255,SH/2+84,16,C(121,196,197));DrawText("PRESS ENTER TO ENTER THE GARDEN",SW/2-255,SH/2+137,16,C(255,218,135));}
-  if(mode==Mode::Pause){panel("THE GARDEN HOLDS ITS BREATH","PAUSED","Your thread is waiting.");DrawText("P or ESC  —  resume",SW/2-255,SH/2+32,18,C(181,224,219));DrawText("R  —  begin again",SW/2-255,SH/2+68,18,C(181,224,219));}
+  if(mode==Mode::Title){panel("A LUMINOUS SURVIVAL STORY","THREADLIGHT","A small game of living silk");DrawText("Move to weave a fading thread. Circle the hunters; let the silk do the cutting.",SW/2-255,SH/2+15,16,C(175,211,213));DrawText("WASD move     SPACE dash     P pause",SW/2-255,SH/2+53,16,C(121,196,197));DrawText("Collect 8 sparks to evolve. Survive five waves.",SW/2-255,SH/2+84,16,C(121,196,197));DrawText(TextFormat("SFX %d%%  PAUSE, THEN LEFT / RIGHT ARROWS",(int)std::lround(sfx.masterVolume()*100)),SW/2-255,SH/2+113,14,C(121,196,197));DrawText("PRESS ENTER TO ENTER THE GARDEN",SW/2-255,SH/2+148,16,C(255,218,135));}
+  if(mode==Mode::Pause){panel("THE GARDEN HOLDS ITS BREATH","PAUSED","Your thread is waiting.");DrawText("P or ESC  —  resume",SW/2-255,SH/2+32,18,C(181,224,219));DrawText("R  —  begin again",SW/2-255,SH/2+68,18,C(181,224,219));DrawText(TextFormat("SFX VOLUME  %d%%",(int)std::lround(sfx.masterVolume()*100)),SW/2-255,SH/2+105,22,C(226,255,247));DrawText("LEFT / RIGHT ARROWS  —  ADJUST 5%",SW/2-255,SH/2+138,15,C(255,218,135));}
   if(mode==Mode::Upgrade){panel("A NEW PATTERN TAKES SHAPE","CHOOSE AN EVOLUTION","1 / A, 2 / D, 3 / S  then  ENTER");const char* names[3]={"01   HEARTWOOD","02   RAZOR FILAMENT","03   QUICKSTEP"};const char* desc[3]={"Restore 35 vitality","Silk deals more damage","Move faster; dash recharges sooner"};for(int i=0;i<3;i++){int x=SW/2-260+i*176;Color outline=choice==i?C(133,255,221,220):C(67,115,132,100);DrawRectangleRounded({(float)x,SH/2+5,160,126},.08f,8,C(20,42,57,230));DrawRectangleRoundedLines({(float)x,SH/2+5,160,126},.08f,8,outline);DrawText(names[i],x+12,SH/2+23,13,C(212,249,231));DrawText(desc[i],x+12,SH/2+57,13,C(139,191,193));}DrawText("SELECT WITH 1 / 2 / 3, OR A / D / S",SW/2-185,SH/2+159,14,C(255,218,135));}
   if(mode==Mode::Lost||mode==Mode::Won){panel(mode==Mode::Won?"DAWN RECLAIMS THE GARDEN":"THE THREAD GOES QUIET",mode==Mode::Won?"YOU HELD THE NIGHT":"LOST TO THE BRIAR","The hunters remember your path.");DrawText(TextFormat("Score %06d     Hunters cut %d     Evolutions %d",score,kills,levelN-1),SW/2-255,SH/2+24,18,C(179,225,216));DrawText("ENTER / R  —  weave again",SW/2-255,SH/2+76,16,C(255,218,135));DrawText("ESC  —  return to title",SW/2-255,SH/2+111,15,C(136,188,192));}
+  sfx.update();
   EndDrawing();
  }
- if(IsSoundValid(ping))UnloadSound(ping);
- if(IsSoundValid(cut))UnloadSound(cut);
- if(IsSoundValid(level))UnloadSound(level);
- if(IsSoundValid(hurt))UnloadSound(hurt);
+ sfx.shutdown();
  if(audioReady)CloseAudioDevice();
  CloseWindow();return 0;
 }
