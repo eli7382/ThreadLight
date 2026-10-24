@@ -4,6 +4,17 @@
 
 namespace threadlight::menu {
 
+class FocusOwner {
+public:
+    void update(bool mouseMoved, bool mouseClicked, bool keyboardUsed) {
+        if (mouseMoved || mouseClicked) mouseOwns_ = true;
+        if (keyboardUsed) mouseOwns_ = false;
+    }
+    bool mouseOwnsFocus() const { return mouseOwns_; }
+private:
+    bool mouseOwns_ = true;
+};
+
 enum class Action {
     Pause,
     Resume,

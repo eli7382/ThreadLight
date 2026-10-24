@@ -1,0 +1,71 @@
+#pragma once
+
+#include "visual_effects.h"
+#include <algorithm>
+#include <array>
+
+namespace threadlight::presentation {
+
+struct V { float x{}, y{}; };
+inline V operator+(V a,V b){return {a.x+b.x,a.y+b.y};}
+inline V operator-(V a,V b){return {a.x-b.x,a.y-b.y};}
+inline V operator*(V a,float s){return {a.x*s,a.y*s};}
+
+template<class T> inline T blend(T previous,T current,float alpha) {
+    return previous+(current-previous)*std::clamp(alpha,0.f,1.f);
+}
+// Event feedback starts immediately; only its decay needs interpolation.
+inline float decay(float previous,float current,float alpha) {
+    return current>previous?current:blend(previous,current,alpha);
+}
+
+// History lives on each entity, so erasing/compacting a vector cannot blend
+// unrelated objects. New objects initialize history at their actual spawn.
+// present() returns a drawing copy and never changes simulation state.
+struct Thread {
+    V p; float age;
+    float previousAge=age;
+    void capture(){previousAge=age;}
+};
+inline V silkPoint(const Thread& knot,bool newest,V shownPlayer) {
+    return newest&&knot.previousAge==0.f?shownPlayer:knot.p;
+}
+struct Foe {
+    V p,vel; float r,hp,maxhp,speed,hitCd,phase,hitFlash; int kind;
+    V previousP=p;
+    float previousPhase=phase,previousHitFlash=hitFlash;
+    void capture(){previousP=p;previousPhase=phase;previousHitFlash=hitFlash;}
+    Foe present(float alpha) const {
+        auto result=*this;
+        result.p=blend(previousP,p,alpha);
+        result.phase=blend(previousPhase,phase,alpha);
+        result.hitFlash=decay(previousHitFlash,hitFlash,alpha);
+        return result;
+    }
+};
+struct Spark {
+    V p; float t;
+    V previousP=p; float previousT=t;
+    void capture(){previousP=p;previousT=t;}
+    Spark present(float alpha) const {
+        auto result=*this;result.p=blend(previousP,p,alpha);result.t=blend(previousT,t,alpha);return result;
+    }
+};
+template<class Color> struct Particle {
+    V p,v;float life,maxLife,size;Color color;
+    V previousP=p;float previousLife=life;
+    void capture(){previousP=p;previousLife=life;}
+    Particle present(float alpha) const {
+        auto result=*this;result.p=blend(previousP,p,alpha);result.life=blend(previousLife,life,alpha);return result;
+    }
+};
+struct DeathEffect {
+    V p;std::array<V,visual::kHeavyShardCount> velocity;float age{};int kind{};
+    float previousAge=age;
+    void capture(){previousAge=age;}
+    DeathEffect present(float alpha) const {
+        auto result=*this;result.age=blend(previousAge,age,alpha);return result;
+    }
+};
+
+} // namespace threadlight::presentation

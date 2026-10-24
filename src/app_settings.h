@@ -17,6 +17,26 @@ struct AppSettings {
     int sfxVolumePercent = 78;
 };
 
+// Live edits are cheap; disk writes happen once at an edit boundary. Failed
+// saves remain pending so a later boundary (including shutdown) can retry.
+struct PendingEdits {
+    bool dragging = false;
+    bool dirty = false;
+
+    bool finishDrag(bool audioScreen, bool focused, bool mouseDown, bool keyboardUsed) {
+        if (!dragging || (audioScreen && focused && mouseDown && !keyboardUsed)) return false;
+        dragging = false;
+        return true;
+    }
+    template<class Save>
+    bool flush(Save save) {
+        if (!dirty) return true;
+        if (!save()) return false;
+        dirty = false;
+        return true;
+    }
+};
+
 constexpr int kDefaultFrameRateLimit = 60;
 constexpr int kDefaultSfxVolumePercent = 78;
 

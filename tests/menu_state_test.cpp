@@ -109,6 +109,46 @@ void testKeyboardFocusWrapsWithinEachMenu() {
     CHECK(focus == 0);
     CHECK(moveSelection(kDefaultExitSelection, 1, 2) == kExitYesSelection);
 }
+void testStationaryHoverCannotReclaimKeyboardFocus() {
+    using namespace threadlight::menu;
+    using threadlight::Mode;
+    for (const Mode origin : {Mode::Title,Mode::Pause}) {
+        FocusOwner owner;
+        int selection=0;
+        owner.update(true,false,false); // Hover Start / Resume.
+        CHECK(owner.mouseOwnsFocus());
+        owner.update(false,false,true); // Down.
+        selection=moveSelection(selection,1,origin==Mode::Title?3:4);
+        for(int frame=0;frame<20;++frame) {
+            owner.update(false,false,false);
+            if(owner.mouseOwnsFocus())selection=0; // Stationary hover.
+        }
+        CHECK(selection==1);
+        Mode mode=origin,settingsReturn=Mode::Title;
+        bool exit=false;int exitSelection=kDefaultExitSelection;
+        owner.update(false,false,true); // Enter activates the retained selection.
+        if(selection==1)apply(mode,settingsReturn,exit,exitSelection,Action::OpenSettings);
+        CHECK(mode==Mode::Settings);
+        CHECK(settingsReturn==origin);
+        for(int tab : {0,1}) {
+            int focus=0;
+            owner.update(false,false,true);
+            focus=moveSelection(focus,1,settingsFocusCount(tab));
+            for(int frame=0;frame<20;++frame) {
+                owner.update(false,false,false);
+                if(owner.mouseOwnsFocus())focus=0;
+            }
+            CHECK(focus==1);
+        }
+        owner.update(true,false,false);
+        CHECK(owner.mouseOwnsFocus());
+        owner.update(false,false,true);
+        CHECK(!owner.mouseOwnsFocus());
+        owner.update(false,true,false); // Click reclaims even without motion.
+        CHECK(owner.mouseOwnsFocus());
+    }
+}
+
 }
 
 int main() {
@@ -116,6 +156,7 @@ int main() {
     testSettingsOriginAndExitConfirmation();
     testMenuActionsAreScopedToTheirScreen();
     testKeyboardFocusWrapsWithinEachMenu();
+    testStationaryHoverCannotReclaimKeyboardFocus();
     if (failures != 0) return EXIT_FAILURE;
     std::cout << "Menu-state navigation checks passed.\n";
 }

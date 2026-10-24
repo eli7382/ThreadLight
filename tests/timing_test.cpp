@@ -72,6 +72,18 @@ void testTimeStepScheduleAcrossConfiguredRates() {
     const auto at60 = simulate(60.0);
     const auto at120 = simulate(120.0);
     const auto unlimited = simulate(1000.0);
+    for(double rate : {144.,165.,10000.}) {
+        const auto result=simulate(rate);
+        CHECK(result.ticks==at30.ticks);
+        CHECK(std::abs(result.distance-at30.distance)<.01f);
+        CHECK(std::abs(result.enemyDistance-at30.enemyDistance)<.01f);
+        CHECK(result.dashTicks==at30.dashTicks);
+        CHECK(result.activeSilkTicks==at30.activeSilkTicks);
+        CHECK(std::abs(result.cooldown-at30.cooldown)<.001f);
+        CHECK(std::abs(result.invulnerability-at30.invulnerability)<.001f);
+        CHECK(std::abs(result.waveElapsed-at30.waveElapsed)<.001f);
+        CHECK(std::abs(result.particleSpeed-at30.particleSpeed)<.001f);
+    }
     CHECK(at30.ticks == 480);
     CHECK(at60.ticks == at30.ticks);
     CHECK(at120.ticks == at30.ticks);

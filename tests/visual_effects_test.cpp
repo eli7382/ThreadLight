@@ -82,63 +82,61 @@ void testPlayerBoundsFollowLogicalClientAndCameraShake() {
     CHECK(standard.playerMinY - kCameraShakeY - kPlayerVisualRadius == standard.top);
     CHECK(standard.playerMaxY + kCameraShakeY + kPlayerVisualRadius == standard.bottom);
 
-    // World rendering is inside Camera2D, which clears raylib's regular
-    // high-DPI matrix. Verify the camera restores the live framebuffer/client
-    // scale and keeps world, player clamp, HUD, and footer on the same edges.
-    struct DpiViewport { int width; int height; };
-    constexpr DpiViewport dpiViewports[] = {
-        {1280, 800}, {1600, 900}, {1920, 1080}, {960, 640},
-        {1280, 1024}, {1365, 767}
-    };
-    constexpr float scales[] = {1.0f, 1.25f, 1.5f, 1.75f, 2.0f};
-    const auto near = [](float a, float b, float tolerance = 1.0f) {
-        return std::abs(a - b) <= tolerance;
-    };
-    for (const auto viewport : dpiViewports) {
-        const auto bounds = playBounds(viewport.width, viewport.height);
-        const auto hud = hudLayout(viewport.width, viewport.height);
-        for (const float scale : scales) {
-            const int framebufferWidth = static_cast<int>(std::lround(viewport.width * scale));
-            const int framebufferHeight = static_cast<int>(std::lround(viewport.height * scale));
-            const auto camera = cameraTransform(viewport.width, viewport.height,
-                                                framebufferWidth, framebufferHeight);
-            const Point topLeft = cameraWorldToFramebuffer({bounds.left, bounds.top}, camera);
-            const Point bottomRight = cameraWorldToFramebuffer({bounds.right, bounds.bottom}, camera);
-            CHECK(near(camera.zoom, scale, 0.001f));
-            CHECK(near(camera.scaleY, scale, 0.001f));
-            CHECK(near(camera.offset.x, framebufferWidth * 0.5f, 0.001f));
-            CHECK(near(camera.offset.y, framebufferHeight * 0.5f, 0.001f));
-            CHECK(near(cameraWorldToFramebuffer({0.0f, 0.0f}, camera).x, 0.0f));
-            CHECK(near(cameraWorldToFramebuffer({static_cast<float>(viewport.width), 0.0f}, camera).x,
-                       static_cast<float>(framebufferWidth)));
-            CHECK(near(cameraWorldToFramebuffer({0.0f, static_cast<float>(viewport.height)}, camera).y,
-                       static_cast<float>(framebufferHeight)));
-            CHECK(near(cameraWorldToFramebuffer({0.0f, kHudBottom}, camera).y,
-                       kHudBottom * scale));
-            CHECK(near(cameraWorldToFramebuffer({0.0f, hud.footerY}, camera).y,
-                       hud.footerY * scale));
-            CHECK(near(topLeft.x, bounds.left * scale));
-            CHECK(near(topLeft.y, bounds.top * scale));
-            CHECK(near(bottomRight.x, static_cast<float>(framebufferWidth)));
-            CHECK(near(bottomRight.y, bounds.bottom * scale));
-            CHECK(near((hud.footerY + kFooterHeight) * scale,
-                       static_cast<float>(framebufferHeight)));
+}
 
-            for (const float xShake : {-kCameraShakeX, kCameraShakeX}) {
-                for (const float yShake : {-kCameraShakeY, kCameraShakeY}) {
-                    const auto shaken = cameraTransform(viewport.width, viewport.height,
-                        framebufferWidth, framebufferHeight, xShake, yShake);
-                    const Point player = cameraWorldToFramebuffer(
-                        {bounds.playerMaxX, bounds.playerMaxY}, shaken);
-                    CHECK(player.x + kPlayerVisualRadius * shaken.zoom <= framebufferWidth + 0.01f);
-                    CHECK(player.y + kPlayerVisualRadius * shaken.zoom <=
-                          cameraWorldToFramebuffer({bounds.right, bounds.bottom}, shaken).y + 0.01f);
-                    const Point opposite = cameraWorldToFramebuffer(
-                        {bounds.playerMinX, bounds.playerMinY}, shaken);
-                    CHECK(opposite.x - kPlayerVisualRadius * shaken.zoom >= -0.01f);
-                    CHECK(opposite.y - kPlayerVisualRadius * shaken.zoom >=
-                          cameraWorldToFramebuffer({bounds.left, bounds.top}, shaken).y - 0.01f);
-                }
+// Model the actual Windows raylib 5.5 transitions, including the retained
+// startup mouse scale and the independently updated screenScale. On Windows
+// GLFW window/client dimensions and framebuffer dimensions are native pixels.
+void testRaylibCallbackCoordinateTransitions() {
+    using namespace threadlight::layout;
+    const auto near=[](float a,float b){return std::abs(a-b)<1.1f;};
+    for (const Point startupScale : {Point{1,1}, Point{1.25f,1.25f},
+            Point{1.5f,1.5f}, Point{2,2}, Point{1.25f,1.5f}, Point{1.5f,1.3125f}}) {
+        int screenWidth=1280,screenHeight=800;
+        int renderWidth=int(screenWidth*startupScale.x);
+        int renderHeight=int(screenHeight*startupScale.y);
+        Point retainedDrawingScale=startupScale;
+        const Point mouseScale{1/startupScale.x,1/startupScale.y};
+        const auto coordinates=WindowCoordinates::atStartup(
+            screenWidth,screenHeight,renderWidth,renderHeight);
+        CHECK(coordinates.width(renderWidth)==1280);
+        CHECK(coordinates.height(renderHeight)==800);
+        CHECK(coordinates.width(coordinates.nativeWidth(960))>=960);
+        CHECK(coordinates.height(coordinates.nativeHeight(640))>=640);
+        for (int transition=0;transition<6;++transition) {
+            if(transition==1||transition==3||transition==5) {
+                // WindowSizeCallback -> SetupViewport + screen/currentFbo;
+                // no screenScale or mouse-scale update. Resize/maximize/restore.
+                renderWidth=screenWidth=(transition==3?2560:transition==5?1201:1537);
+                renderHeight=screenHeight=(transition==3?1440:transition==5?901:977);
+            } else if(transition==2||transition==4) {
+                // WindowContentScaleCallback changes only screenScale. Test
+                // both orders relative to size callbacks, plus unequal axes.
+                retainedDrawingScale=transition==2?Point{2,1.5f}:Point{1.25f,1};
+            }
+            const int width=coordinates.width(renderWidth),height=coordinates.height(renderHeight);
+            const auto bounds=playBounds(width,height);
+            const auto hud=hudLayout(width,height);
+            const Point nativeMouse{renderWidth*.6f,renderHeight*.65f};
+            const Point mouse{nativeMouse.x*mouseScale.x,nativeMouse.y*mouseScale.y};
+            const Point drawn=coordinates.toFramebuffer(mouse);
+            CHECK(near(drawn.x,nativeMouse.x));
+            CHECK(near(drawn.y,nativeMouse.y));
+            CHECK(near(coordinates.toFramebuffer({float(width),float(height)}).x,float(renderWidth)));
+            CHECK(near(coordinates.toFramebuffer({float(width),float(height)}).y,float(renderHeight)));
+            CHECK(near(coordinates.toFramebuffer({0,hud.footerY+kFooterHeight}).y,float(renderHeight)));
+            for(float sx : {-kCameraShakeX,kCameraShakeX})for(float sy : {-kCameraShakeY,kCameraShakeY}) {
+                CHECK(playerVisible({bounds.playerMinX,bounds.playerMinY},bounds,kPlayerVisualRadius,{sx,sy}));
+                CHECK(playerVisible({bounds.playerMaxX,bounds.playerMaxY},bounds,kPlayerVisualRadius,{sx,sy}));
+                const auto player=coordinates.toFramebuffer({bounds.playerMaxX,bounds.playerMaxY},{sx,sy});
+                CHECK(player.x+kPlayerVisualRadius*coordinates.scale.x<=renderWidth+1.f);
+                CHECK(player.y+kPlayerVisualRadius*coordinates.scale.y<=
+                      coordinates.toFramebuffer({0,bounds.bottom}).y+.01f);
+            }
+            if(transition==2) {
+                // Demonstrate why framebuffer/screen ratios cannot recover
+                // the retained drawing transform after these callbacks.
+                CHECK(float(renderWidth)/screenWidth!=retainedDrawingScale.x);
             }
         }
     }
@@ -192,6 +190,7 @@ void testHitFlashAndShakeDecaySmoothly() {
 int main() {
     testSilkCoolsContinuouslyAndFadesWithAge();
     testPlayerBoundsFollowLogicalClientAndCameraShake();
+    testRaylibCallbackCoordinateTransitions();
     testRunGeometryRemapsOnResizeWithoutLeavingPlayableArea();
     testDeathTimingsAreDistinctAndBounded();
     testHitFlashAndShakeDecaySmoothly();

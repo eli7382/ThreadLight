@@ -22,6 +22,9 @@ public:
 
     void clear() { accumulator_ = 0.0; }
     double remainder() const { return accumulator_; }
+    float presentationAlpha() const {
+        return static_cast<float>(std::clamp(accumulator_ / kFixedStepSeconds, 0.0, 1.0));
+    }
 
 private:
     double accumulator_ = 0.0;

@@ -62,4 +62,8 @@ if(BUILD_TESTING)
   add_executable(ThreadlightTimingTests tests/timing_test.cpp)
   target_include_directories(ThreadlightTimingTests PRIVATE src)
   add_test(NAME ThreadlightTimingTests COMMAND ThreadlightTimingTests)
+
+  add_executable(ThreadlightPresentationTests tests/presentation_test.cpp)
+  target_include_directories(ThreadlightPresentationTests PRIVATE src)
+  add_test(NAME ThreadlightPresentationTests COMMAND ThreadlightPresentationTests)
 endif()

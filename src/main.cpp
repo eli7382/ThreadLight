@@ -1,9 +1,11 @@
 #include "raylib.h"
+#include "rlgl.h"
 #include "game_logic.h"
 #include "game_layout.h"
 #include "app_settings.h"
 #include "menu_state.h"
 #include "game_timing.h"
+#include "game_presentation.h"
 #include "game_audio.h"
 #include "visual_feedback.h"
 #include "visual_effects.h"
@@ -14,24 +16,23 @@
 
 namespace {
 constexpr float kPlayerRadius=threadlight::layout::kPlayerRadius;
-struct V { float x{},y{}; };
-V operator+(V a,V b){return {a.x+b.x,a.y+b.y};} V operator-(V a,V b){return {a.x-b.x,a.y-b.y};} V operator*(V a,float s){return {a.x*s,a.y*s};}
+using threadlight::presentation::V;
+using threadlight::presentation::Thread;
+using threadlight::presentation::Foe;
+using threadlight::presentation::Spark;
+using threadlight::presentation::DeathEffect;
+using Particle=threadlight::presentation::Particle<Color>;
 float len(V a){return std::sqrt(a.x*a.x+a.y*a.y);} float dist(V a,V b){return len(a-b);} V norm(V a){float l=len(a);return l>0.001f?a*(1/l):V{};} Vector2 cv(V a){return {a.x,a.y};}
 V catmullRom(V p0,V p1,V p2,V p3,float t){const float t2=t*t,t3=t2*t;return (p1*2.f+(p2-p0)*t+(p0*2.f-p1*5.f+p2*4.f-p3)*t2+(p0*-1.f+p1*3.f-p2*3.f+p3)*t3)*.5f;}
 Color C(unsigned char r,unsigned char g,unsigned char b,unsigned char a=255){return {r,g,b,a};}
-struct Thread {V p; float age;};
-struct Foe {V p,vel; float r,hp,maxhp,speed,hitCd,phase,hitFlash; int kind;};
-struct Spark {V p; float t;};
-struct Particle {V p,v;float life,maxLife,size;Color color;};
-struct DeathEffect {V p; std::array<V,threadlight::visual::kHeavyShardCount> velocity; float age{}; int kind{};};
 }
 int main(){
  SetConfigFlags(FLAG_WINDOW_HIGHDPI|FLAG_WINDOW_RESIZABLE|FLAG_MSAA_4X_HINT);
  InitWindow(threadlight::layout::kInitialScreenWidth,threadlight::layout::kInitialScreenHeight,"THREADLIGHT | A small game of living silk");
- SetWindowMinSize(960,640);
- // GetScreenWidth/Height are logical client dimensions. GetRenderWidth/Height
- // are DPI-scaled framebuffer dimensions and must never drive world geometry.
- int SW=GetScreenWidth(),SH=GetScreenHeight();
+ const auto windowCoordinates=threadlight::layout::WindowCoordinates::atStartup(
+     GetScreenWidth(),GetScreenHeight(),GetRenderWidth(),GetRenderHeight());
+ SetWindowMinSize(windowCoordinates.nativeWidth(960),windowCoordinates.nativeHeight(640));
+ int SW=windowCoordinates.width(GetRenderWidth()),SH=windowCoordinates.height(GetRenderHeight());
  auto playArea=threadlight::layout::playBounds(SW,SH);
  SetExitKey(KEY_NULL); SetTargetFPS(60); InitAudioDevice();
  const bool audioReady=IsAudioDeviceReady();
@@ -42,19 +43,34 @@ int main(){
  sfx.setMasterVolume(appSettings.sfxVolumePercent/100.0f);
  SetTargetFPS(appSettings.frameRateLimit);
  using threadlight::Mode;
- Mode mode=Mode::Title,settingsReturn=Mode::Title; bool exitRequested=false,sliderDragging=false; int mainSelection=0,pauseSelection=0,exitSelection=threadlight::menu::kDefaultExitSelection,settingsTab=0,settingsFocus=0;
+ Mode mode=Mode::Title,settingsReturn=Mode::Title; bool exitRequested=false; int mainSelection=0,pauseSelection=0,exitSelection=threadlight::menu::kDefaultExitSelection,settingsTab=0,settingsFocus=0;
+ threadlight::settings::PendingEdits settingsEdits;
  V player{(playArea.left+playArea.right)*.5f,(playArea.top+playArea.bottom)*.5f}; float hp=100, energy=0, hitInvuln=0,dashCd=0,dashTime=0, spawnT=0, waveT=0, shake=0, pulse=0, damageFeedback=0; int wave=0, score=0, kills=0, levelN=1, choice=0; float speed=255, trailDmg=1, radius=kPlayerRadius; bool dashUpgrade=false, dashVisualActive=false;
  float dashEchoTimer=0,dashEchoFade=0; size_t dashEchoCount=0; std::array<V,6> dashEcho{};
  std::vector<Thread> thread; std::vector<Foe> foes; std::vector<Spark> sparks; std::vector<Particle> particles; std::vector<DeathEffect> deathEffects; std::vector<V> stars;
  thread.reserve(240); foes.reserve(80); sparks.reserve(48); particles.reserve(threadlight::visual::kParticleLimit); deathEffects.reserve(threadlight::visual::kDeathEffectLimit); stars.reserve(110);
  for(int i=0;i<110;i++) stars.push_back({GetRandomValue(0,10000)/10000.0f,GetRandomValue(0,10000)/10000.0f});
  threadlight::timing::FixedStepClock stepClock;
+ V previousPlayer=player;
+ float previousShake=shake,previousDamageFeedback=damageFeedback,previousDashEchoFade=dashEchoFade;
+ std::array<V,6> previousDashEcho=dashEcho;
+ size_t previousDashEchoCount=dashEchoCount;
+ auto capturePresentation=[&](){
+  previousPlayer=player;previousShake=shake;previousDamageFeedback=damageFeedback;previousDashEchoFade=dashEchoFade;
+  previousDashEcho=dashEcho;previousDashEchoCount=dashEchoCount;
+  for(auto& item:thread)item.capture();
+  for(auto& item:foes)item.capture();
+  for(auto& item:sparks)item.capture();
+  for(auto& item:particles)item.capture();
+  for(auto& item:deathEffects)item.capture();
+ };
  bool dashPressPending=false;
+ threadlight::menu::FocusOwner menuFocus;
  float measuredFps=60.0f;
  auto saveSettings=[&](){
   SetTargetFPS(appSettings.frameRateLimit);
   sfx.setMasterVolume(appSettings.sfxVolumePercent/100.0f);
-  if(!threadlight::settings::save(settingsPath,appSettings))
+  if(!settingsEdits.flush([&](){return threadlight::settings::save(settingsPath,appSettings);}))
    TraceLog(LOG_WARNING,"Could not save ThreadLight settings to the user config directory.");
  };
  auto burst=[&](V p,Color col,int n,float force){for(int i=0;i<n&&particles.size()<threadlight::visual::kParticleLimit;i++){float a=(float)GetRandomValue(0,6283)/1000.f,s=(float)GetRandomValue(25,(int)force);particles.push_back({p,{std::cos(a)*s,std::sin(a)*s},.65f,.65f,(float)GetRandomValue(2,6),col});}};
@@ -71,9 +87,9 @@ int main(){
  auto segDist=[](V p,V a,V b){V ab=b-a;float q=ab.x*ab.x+ab.y*ab.y;float t=q>0?std::clamp(((p.x-a.x)*ab.x+(p.y-a.y)*ab.y)/q,0.f,1.f):0;return dist(p,a+ab*t);};
  auto drawText=[&](const char* s,int x,int y,int size,Color c){DrawText(s,x,y,size,c);};
   auto applyMenuAction=[&](threadlight::menu::Action action){threadlight::menu::apply(mode,settingsReturn,exitRequested,exitSelection,action);};
-  auto changeFrameLimit=[&](int value){if(!threadlight::settings::validFrameRateLimit(value)||value==appSettings.frameRateLimit)return;appSettings.frameRateLimit=value;saveSettings();};
-  auto changeShowFps=[&](){appSettings.showFps=!appSettings.showFps;saveSettings();};
-  auto changeSfxVolume=[&](int value,bool persist=true){value=std::clamp(value,0,100);if(value==appSettings.sfxVolumePercent)return;appSettings.sfxVolumePercent=value;sfx.setMasterVolume(value/100.0f);if(persist)saveSettings();};
+  auto changeFrameLimit=[&](int value){if(!threadlight::settings::validFrameRateLimit(value)||value==appSettings.frameRateLimit)return;appSettings.frameRateLimit=value;settingsEdits.dirty=true;saveSettings();};
+  auto changeShowFps=[&](){appSettings.showFps=!appSettings.showFps;settingsEdits.dirty=true;saveSettings();};
+  auto changeSfxVolume=[&](int value,bool persist=true){value=std::clamp(value,0,100);if(value==appSettings.sfxVolumePercent)return;appSettings.sfxVolumePercent=value;settingsEdits.dirty=true;sfx.setMasterVolume(value/100.0f);if(persist)saveSettings();};
   auto contains=[](Rectangle rectangle,Vector2 point){return CheckCollisionPointRec(point,rectangle);};
   auto buttonRect=[&](int index,int count,float centerY,float width=300.f,float height=46.f,float gap=54.f){return Rectangle{(SW-width)*.5f,centerY+(index-(count-1)*.5f)*gap-height*.5f,width,height};};
   auto mainButton=[&](int index){return buttonRect(index,3,SH*.5f+96.f,310.f,46.f,56.f);};
@@ -85,9 +101,10 @@ int main(){
    const Mode screenAtFrameStart=mode;
    const double frameSeconds=std::max(0.0,static_cast<double>(GetFrameTime()));
    measuredFps=threadlight::timing::smoothMeasuredFps(measuredFps,static_cast<float>(frameSeconds));
-   const int nextSW=std::max(1,GetScreenWidth()),nextSH=std::max(1,GetScreenHeight());
+   const int nextSW=windowCoordinates.width(GetRenderWidth()),nextSH=windowCoordinates.height(GetRenderHeight());
    const auto nextPlayArea=threadlight::layout::playBounds(nextSW,nextSH);
-   if(nextSW!=SW||nextSH!=SH){
+   const bool resized=nextSW!=SW||nextSH!=SH;
+   if(resized){
     auto remapWorldPoint=[&](V& point){const auto mapped=threadlight::layout::remapPoint({point.x,point.y},playArea,nextPlayArea);point={mapped.x,mapped.y};};
     remapWorldPoint(player);
     for(auto& item:thread)remapWorldPoint(item.p);
@@ -108,6 +125,9 @@ int main(){
    }
    player.x=threadlight::layout::clampPlayerX(player.x,playArea);
    player.y=threadlight::layout::clampPlayerY(player.y,playArea);
+   if(resized){
+    stepClock.clear();dashPressPending=false;capturePresentation();
+   }
 
    const float settingsWidth=std::min(860.f,static_cast<float>(SW-40));
    const float settingsLeft=(SW-settingsWidth)*.5f,settingsTop=SH*.5f-256.f;
@@ -122,6 +142,24 @@ int main(){
    const Rectangle volumeRow{settingsLeft+42.f,settingsTop+144.f,settingsWidth-84.f,100.f};
    const Rectangle settingsBack{settingsLeft+settingsWidth*.5f-125.f,settingsTop+442.f,250.f,44.f};
    const Vector2 mouse=GetMousePosition();
+   const Vector2 mouseDelta=GetMouseDelta();
+   const bool menuKey=IsKeyPressed(KEY_UP)||IsKeyPressed(KEY_DOWN)||
+       IsKeyPressed(KEY_LEFT)||IsKeyPressed(KEY_RIGHT)||IsKeyPressed(KEY_ENTER)||
+       IsKeyPressed(KEY_SPACE)||IsKeyPressed(KEY_TAB)||IsKeyPressed(KEY_ESCAPE)||
+       IsKeyPressed(KEY_P)||IsKeyPressed(KEY_R);
+   menuFocus.update(mouseDelta.x!=0.f||mouseDelta.y!=0.f,
+                    IsMouseButtonPressed(MOUSE_BUTTON_LEFT),menuKey);
+   auto hovered=[&](Rectangle rectangle){return menuFocus.mouseOwnsFocus()&&contains(rectangle,mouse);};
+   auto sampleVolume=[&](){
+    const float position=std::clamp((mouse.x-volumeSlider.x)/std::max(1.f,volumeSlider.width),0.f,1.f);
+    changeSfxVolume(threadlight::settings::quantizeSfxVolume(static_cast<int>(std::lround(position*100.f))),false);
+   };
+   // Capture the release position even outside the slider. Interruptions end
+   // the edit before menu navigation can bypass release handling.
+   if(settingsEdits.dragging&&IsWindowFocused()&&!menuKey&&
+      (IsMouseButtonDown(MOUSE_BUTTON_LEFT)||IsMouseButtonReleased(MOUSE_BUTTON_LEFT)))sampleVolume();
+   if(settingsEdits.finishDrag(mode==Mode::Settings&&settingsTab==1,
+       IsWindowFocused(),IsMouseButtonDown(MOUSE_BUTTON_LEFT),menuKey))saveSettings();
 
    if(screenAtFrameStart==Mode::Title){
     if(IsKeyPressed(KEY_ESCAPE))applyMenuAction(threadlight::menu::Action::Escape);
@@ -131,7 +169,7 @@ int main(){
      if(mainSelection==0)reset();
      else if(mainSelection==1)applyMenuAction(threadlight::menu::Action::OpenSettings);
      else applyMenuAction(threadlight::menu::Action::RequestExit);
-    }else for(int i=0;i<3;i++)if(contains(mainButton(i),mouse)){
+    }else for(int i=0;i<3;i++)if(hovered(mainButton(i))){
      mainSelection=i;
      if(IsMouseButtonPressed(MOUSE_BUTTON_LEFT)){
       if(i==0)reset();else if(i==1)applyMenuAction(threadlight::menu::Action::OpenSettings);else applyMenuAction(threadlight::menu::Action::RequestExit);
@@ -148,7 +186,7 @@ int main(){
      else if(pauseSelection==1)applyMenuAction(threadlight::menu::Action::OpenSettings);
      else if(pauseSelection==2)reset();
      else applyMenuAction(threadlight::menu::Action::ReturnToMainMenu);
-    }else for(int i=0;i<4;i++)if(contains(pauseButton(i),mouse)){
+    }else for(int i=0;i<4;i++)if(hovered(pauseButton(i))){
      pauseSelection=i;
      if(IsMouseButtonPressed(MOUSE_BUTTON_LEFT)){
       if(i==0)applyMenuAction(threadlight::menu::Action::Resume);
@@ -161,23 +199,17 @@ int main(){
     if(IsKeyPressed(KEY_ESCAPE))applyMenuAction(threadlight::menu::Action::Escape);
     else if(IsKeyPressed(KEY_TAB))threadlight::menu::switchSettingsTab(settingsTab,settingsFocus);
     else {
-     if(contains(videoTab,mouse)&&IsMouseButtonPressed(MOUSE_BUTTON_LEFT)){settingsTab=0;settingsFocus=0;}
-     else if(contains(audioTab,mouse)&&IsMouseButtonPressed(MOUSE_BUTTON_LEFT)){settingsTab=1;settingsFocus=0;}
-     else if(contains(settingsBack,mouse)){settingsFocus=settingsTab==0?2:1;if(IsMouseButtonPressed(MOUSE_BUTTON_LEFT))applyMenuAction(threadlight::menu::Action::Back);}
+     if(hovered(videoTab)&&IsMouseButtonPressed(MOUSE_BUTTON_LEFT)){settingsTab=0;settingsFocus=0;}
+     else if(hovered(audioTab)&&IsMouseButtonPressed(MOUSE_BUTTON_LEFT)){settingsTab=1;settingsFocus=0;}
+     else if(hovered(settingsBack)){settingsFocus=settingsTab==0?2:1;if(IsMouseButtonPressed(MOUSE_BUTTON_LEFT))applyMenuAction(threadlight::menu::Action::Back);}
      else if(settingsTab==0){
-      for(int i=0;i<4;i++)if(contains(fpsChips[i],mouse)){settingsFocus=0;if(IsMouseButtonPressed(MOUSE_BUTTON_LEFT)){constexpr int rates[]={30,60,120,0};changeFrameLimit(rates[i]);}}
-      if(contains(showToggle,mouse)){settingsFocus=1;if(IsMouseButtonPressed(MOUSE_BUTTON_LEFT))changeShowFps();}
-     }else if(settingsTab==1&&contains(volumeRow,mouse))settingsFocus=0;
-     if(settingsTab==1&&(contains(volumeSlider,mouse)||
-         (sliderDragging&&(IsMouseButtonDown(MOUSE_BUTTON_LEFT)||IsMouseButtonReleased(MOUSE_BUTTON_LEFT))))){
+      for(int i=0;i<4;i++)if(hovered(fpsChips[i])){settingsFocus=0;if(IsMouseButtonPressed(MOUSE_BUTTON_LEFT)){constexpr int rates[]={30,60,120,0};changeFrameLimit(rates[i]);}}
+      if(hovered(showToggle)){settingsFocus=1;if(IsMouseButtonPressed(MOUSE_BUTTON_LEFT))changeShowFps();}
+     }else if(settingsTab==1&&hovered(volumeRow))settingsFocus=0;
+     if(settingsTab==1&&hovered(volumeSlider)&&IsWindowFocused()&&IsMouseButtonPressed(MOUSE_BUTTON_LEFT)){
       settingsFocus=0;
-      if(contains(volumeSlider,mouse)&&IsMouseButtonPressed(MOUSE_BUTTON_LEFT))sliderDragging=true;
-      if(sliderDragging&&IsMouseButtonDown(MOUSE_BUTTON_LEFT)){
-       const float position=std::clamp((mouse.x-volumeSlider.x)/std::max(1.f,volumeSlider.width),0.f,1.f);
-       const int percent=static_cast<int>(std::lround(position*100.f));
-       changeSfxVolume(threadlight::settings::quantizeSfxVolume(percent),false);
-      }
-      if(sliderDragging&&IsMouseButtonReleased(MOUSE_BUTTON_LEFT)){sliderDragging=false;saveSettings();}
+      settingsEdits.dragging=true;
+      sampleVolume();
      }
      if(IsKeyPressed(KEY_UP)||IsKeyPressed(KEY_DOWN)){
       const int direction=IsKeyPressed(KEY_DOWN)?1:-1;
@@ -200,8 +232,8 @@ int main(){
     if(IsKeyPressed(KEY_ESCAPE))applyMenuAction(threadlight::menu::Action::Escape);
     else if(IsKeyPressed(KEY_LEFT)||IsKeyPressed(KEY_RIGHT))exitSelection=threadlight::menu::moveSelection(exitSelection,1,2);
     else if(IsKeyPressed(KEY_ENTER))applyMenuAction(threadlight::menu::exitSelectionAction(exitSelection));
-    else if(contains(yesButton,mouse)){exitSelection=0;if(IsMouseButtonPressed(MOUSE_BUTTON_LEFT))applyMenuAction(threadlight::menu::Action::ConfirmExit);}
-    else if(contains(noButton,mouse)){exitSelection=1;if(IsMouseButtonPressed(MOUSE_BUTTON_LEFT))applyMenuAction(threadlight::menu::Action::CancelExit);}
+    else if(hovered(yesButton)){exitSelection=0;if(IsMouseButtonPressed(MOUSE_BUTTON_LEFT))applyMenuAction(threadlight::menu::Action::ConfirmExit);}
+    else if(hovered(noButton)){exitSelection=1;if(IsMouseButtonPressed(MOUSE_BUTTON_LEFT))applyMenuAction(threadlight::menu::Action::CancelExit);}
    }else if(screenAtFrameStart==Mode::Play){
     if(IsKeyPressed(KEY_P)){
      applyMenuAction(threadlight::menu::Action::Pause);
@@ -210,6 +242,7 @@ int main(){
      dashPressPending=dashPressPending||IsKeyPressed(KEY_SPACE);
      const int steps=stepClock.advance(frameSeconds);
      for(int tick=0;tick<steps&&mode==Mode::Play;tick++){
+      capturePresentation();
       constexpr float dt=static_cast<float>(threadlight::timing::kFixedStepSeconds);
       hitInvuln=std::max(0.f,hitInvuln-dt);dashCd=std::max(0.f,dashCd-dt);pulse=std::max(0.f,pulse-dt);damageFeedback=std::max(0.f,damageFeedback-dt);shake=std::max(0.f,shake-dt);dashVisualActive=dashTime>0;dashEchoTimer=std::max(0.f,dashEchoTimer-dt);
       V mv{(float)(IsKeyDown(KEY_D)||IsKeyDown(KEY_RIGHT))-(float)(IsKeyDown(KEY_A)||IsKeyDown(KEY_LEFT)),(float)(IsKeyDown(KEY_S)||IsKeyDown(KEY_DOWN))-(float)(IsKeyDown(KEY_W)||IsKeyDown(KEY_UP))}; if(len(mv)>0)mv=norm(mv);
@@ -238,14 +271,28 @@ int main(){
    }else if(screenAtFrameStart==Mode::Upgrade){if(IsKeyPressed(KEY_ONE)||IsKeyPressed(KEY_A))choice=0;else if(IsKeyPressed(KEY_TWO)||IsKeyPressed(KEY_D))choice=1;else if(IsKeyPressed(KEY_THREE)||IsKeyPressed(KEY_S))choice=2;else if(IsKeyPressed(KEY_ENTER)||IsKeyPressed(KEY_SPACE)){if(choice==0)hp=std::min(100.f,hp+35);if(choice==1)trailDmg+=.65f;if(choice==2){speed+=24;dashUpgrade=true;}mode=Mode::Play;stepClock.clear();}}
    else if(screenAtFrameStart==Mode::Lost||screenAtFrameStart==Mode::Won){if(IsKeyPressed(KEY_ENTER)||IsKeyPressed(KEY_R))reset();else if(IsKeyPressed(KEY_ESCAPE))applyMenuAction(threadlight::menu::Action::Escape);}
 
+   if(settingsEdits.finishDrag(mode==Mode::Settings&&settingsTab==1,
+       IsWindowFocused(),IsMouseButtonDown(MOUSE_BUTTON_LEFT),false))saveSettings();
+
+   if(mode!=screenAtFrameStart){stepClock.clear();dashPressPending=false;capturePresentation();}
+   const float alpha=mode==Mode::Play?stepClock.presentationAlpha():1.f;
+   const V shownPlayer=threadlight::presentation::blend(previousPlayer,player,alpha);
+   const float shownShake=threadlight::presentation::decay(previousShake,shake,alpha);
+   const float shownDamageFeedback=threadlight::presentation::decay(previousDamageFeedback,damageFeedback,alpha);
+   const float shownDashEchoFade=threadlight::presentation::decay(previousDashEchoFade,dashEchoFade,alpha);
+
   BeginDrawing();ClearBackground(C(7,12,27));
+  // Own the modelview for the entire frame: raylib's retained screenScale can
+  // change independently of its startup mouse scale. Its projection/viewport
+  // already match the framebuffer. Apply our startup scale exactly once.
+  rlLoadIdentity();
+  rlScalef(windowCoordinates.scale.x,windowCoordinates.scale.y,1.f);
   const float time=(float)GetTime();
-  const float shakeStrength=threadlight::visual::shakeEnvelope(shake,threadlight::visual::kDamageShakeSeconds);
+  const float shakeStrength=threadlight::visual::shakeEnvelope(shownShake,threadlight::visual::kDamageShakeSeconds);
   const float cameraShiftX=std::sin(time*71.f)*shakeStrength*threadlight::layout::kCameraShakeX;
   const float cameraShiftY=std::sin(time*53.f+1.4f)*shakeStrength*threadlight::layout::kCameraShakeY;
-  const auto cameraTransform=threadlight::layout::cameraTransform(SW,SH,renderWidth,renderHeight,cameraShiftX,cameraShiftY);
-  Camera2D worldCamera{};worldCamera.offset={cameraTransform.offset.x,cameraTransform.offset.y};worldCamera.target={cameraTransform.target.x,cameraTransform.target.y};worldCamera.zoom=cameraTransform.zoom;
-  BeginMode2D(worldCamera);
+  rlPushMatrix();
+  rlTranslatef(cameraShiftX,cameraShiftY,0.f);
   const float playWidth=playArea.right-playArea.left,playHeight=playArea.bottom-playArea.top;
   const float glowRadius=std::min(playWidth,playHeight)*.19f;
   for(int i=0;i<5;i++){
@@ -262,13 +309,17 @@ int main(){
   for(int y=(int)playArea.top+20;y<playArea.bottom;y+=48)DrawLine(0,y,SW,y,C(34,66,83,22));
   // A short Catmull-Rom subdivision keeps the wake organic without changing
   // the sampled collision segments or allocating temporary geometry.
+  // A newly sampled silk endpoint belongs to the current tick. Draw it at
+  // the interpolated player instead of letting the silk lead the player.
+  auto silkPoint=[&](size_t i){return threadlight::presentation::silkPoint(thread[i],i+1==thread.size(),shownPlayer);};
+  auto silkAge=[&](size_t i){return threadlight::presentation::blend(thread[i].previousAge,thread[i].age,alpha);};
   if(thread.size()>1){
    for(size_t i=1;i<thread.size();i++){
-    const V p0=thread[i>1?i-2:i-1].p,p1=thread[i-1].p,p2=thread[i].p,p3=thread[i+1<thread.size()?i+1:i].p;
+    const V p0=silkPoint(i>1?i-2:i-1),p1=silkPoint(i-1),p2=silkPoint(i),p3=silkPoint(i+1<thread.size()?i+1:i);
     for(int step=1;step<=3;step++){
      const float t0=(float)(step-1)/3.f,t1=(float)step/3.f;
      const V a=catmullRom(p0,p1,p2,p3,t0),b=catmullRom(p0,p1,p2,p3,t1);
-     const float age=thread[i-1].age+(thread[i].age-thread[i-1].age)*(t0+t1)*.5f;
+     const float age=silkAge(i-1)+(silkAge(i)-silkAge(i-1))*(t0+t1)*.5f;
      const float shimmer=.5f+.5f*std::sin(time*5.f-age*1.6f);
      const auto silk=threadlight::visual::silkAppearance(age,shimmer);
      Color halo=ColorLerp(C(0,222,211),C(42,129,165),silk.ageBlend);
@@ -285,20 +336,20 @@ int main(){
   }
   // A short, bright trail behind the dashing player communicates direction
   // and distance, then fades quickly without covering enemies or silk.
-  if(dashEchoFade>0&&dashEchoCount>1){
-   const float fade=std::clamp(dashEchoFade/.22f,0.f,1.f);
-   for(size_t i=dashEchoCount-1;i>0;i--){
-    const float ageWeight=.25f+.75f*(1.f-(float)(i-1)/(float)(dashEchoCount-1));
+  if(shownDashEchoFade>0&&previousDashEchoCount>1){
+   const float fade=std::clamp(shownDashEchoFade/.22f,0.f,1.f);
+   for(size_t i=previousDashEchoCount-1;i>0;i--){
+    const float ageWeight=.25f+.75f*(1.f-(float)(i-1)/(float)(previousDashEchoCount-1));
     const unsigned char glow=(unsigned char)(86.f*fade*ageWeight),core=(unsigned char)(230.f*fade*ageWeight);
-    DrawLineEx(cv(dashEcho[i]),cv(dashEcho[i-1]),7.f*fade,C(0,183,229,glow));
-    DrawLineEx(cv(dashEcho[i]),cv(dashEcho[i-1]),2.4f*fade,C(190,248,255,core));
-    DrawCircleV(cv(dashEcho[i]),radius*.72f,C(67,220,255,(unsigned char)(145.f*fade*ageWeight)));
+    DrawLineEx(cv(previousDashEcho[i]),cv(previousDashEcho[i-1]),7.f*fade,C(0,183,229,glow));
+    DrawLineEx(cv(previousDashEcho[i]),cv(previousDashEcho[i-1]),2.4f*fade,C(190,248,255,core));
+    DrawCircleV(cv(previousDashEcho[i]),radius*.72f,C(67,220,255,(unsigned char)(145.f*fade*ageWeight)));
    }
-   DrawLineEx(cv(dashEcho[0]),cv(player),7.f*fade,C(0,183,229,(unsigned char)(86.f*fade)));
-   DrawLineEx(cv(dashEcho[0]),cv(player),2.4f*fade,C(190,248,255,(unsigned char)(230.f*fade)));
+   DrawLineEx(cv(previousDashEcho[0]),cv(shownPlayer),7.f*fade,C(0,183,229,(unsigned char)(86.f*fade)));
+   DrawLineEx(cv(previousDashEcho[0]),cv(shownPlayer),2.4f*fade,C(190,248,255,(unsigned char)(230.f*fade)));
   }
-  for(auto s:sparks){float r=8+2*std::sin(time*6+s.t);DrawCircleV(cv(s.p),r+8,C(255,185,95,20));DrawPoly(cv(s.p),4,r,45,C(255,209,115));DrawPolyLinesEx(cv(s.p),4,r+2,45,1.1f,C(255,242,187,190));}
-  for(const auto& effect:deathEffects){
+  for(const auto& source:sparks){auto s=source.present(alpha);float r=8+2*std::sin(time*6+s.t);DrawCircleV(cv(s.p),r+8,C(255,185,95,20));DrawPoly(cv(s.p),4,r,45,C(255,209,115));DrawPolyLinesEx(cv(s.p),4,r+2,45,1.1f,C(255,242,187,190));}
+  for(const auto& source:deathEffects){const auto effect=source.present(alpha);
    const float duration=effect.kind?threadlight::visual::kHeavyDeathSeconds:threadlight::visual::kSmallDeathSeconds;
    const float progress=std::clamp(effect.age/duration,0.f,1.f),remain=1.f-progress;
    const float eased=threadlight::visual::deathProgress(effect.age,duration);
@@ -317,7 +368,7 @@ int main(){
     if(i%2==0)DrawCircleV(cv(pos),1.3f*remain,C(186,255,243,(unsigned char)(175.f*remain)));
    }
   }
-  for(auto f:foes){
+  for(const auto& source:foes){auto f=source.present(alpha);
    const float flash=threadlight::visual::hitFlashStrength(f.hitFlash);
    const Color base=f.kind?C(255,116,178):C(255,97,132);
    const Color edge=ColorLerp(base,C(207,255,246,255),flash);
@@ -333,20 +384,20 @@ int main(){
    if(flash>0)DrawCircleV(pos,f.r*.56f,C(219,255,249,(unsigned char)(105.f*flash)));
    if(f.hp<f.maxhp){DrawRectangle((int)(f.p.x-f.r),(int)(f.p.y-f.r-10),((int)(2*f.r)),3,C(50,48,71));DrawRectangle((int)(f.p.x-f.r),(int)(f.p.y-f.r-10),(int)(2*f.r*std::clamp(f.hp/f.maxhp,0.f,1.f)),3,C(255,118,157));}
   }
-  for(auto p:particles){float a=std::clamp(p.life/p.maxLife,0.f,1.f);DrawCircleV(cv(p.p),p.size*a,Fade(p.color,a));}
+  for(const auto& source:particles){auto p=source.present(alpha);float a=std::clamp(p.life/p.maxLife,0.f,1.f);DrawCircleV(cv(p.p),p.size*a,Fade(p.color,a));}
   if(mode!=Mode::Title){
-   const float impact=threadlight::visual::damageImpactStrength(damageFeedback);
+   const float impact=threadlight::visual::damageImpactStrength(shownDamageFeedback);
    const bool dashVisual=dashTime>0||dashVisualActive;
-   DrawCircleV(cv(player),31,C(45,230,214,18));
-   DrawCircleV(cv(player),21,C(51,230,221,34));
-   if(impact>0)DrawCircleV(cv(player),radius+13,C(242,76,101,(unsigned char)(35*impact)));
+   DrawCircleV(cv(shownPlayer),31,C(45,230,214,18));
+   DrawCircleV(cv(shownPlayer),21,C(51,230,221,34));
+   if(impact>0)DrawCircleV(cv(shownPlayer),radius+13,C(242,76,101,(unsigned char)(35*impact)));
    const Color rim=dashVisual?C(126,239,255,245):ColorLerp(C(164,255,232,220),C(255,133,151,235),impact*.72f);
    const Color core=dashVisual?C(224,251,255,255):ColorLerp(C(221,255,245,255),C(255,171,181,255),impact*.48f);
-   DrawCircleV(cv(player),radius+4,rim);
-   DrawCircleV(cv(player),radius,core);
-   if(impact>0){const float ringRadius=threadlight::visual::damageRingRadius(radius,damageFeedback);DrawRing(cv(player),ringRadius,ringRadius+1.6f,0,360,48,C(255,118,139,(unsigned char)(100*impact)));}
+   DrawCircleV(cv(shownPlayer),radius+4,rim);
+   DrawCircleV(cv(shownPlayer),radius,core);
+   if(impact>0){const float ringRadius=threadlight::visual::damageRingRadius(radius,shownDamageFeedback);DrawRing(cv(shownPlayer),ringRadius,ringRadius+1.6f,0,360,48,C(255,118,139,(unsigned char)(100*impact)));}
   }
-  EndMode2D();
+  rlPopMatrix();
   const bool showRunHud=mode==Mode::Play||mode==Mode::Pause||mode==Mode::Upgrade||
       mode==Mode::Lost||mode==Mode::Won||(mode==Mode::Settings&&settingsReturn==Mode::Pause);
   const auto hud=threadlight::layout::hudLayout(SW,SH);
@@ -402,13 +453,13 @@ int main(){
    DrawText("WASD / arrows move     SPACE dash     P pauses",(int)bounds.x+52,(int)bounds.y+181,15,C(121,196,197));
    DrawText("Collect 8 sparks to evolve. Survive five waves.",(int)bounds.x+52,(int)bounds.y+207,15,C(121,196,197));
    const char* labels[]={"START GAME","SETTINGS","EXIT GAME"};
-   for(int i=0;i<3;i++)drawButton(mainButton(i),labels[i],mainSelection==i,contains(mainButton(i),mouse));
+   for(int i=0;i<3;i++)drawButton(mainButton(i),labels[i],mainSelection==i,hovered(mainButton(i)));
    DrawText("UP / DOWN SELECT     ENTER CONFIRMS     ESC OPENS EXIT CONFIRMATION",(int)bounds.x+52,(int)bounds.y+431,12,C(108,167,178));
   }
   if(mode==Mode::Pause){
    panel("THE GARDEN HOLDS ITS BREATH","PAUSED","Your thread is waiting.");
    const char* labels[]={"RESUME","SETTINGS","RESTART RUN","RETURN TO MAIN MENU"};
-   for(int i=0;i<4;i++)drawButton(pauseButton(i),labels[i],pauseSelection==i,contains(pauseButton(i),mouse),15);
+   for(int i=0;i<4;i++)drawButton(pauseButton(i),labels[i],pauseSelection==i,hovered(pauseButton(i)),15);
    DrawText("P RESUMES     ESC RETURNS TO TITLE",SW/2-142,SH/2+197,12,C(108,167,178));
   }
   if(mode==Mode::Settings){
@@ -417,8 +468,8 @@ int main(){
    DrawRectangleRounded(settingsPanel,.045f,16,C(11,22,40,250));
    DrawRectangleRoundedLines(settingsPanel,.045f,16,C(91,216,197,155));
    DrawText("SETTINGS",(int)settingsLeft+48,(int)settingsTop+27,28,C(226,255,247));
-   drawButton(videoTab,"VIDEO",settingsTab==0,contains(videoTab,mouse));
-   drawButton(audioTab,"AUDIO",settingsTab==1,contains(audioTab,mouse));
+   drawButton(videoTab,"VIDEO",settingsTab==0,hovered(videoTab));
+   drawButton(audioTab,"AUDIO",settingsTab==1,hovered(audioTab));
    DrawLine((int)settingsLeft+42,(int)settingsTop+129,(int)(settingsLeft+settingsWidth-42),(int)settingsTop+129,C(58,115,131,95));
    if(settingsTab==0){
     DrawRectangleRoundedLines(frameRow,.08f,8,settingsFocus==0?C(76,201,197,115):C(47,89,105,75));
@@ -427,12 +478,12 @@ int main(){
     const char* rateLabels[]={"30 FPS","60 FPS","120 FPS","UNLIMITED"};
     for(int i=0;i<4;i++){
      const bool configured=appSettings.frameRateLimit==frameRates[i];
-     drawButton(fpsChips[i],rateLabels[i],configured,contains(fpsChips[i],mouse),13);
+     drawButton(fpsChips[i],rateLabels[i],configured,hovered(fpsChips[i]),13);
     }
     DrawText("Unlimited removes the game limiter; display or driver caps may still apply.",(int)settingsLeft+48,(int)settingsTop+195,13,C(111,164,176));
     DrawText("SHOW FPS",(int)settingsLeft+48,(int)settingsTop+236,16,settingsFocus==1?C(205,243,237):C(145,183,191));
     DrawText("Measured output rate",(int)settingsLeft+48,(int)settingsTop+259,12,C(111,164,176));
-    drawButton(showToggle,appSettings.showFps?"ON":"OFF",settingsFocus==1,contains(showToggle,mouse),14);
+    drawButton(showToggle,appSettings.showFps?"ON":"OFF",settingsFocus==1,hovered(showToggle),14);
    }else{
     DrawRectangleRoundedLines(volumeRow,.08f,8,settingsFocus==0?C(76,201,197,115):C(47,89,105,75));
     DrawText("SOUND EFFECTS VOLUME",(int)settingsLeft+48,(int)settingsTop+160,16,settingsFocus==0?C(205,243,237):C(145,183,191));
@@ -445,7 +496,7 @@ int main(){
     DrawCircleLines((int)(volumeSlider.x+volumeSlider.width*volumeFraction),(int)trackY,11.f,C(73,230,207));
     DrawText("Drag to set volume. Arrow keys change it in 5% steps; changes apply immediately.",(int)settingsLeft+48,(int)settingsTop+245,13,C(111,164,176));
    }
-   drawButton(settingsBack,"BACK",(settingsTab==0&&settingsFocus==2)||(settingsTab==1&&settingsFocus==1),contains(settingsBack,mouse));
+   drawButton(settingsBack,"BACK",(settingsTab==0&&settingsFocus==2)||(settingsTab==1&&settingsFocus==1),hovered(settingsBack));
    DrawText("TAB SWITCHES SECTIONS     ESC RETURNS",(int)settingsLeft+48,(int)settingsTop+488,11,C(108,167,178));
   }
   if(mode==Mode::ExitConfirm){
@@ -454,8 +505,8 @@ int main(){
    DrawText(question,(int)(SW*.5f-MeasureText(question,16)*.5f),(int)bounds.y+190,16,C(188,224,222));
    const Rectangle yesButton{SW*.5f-230.f,SH*.5f+52.f,210.f,48.f};
    const Rectangle noButton{SW*.5f+20.f,SH*.5f+52.f,210.f,48.f};
-   drawButton(yesButton,"Yes, Exit Game",exitSelection==0,contains(yesButton,mouse),15);
-   drawButton(noButton,"No, Stay",exitSelection==1,contains(noButton,mouse),15);
+   drawButton(yesButton,"Yes, Exit Game",exitSelection==0,hovered(yesButton),15);
+   drawButton(noButton,"No, Stay",exitSelection==1,hovered(noButton),15);
    DrawText("ESC CANCELS",SW/2-45,SH/2+122,12,C(108,167,178));
   }
   if(mode==Mode::Upgrade){panel("A NEW PATTERN TAKES SHAPE","CHOOSE AN EVOLUTION","1 / A, 2 / D, 3 / S  then  ENTER");const char* names[3]={"01   HEARTWOOD","02   RAZOR FILAMENT","03   QUICKSTEP"};const char* desc[3]={"Restore 35 vitality","Silk deals more damage","Move faster; dash recharges sooner"};for(int i=0;i<3;i++){int x=SW/2-260+i*176;Color outline=choice==i?C(133,255,221,220):C(67,115,132,100);DrawRectangleRounded({(float)x,(float)(SH/2+5),160,126},.08f,8,C(20,42,57,230));DrawRectangleRoundedLines({(float)x,(float)(SH/2+5),160,126},.08f,8,outline);DrawText(names[i],x+12,SH/2+23,13,C(212,249,231));DrawText(desc[i],x+12,SH/2+57,13,C(139,191,193));}DrawText("SELECT WITH 1 / 2 / 3, OR A / D / S",SW/2-185,SH/2+159,14,C(255,218,135));}
@@ -465,6 +516,8 @@ int main(){
   sfx.update();
   EndDrawing();
  }
+ settingsEdits.dragging=false;
+ saveSettings();
  sfx.shutdown();
  if(audioReady)CloseAudioDevice();
  CloseWindow();return 0;

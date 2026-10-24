@@ -95,11 +95,72 @@ void testPersistenceAndInvalidRecovery() {
     std::filesystem::remove_all(directory, error);
     CHECK(!error);
 }
+void testInterruptedDragsPersistAtBoundaries() {
+    using namespace threadlight::settings;
+    const auto directory=std::filesystem::current_path()/
+        ("ThreadLightDragTest-"+std::to_string(std::chrono::steady_clock::now().time_since_epoch().count()));
+    const auto path=directory/"settings.ini";
+    // inside release, outside release, Esc, Tab, menu navigation, focus loss,
+    // and shutdown all end an edit; continuous held frames never flush it.
+    for(int interruption=0;interruption<7;++interruption) {
+        AppSettings live;
+        PendingEdits edits;
+        int writes=0;
+        auto persist=[&](){++writes;return save(path,live);};
+        edits.dragging=true;
+        for(int frame=0;frame<100;++frame) {
+            live.sfxVolumePercent=frame%101;
+            edits.dirty=true;
+            if(edits.finishDrag(true,true,true,false))edits.flush(persist);
+        }
+        CHECK(writes==0);
+        live.sfxVolumePercent=10+interruption*10; // Last live/release sample.
+        const bool audioScreen=interruption!=3&&interruption!=4&&interruption!=6;
+        const bool focused=interruption!=5;
+        const bool down=interruption!=0&&interruption!=1;
+        const bool key=interruption==2||interruption==3;
+        CHECK(edits.finishDrag(audioScreen,focused,down,key));
+        CHECK(!edits.dragging);
+        CHECK(edits.flush(persist));
+        CHECK(writes==1);
+        CHECK(!edits.dirty);
+        CHECK(edits.flush(persist)); // shutdown after an already saved edit
+        CHECK(writes==1);
+        CHECK(load(path).sfxVolumePercent==live.sfxVolumePercent);
+        CHECK(!edits.finishDrag(true,true,true,false)); // No stale drag on re-entry.
+    }
+    PendingEdits failed;
+    failed.dirty=true;
+    CHECK(!failed.flush([](){return false;}));
+    CHECK(failed.dirty);
+    CHECK(failed.flush([](){return true;}));
+    CHECK(!failed.dirty);
+    std::error_code error;
+    std::filesystem::remove_all(directory,error);
+    CHECK(!error);
 }
 
-int main() {
+}
+
+int main(int argc,char** argv) {
+    if(argc==3) {
+        using namespace threadlight::settings;
+        const std::filesystem::path path=argv[2];
+        if(std::string_view(argv[1])=="--write-interrupted") {
+            PendingEdits edits{true,true};
+            AppSettings live{120,false,35};
+            if(!edits.finishDrag(false,false,true,false))return EXIT_FAILURE;
+            return edits.flush([&](){return save(path,live);})?EXIT_SUCCESS:EXIT_FAILURE;
+        }
+        if(std::string_view(argv[1])=="--verify-interrupted") {
+            const auto loaded=load(path);
+            return loaded.frameRateLimit==120&&!loaded.showFps&&loaded.sfxVolumePercent==35?EXIT_SUCCESS:EXIT_FAILURE;
+        }
+        return EXIT_FAILURE;
+    }
     testDefaultsAndLimits();
     testPersistenceAndInvalidRecovery();
+    testInterruptedDragsPersistAtBoundaries();
     if (failures != 0) return EXIT_FAILURE;
     std::cout << "Settings and persistence checks passed.\n";
 }

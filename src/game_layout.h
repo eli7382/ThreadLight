@@ -1,6 +1,7 @@
 #pragma once
 
 #include <algorithm>
+#include <cmath>
 
 namespace threadlight::layout {
 
@@ -13,8 +14,8 @@ constexpr float kFooterHeight = 52.0f;
 constexpr float kCameraShakeX = 6.0f;
 constexpr float kCameraShakeY = 4.0f;
 
-// All values use raylib's logical screen coordinates. High-DPI framebuffer
-// dimensions must not enter world or input calculations.
+// World and UI values use the startup mouse coordinate space. Only the
+// WindowCoordinates boundary converts native framebuffer dimensions into it.
 struct PlayBounds {
     float left;
     float right;
@@ -43,41 +44,39 @@ struct HudLayout {
     float pauseHintX;
 };
 
-struct CameraTransform {
-    Point offset;
-    Point target;
-    float zoom;
-    float scaleX;
-    float scaleY;
+// On Windows raylib 5.5 sets an inverse mouse scale at InitWindow(), but
+// neither its resize nor content-scale callback updates it. Keep that startup
+// coordinate space for the lifetime of the window. Do not infer it again from
+// GetScreenWidth() after a callback, or from the current monitor's DPI.
+struct WindowCoordinates {
+    Point scale;
+
+    static WindowCoordinates atStartup(int screenWidth, int screenHeight,
+                                       int renderWidth, int renderHeight) {
+        return {{static_cast<float>(std::max(1, renderWidth)) / std::max(1, screenWidth),
+                 static_cast<float>(std::max(1, renderHeight)) / std::max(1, screenHeight)}};
+    }
+    int width(int renderWidth) const {
+        return std::max(1, static_cast<int>(std::lround(renderWidth / scale.x)));
+    }
+    int height(int renderHeight) const {
+        return std::max(1, static_cast<int>(std::lround(renderHeight / scale.y)));
+    }
+    int nativeWidth(int logicalWidth) const {
+        return std::max(1, static_cast<int>(std::ceil(logicalWidth * scale.x)));
+    }
+    int nativeHeight(int logicalHeight) const {
+        return std::max(1, static_cast<int>(std::ceil(logicalHeight * scale.y)));
+    }
+    Point toFramebuffer(Point point, Point shift = {}) const {
+        return {(point.x + shift.x) * scale.x, (point.y + shift.y) * scale.y};
+    }
 };
 
 // raylib's Camera2D translates world positions by this logical-pixel offset.
 // Keep the transform explicit so layout tests can verify every shake extreme.
 inline Point worldToScreen(Point world, Point cameraShift) {
     return {world.x + cameraShift.x, world.y + cameraShift.y};
-}
-
-inline CameraTransform cameraTransform(int logicalWidth, int logicalHeight,
-                                       int framebufferWidth, int framebufferHeight,
-                                       float cameraShiftX = 0.0f,
-                                       float cameraShiftY = 0.0f) {
-    const float width = static_cast<float>(std::max(1, logicalWidth));
-    const float height = static_cast<float>(std::max(1, logicalHeight));
-    const float renderWidth = static_cast<float>(std::max(1, framebufferWidth));
-    const float renderHeight = static_cast<float>(std::max(1, framebufferHeight));
-    const float scaleX = renderWidth / width;
-    const float scaleY = renderHeight / height;
-    // Camera2D resets raylib's normal 2D DPI matrix while active. Its zoom and
-    // framebuffer-space offset must therefore restore the logical-to-pixel
-    // scale for world rendering inside BeginMode2D().
-    return {{renderWidth * 0.5f + cameraShiftX * scaleX,
-             renderHeight * 0.5f + cameraShiftY * scaleX},
-            {width * 0.5f, height * 0.5f}, scaleX, scaleX, scaleY};
-}
-
-inline Point cameraWorldToFramebuffer(Point world, const CameraTransform& camera) {
-    return {camera.offset.x + (world.x - camera.target.x) * camera.zoom,
-            camera.offset.y + (world.y - camera.target.y) * camera.zoom};
 }
 
 inline Point remapPoint(Point point, const PlayBounds& from, const PlayBounds& to) {
