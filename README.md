@@ -6,9 +6,10 @@ A small, self-contained top-down survival game built in C++20 with raylib 5.5. W
 
 - **WASD** or **arrow keys**: move
 - **Space**: dash (briefly invulnerable)
-- **P** or **Esc**: pause and resume
+- **P**: pause and resume during play; **Esc** does not pause or exit during play
 - During an evolution choice, press **1 / 2 / 3** (or **A / D / S**) and then **Enter**
-- **Enter** starts and retries; **R** restarts from pause; **Esc** returns to title after a run
+- **Enter** starts and retries; **R** restarts from pause; **Esc** returns to title while paused
+- **Esc** on the title opens an exit confirmation; **Esc** in that dialog cancels
 
 All visuals and sound effects are generated at runtime. No external art or audio assets are needed.
 
@@ -16,17 +17,17 @@ All visuals and sound effects are generated at runtime. No external art or audio
 
 Effects are synthesized at startup and cover dash, silk hits and kills, spark collection, player damage, evolution, victory, and defeat. Each cue uses a short shaped envelope, layered tones, and slight pitch variation. The mixer keeps at most eight effects active; important feedback can replace a lower-priority sound, and simultaneous voices are attenuated to leave mix headroom. There is no background music.
 
-To change the master SFX volume, pause with **P** or **Esc**, then use the **Left / Right arrow keys** to lower or raise it in 5% steps. The pause screen shows the current percentage. The title and play HUD point to the pause control. Arrow keys work regardless of keyboard layout.
+Open **Settings** from the title or pause menu. The Video section selects a 30, 60, 120, or Unlimited frame-rate limit and toggles the measured FPS display. The Audio section provides a mouse-operated SFX slider and Left / Right keyboard adjustment in 5% steps. Volume changes apply immediately. Settings are saved under the current user's `%APPDATA%\ThreadLight\settings.ini`.
 
-The Windows x64 Phase 2.1 build in this workspace is `build/Phase2.1-accepted-20261024/Threadlight-Phase2.1-accepted.exe`.
+The current Phase 2.2 branch is a provisional test build and has not been accepted. For its portable Windows package, use the GitHub pre-release labeled as an unverified test build.
 
 ### Manual listening check
 
-Listen at a comfortable system volume, then try the master control at low, default, and maximum settings using the arrow keys while paused. Check that dash has a soft descending airy attack; enemy hits stay light while kills have a fuller resolving cue; collected sparks sound warm and understated without disappearing; player damage is lower and darker; evolution rises; and victory and defeat are clearly different. Trigger several events close together and listen for clipping, abrupt volume pumping, or a cue that masks player damage. Also confirm the red impact pulse and expanding ring are clear without flashing, while the dash remains visibly cyan. These perceptual checks need a human listener and are not covered by the automated synthesis tests.
+Listen at a comfortable system volume, then try the Settings SFX slider at low, default, and maximum settings. Check that dash has a soft descending airy attack; enemy hits stay light while kills have a fuller resolving cue; collected sparks sound warm and understated without disappearing; player damage is lower and darker; evolution rises; and victory and defeat are clearly different. Trigger several events close together and listen for clipping, abrupt volume pumping, or a cue that masks player damage. Also confirm the red impact pulse and expanding ring are clear without flashing, while the dash remains visibly cyan. These perceptual checks need a human listener and are not covered by the automated tests.
 
 ## Windows build
 
-A prebuilt Windows x64 executable is included as `Threadlight.exe`. To build from source, install Visual Studio 2022 C++ tools, CMake, and raylib 5.5 with a CMake package configuration (for example, the `x64-windows` raylib package from vcpkg). From this directory, configure and build:
+To build from source, install Visual Studio 2022 C++ tools, CMake, and raylib 5.5 with a CMake package configuration (for example, the `x64-windows` raylib package from vcpkg). From this directory, configure and build:
 
 ```powershell
 cmake -S . -B build -DCMAKE_TOOLCHAIN_FILE=C:\vcpkg\scripts\buildsystems\vcpkg.cmake -DVCPKG_TARGET_TRIPLET=x64-windows
@@ -35,9 +36,9 @@ cmake --build build --config Release
 
 Then run `build\Release\Threadlight.exe`. If raylib is installed outside vcpkg, configure `CMAKE_PREFIX_PATH` to its package prefix instead.
 
-## Logic regression tests
+## Regression tests
 
-The focused state and spawn tests do not need raylib. Configure them with:
+Configure the seven regression tests without the game executable with:
 
 ```powershell
 cmake -S . -B build-tests -DTHREADLIGHT_BUILD_GAME=OFF

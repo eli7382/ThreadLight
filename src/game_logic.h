@@ -26,7 +26,7 @@ inline bool dashProtectsCollisionThisFrame(float remainingDashSeconds) {
     return remainingDashSeconds > 0.0f;
 }
 
-enum class Mode { Title, Play, Pause, Upgrade, Lost, Won };
+enum class Mode { Title, Play, Pause, Settings, ExitConfirm, Upgrade, Lost, Won };
 
 struct SpawnPoint {
     float x;

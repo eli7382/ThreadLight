@@ -3,6 +3,7 @@
 #include "audio_design.h"
 #include "raylib.h"
 
+#include <algorithm>
 #include <array>
 #include <cstring>
 
@@ -89,6 +90,13 @@ public:
         setMasterVolume(audio::masterVolumeStep(masterVolume_, direction));
     }
 
+    void setMasterVolume(float volume) {
+        masterVolume_ = std::clamp(volume, 0.0f, 1.0f);
+        if (!ready_) return;
+        mixedVoiceCount_ = -1;
+        refreshMix();
+    }
+
     float masterVolume() const { return masterVolume_; }
 
     void update() { refreshMix(); }
@@ -105,13 +113,6 @@ public:
     }
 
 private:
-    void setMasterVolume(float volume) {
-        masterVolume_ = volume;
-        if (!ready_) return;
-        mixedVoiceCount_ = -1;
-        refreshMix();
-    }
-
     void applyActiveMix(int activeVoices, float headroom) {
         for (int i = 0; i < audio::kEventCount; ++i) {
             const auto event = static_cast<audio::Event>(i);
