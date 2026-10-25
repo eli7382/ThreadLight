@@ -148,7 +148,11 @@ void testOfferEligibilityDeterminismAndPity() {
     ranks.value[u::index(u::Id::Razor)] = 1;
     u::OfferState state; state.absences[u::index(u::Id::Razor)] = 3;
     CHECK(u::contains(u::prepareOffer(state, ranks, player, 1), u::Id::Razor));
-    player.hp = 6000; state.recoveryMissed = true;
+    player.hp = 6000;
+    u::OfferState preBoss;
+    CHECK(u::contains(u::prepareOffer(preBoss, ranks, player, 1, true, true), u::Id::Restitch));
+    CHECK(!preBoss.recoveryMissed);
+    state.recoveryMissed = true;
     CHECK(u::contains(u::prepareOffer(state, ranks, player, 2), u::Id::Restitch));
     for (int i = 0; i < u::kPermanentCount; ++i) ranks.value[i] = u::maximum(static_cast<u::Id>(i));
     player.hp = player.maxHp;

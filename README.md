@@ -2,7 +2,7 @@
 
 A small, self-contained top-down survival game built in C++20 with raylib 5.5. Weave a fading silk wake through the hunters and collect sparks manually.
 
-This branch is the **M2 development harness**, based on accepted M1 `115b323df60d1196fee6274414e7a535e74b0612`. It retains five encounters and M1's lifecycle/manual reward accounting, adds shared combat and ranked player stats, and introduces telegraphed Skitters in Wave 4. The 35-wave campaign, bosses, signatures, and remaining enemies/upgrades are deferred. See [M2-CONTRACTS.md](M2-CONTRACTS.md) for architecture, exact provisional rank values, verification, limitations, and manual acceptance checks. [M1-FOUNDATION.md](M1-FOUNDATION.md) remains the historical M1 handoff.
+This branch is the **M3 Chapter I development prototype**, based on accepted M2 `8367abe7b137ca9cec570ff4411bb9acbe4e5e83`. Six fixed encounter schedules lead to Rootwarden on Wave 7. It retains M1 manual rewards and M2 ranked upgrades, adds boss combat and feedback, and ends at **Chapter I Prototype Complete**. Chapters II-V, Spitter, signatures, and the remaining catalog are deferred. See [M3-CHAPTER-I.md](M3-CHAPTER-I.md) for exact contracts, provisional balance, verification and acceptance checks. M1/M2 handoff documents remain historical records.
 
 ## Play
 
@@ -22,7 +22,7 @@ Effects are synthesized at startup and cover dash, silk hits and kills, spark co
 
 Open **Settings** from the title or pause menu. The Video section selects a 30, 60, 120, or Unlimited frame-rate limit and toggles the measured FPS display. The Audio section provides a mouse-operated SFX slider and Left / Right keyboard adjustment in 5% steps. Volume changes apply immediately. Settings are saved under the current user's `%APPDATA%\ThreadLight\settings.ini`.
 
-M1 is accepted; M2 is a feature-branch candidate for owner acceptance. Historical Phase 2.2 pre-release package notes describe that older test package, not the status of the approved source baseline. The root `Threadlight.exe` is preserved and is not rebuilt by these changes; launch the new executable from its build directory.
+M1 and M2 are accepted; M3 is a feature-branch candidate for owner acceptance. Historical Phase 2.2 pre-release package notes describe that older test package, not the status of the approved source baseline. The root `Threadlight.exe` is preserved and is not rebuilt by these changes; launch the new executable from its build directory.
 
 ### Manual listening check
 
@@ -41,7 +41,7 @@ Then run `build\Release\Threadlight.exe`. If raylib is installed outside vcpkg, 
 
 ## Regression tests
 
-Configure the thirteen regression executables without the game executable with:
+Configure the seventeen regression executables without the game executable with:
 
 ```powershell
 cmake -S . -B build-tests -DTHREADLIGHT_BUILD_GAME=OFF
@@ -49,7 +49,26 @@ cmake --build build-tests --config Release
 ctest --test-dir build-tests -C Release --output-on-failure
 ```
 
-The foundation suites cover lifecycle boundaries, manual pickups, credit accounting, and a deterministic helper scenario at multiple render rates. M2 adds focused combat/rank/offer tests, Skitter state and render-schedule tests, and upgrade-card layout/hit testing. The legacy logic suite now retains movement/spawn/control checks; its superseded automatic-wave-upgrade assertions have been removed. A passing test run does not establish balance, visual quality, or a human playthrough.
+The foundation suites cover lifecycle boundaries, manual pickups, credit accounting, and a deterministic helper scenario at multiple render rates. M2 adds focused combat/rank/offer tests, Skitter state and render-schedule tests, and upgrade-card layout/hit testing. M3 adds chapter schedules, Rootwarden state/geometry, dash/boss HUD, and explicitly scripted geometric boss scenarios. No simulation result is a human playtest. The legacy logic suite now retains movement/spawn/control checks; its superseded automatic-wave-upgrade assertions have been removed. A passing test run does not establish balance, visual quality, or a human playthrough.
 
 The preserved root executable was built with MSVC 19.44.35229.0, Windows x64, and raylib 5.5. Raylib's license is included in `RAYLIB-LICENSE.txt`.
 
+
+## Chapter I and development boss fixtures
+
+Launch `build-phase34-m3-msvc-x64\Release\Threadlight.exe` for normal play from Wave 1.
+The Rootwarden must be defeated; its supports and attacks cancel on death. Collect
+its visible core manually during the safe collection period. The prototype then
+stops with unspent credits and uncollected spark value recorded, without showing
+unusable upgrades or awarding a signature.
+
+For isolated boss acceptance testing only:
+
+```powershell
+.\build-phase34-m3-msvc-x64\Release\Threadlight.exe --m3-telemetry --m3-seed 7382 --m3-boss-fixture zero
+```
+
+Fixture names: `zero`, `offense`, `defense`, `mobility`, `mixed`. These start at
+Rootwarden with 0-3 preset ranks and are visibly labeled **DEV FIXTURE**; they are
+not normal campaign checkpoints. Run without that option to test normal progression
+and permadeath. The M3 handoff explains the fixtures and their limitations.

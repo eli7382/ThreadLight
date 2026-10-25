@@ -86,4 +86,21 @@ if(BUILD_TESTING)
   add_executable(ThreadlightUpgradeLayoutTests tests/upgrade_layout_test.cpp)
   target_include_directories(ThreadlightUpgradeLayoutTests PRIVATE src)
   add_test(NAME ThreadlightUpgradeLayoutTests COMMAND ThreadlightUpgradeLayoutTests)
+
+  add_executable(ThreadlightChapterTests tests/chapter_test.cpp)
+  target_include_directories(ThreadlightChapterTests PRIVATE src)
+  add_test(NAME ThreadlightChapterTests COMMAND ThreadlightChapterTests)
+
+  add_executable(ThreadlightRootwardenTests tests/rootwarden_test.cpp)
+  target_include_directories(ThreadlightRootwardenTests PRIVATE src)
+  add_test(NAME ThreadlightRootwardenTests COMMAND ThreadlightRootwardenTests)
+
+  add_executable(ThreadlightChapterHudTests tests/chapter_hud_test.cpp)
+  target_include_directories(ThreadlightChapterHudTests PRIVATE src)
+  add_test(NAME ThreadlightChapterHudTests COMMAND ThreadlightChapterHudTests)
+
+
+  add_executable(ThreadlightRootwardenScenarioTests tests/rootwarden_scenario_test.cpp)
+  target_include_directories(ThreadlightRootwardenScenarioTests PRIVATE src)
+  add_test(NAME ThreadlightRootwardenScenarioTests COMMAND ThreadlightRootwardenScenarioTests)
 endif()

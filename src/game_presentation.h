@@ -54,6 +54,7 @@ struct Spark {
     V p; float t;
     V previousP=p; float previousT=t;
     foundation::PickupState pickup{};
+    bool bossCore=false;
     void capture(){previousP=p;previousT=t;}
     Spark present(float alpha) const {
         auto result=*this;result.p=blend(previousP,p,alpha);result.t=blend(previousT,t,alpha);return result;

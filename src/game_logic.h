@@ -1,12 +1,13 @@
 #pragma once
 
+#include "chapter_one.h"
 #include <algorithm>
 #include <cmath>
 
 namespace threadlight {
 
-// Development-only M1 harness; the 35-wave campaign is intentionally deferred.
-constexpr int kWaveCount = 5;
+// Chapter I prototype; later chapters remain deliberately unavailable.
+constexpr int kWaveCount = chapter::kEncounterCount;
 constexpr float kDashDurationSeconds = 0.19f;
 constexpr float kDashCooldownSeconds = 1.85f;
 constexpr float kUpgradedDashCooldownSeconds = 1.45f;
@@ -35,7 +36,7 @@ struct SpawnPoint {
 };
 
 inline float waveDurationSeconds(int waveIndex) {
-    return 17.0f + static_cast<float>(waveIndex) * 3.0f;
+    return static_cast<float>(chapter::encounter(waveIndex).seconds);
 }
 
 inline bool beginPlayFrame(Mode& mode, bool pausePressed) {

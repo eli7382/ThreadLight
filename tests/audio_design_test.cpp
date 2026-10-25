@@ -41,9 +41,23 @@ void testEventsAreDistinctAndTunable() {
     const auto death = synthesize(Event::EnemyDeath);
     const auto spark = synthesize(Event::Spark);
     const auto damage = synthesize(Event::PlayerDamage);
+    const auto bossWarning = synthesize(Event::BossWarning);
+    const auto bossPhase = synthesize(Event::BossPhase);
     CHECK(hit != death);
     CHECK(spark != damage);
+    CHECK(bossWarning != bossPhase);
+    CHECK(bossWarning != damage);
     CHECK(synthesize(Event::Dash, 0.97f) != synthesize(Event::Dash, 1.03f));
+}
+
+void testBossCueDefinitions() {
+    using namespace threadlight::audio;
+    CHECK(duration(Event::BossWarning) > 0.20f && duration(Event::BossWarning) < 0.24f);
+    CHECK(duration(Event::BossPhase) > 0.43f && duration(Event::BossPhase) < 0.47f);
+    CHECK(eventGain(Event::BossWarning) == 0.44f);
+    CHECK(eventGain(Event::BossPhase) == 0.55f);
+    CHECK(priority(Event::BossWarning) == 3);
+    CHECK(priority(Event::BossPhase) == 3);
 }
 
 void testMasterVolumeControl() {
@@ -90,6 +104,7 @@ void testWorstCaseVoiceMixLeavesHeadroom() {
 int main() {
     testWaveforms();
     testEventsAreDistinctAndTunable();
+    testBossCueDefinitions();
     testMasterVolumeControl();
     testSparkIsSofterAndVaried();
     testPriorityOrdering();

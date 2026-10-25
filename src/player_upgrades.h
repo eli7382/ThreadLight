@@ -85,7 +85,7 @@ inline bool contains(const Offer& offer, Id id) {
 // reroll an already shown offer. Subsequent credits use the updated ranks/health.
 inline const Offer& prepareOffer(OfferState& state, const Ranks& ranks,
                                  const combat::PlayerHealth& health, foundation::CreditId credit,
-                                 bool economyUseful = true) {
+                                 bool economyUseful = true, bool beforeBoss = false) {
     if (!credit || credit <= state.current.credit) return state.current;
     Offer offer; offer.credit = credit;
     int longest = 2;
@@ -98,7 +98,7 @@ inline const Offer& prepareOffer(OfferState& state, const Ranks& ranks,
     }
     if (overdueCount) offer.cards[offer.count++] = overdue[nextRandom(state) % overdueCount];
     const int missing = health.maxHp - health.hp;
-    if (missing >= 3500 && state.recoveryMissed && eligible(Id::Restitch, ranks, health)) offer.cards[offer.count++] = Id::Restitch;
+    if (missing >= 3500 && (state.recoveryMissed || beforeBoss) && eligible(Id::Restitch, ranks, health)) offer.cards[offer.count++] = Id::Restitch;
     while (offer.count < 3) {
         std::array<Id, index(Id::Count)> candidates{};
         std::array<int, index(Id::Count)> weights{};

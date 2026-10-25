@@ -16,9 +16,9 @@ using threadlight::Mode;
 namespace {
 
 void testDevelopmentHarnessDurations() {
-    CHECK(threadlight::kWaveCount == 5);
+    CHECK(threadlight::kWaveCount == 7);
     for (int wave = 0; wave < threadlight::kWaveCount; ++wave)
-        CHECK(threadlight::waveDurationSeconds(wave) == 17.0f + wave * 3.0f);
+        CHECK(threadlight::waveDurationSeconds(wave) == threadlight::chapter::encounter(wave).seconds);
     // Lifecycle, timeout, rewards and credits are tested against the production
     // foundation modules. Automatic wave evolutions no longer exist.
 }

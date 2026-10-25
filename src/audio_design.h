@@ -16,6 +16,8 @@ enum class Event : std::uint8_t {
     Evolution,
     Victory,
     Defeat,
+    BossWarning,
+    BossPhase,
     Count
 };
 
@@ -36,6 +38,8 @@ inline float mixHeadroom(int activeVoices) {
 inline int priority(Event event) {
     switch (event) {
     case Event::PlayerDamage: return 3;
+    case Event::BossWarning:
+    case Event::BossPhase: return 3;
     case Event::Evolution:
     case Event::Victory:
     case Event::Defeat: return 4;
@@ -58,6 +62,8 @@ inline float duration(Event event) {
     case Event::Evolution: return 0.48f;
     case Event::Victory: return 0.88f;
     case Event::Defeat: return 0.72f;
+    case Event::BossWarning: return 0.22f;
+    case Event::BossPhase: return 0.45f;
     case Event::Count: break;
     }
     return 0.1f;
@@ -83,6 +89,8 @@ inline float eventGain(Event event) {
     case Event::Evolution: return 0.62f;
     case Event::Victory: return 0.72f;
     case Event::Defeat: return 0.65f;
+    case Event::BossWarning: return 0.44f;
+    case Event::BossPhase: return 0.55f;
     case Event::Count: break;
     }
     return 0.5f;
@@ -163,6 +171,23 @@ inline std::vector<std::int16_t> synthesize(Event event, float pitchScale = 1.0f
             const float a = phase(294.0f * pitchScale, 110.0f * pitchScale, t, length);
             const float b = phase(220.0f * pitchScale, 82.0f * pitchScale, t, length);
             sample = 0.26f * std::sin(a) + 0.11f * std::sin(b);
+            break;
+        }
+        case Event::BossWarning: {
+            const float wood = phase(155.0f * pitchScale, 235.0f * pitchScale, t, length);
+            const float body = phase(232.0f * pitchScale, 352.0f * pitchScale, t, length);
+            const float air = phase(620.0f * pitchScale, 890.0f * pitchScale, t, length);
+            sample = 0.28f * std::sin(wood) + 0.11f * std::sin(body) + 0.035f * std::sin(air);
+            sample *= 0.82f + 0.18f * position;
+            break;
+        }
+        case Event::BossPhase: {
+            const float low = phase(220.0f * pitchScale, 294.0f * pitchScale, t, length);
+            const float fifth = phase(330.0f * pitchScale, 440.0f * pitchScale, t, length);
+            const float air = phase(660.0f * pitchScale, 880.0f * pitchScale, t, length);
+            const float opening = 0.72f + 0.28f * std::sin(pi * position);
+            sample = (0.22f * std::sin(low) + 0.13f * std::sin(fifth) +
+                      0.045f * std::sin(air)) * opening;
             break;
         }
         case Event::Count: break;
