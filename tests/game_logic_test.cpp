@@ -15,92 +15,13 @@ using threadlight::Mode;
 
 namespace {
 
-void testAdvertisedWaveCountAndDurations() {
+void testDevelopmentHarnessDurations() {
     CHECK(threadlight::kWaveCount == 5);
-    for (int wave = 0; wave < threadlight::kWaveCount; ++wave) {
+    for (int wave = 0; wave < threadlight::kWaveCount; ++wave)
         CHECK(threadlight::waveDurationSeconds(wave) == 17.0f + wave * 3.0f);
-        CHECK(!threadlight::waveIsComplete(wave,
-            threadlight::waveDurationSeconds(wave), true));
-        CHECK(!threadlight::waveIsComplete(wave,
-            threadlight::waveDurationSeconds(wave) + 0.01f, false));
-        CHECK(threadlight::waveIsComplete(wave,
-            threadlight::waveDurationSeconds(wave) + 0.01f, true));
-    }
-
-    int completed = 0;
-    int activeWave = 0;
-    while (activeWave < threadlight::kWaveCount) {
-        ++completed;
-        const auto outcome = threadlight::resolvePlayOutcome(
-            activeWave, 100.0f, true, false);
-        if (activeWave + 1 == threadlight::kWaveCount) {
-            CHECK(outcome.mode == Mode::Won);
-            break;
-        }
-        CHECK(outcome.mode == Mode::Upgrade);
-        CHECK(outcome.waveIndex == activeWave + 1);
-        activeWave = outcome.waveIndex;
-    }
-    CHECK(completed == threadlight::kWaveCount);
+    // Lifecycle, timeout, rewards and credits are tested against the production
+    // foundation modules. Automatic wave evolutions no longer exist.
 }
-
-void testOutcomePrecedence() {
-    const auto lossBeforeVictory = threadlight::resolvePlayOutcome(4, 0.0f, true, true);
-    CHECK(lossBeforeVictory.mode == Mode::Lost);
-    CHECK(!lossBeforeVictory.consumeSparkUpgrade);
-
-    const auto victoryBeforeSparkUpgrade = threadlight::resolvePlayOutcome(4, 1.0f, true, true);
-    CHECK(victoryBeforeSparkUpgrade.mode == Mode::Won);
-    CHECK(!victoryBeforeSparkUpgrade.consumeSparkUpgrade);
-    CHECK(!victoryBeforeSparkUpgrade.countEvolution);
-
-    const auto intermediateWaveAndSparks = threadlight::resolvePlayOutcome(2, 100.0f, true, true);
-    CHECK(intermediateWaveAndSparks.mode == Mode::Upgrade);
-    CHECK(intermediateWaveAndSparks.waveIndex == 3);
-    CHECK(intermediateWaveAndSparks.consumeSparkUpgrade);
-    CHECK(intermediateWaveAndSparks.countEvolution);
-
-    const auto sparkOnly = threadlight::resolvePlayOutcome(2, 100.0f, false, true);
-    CHECK(sparkOnly.mode == Mode::Upgrade);
-    CHECK(sparkOnly.waveIndex == 2);
-    CHECK(sparkOnly.consumeSparkUpgrade);
-
-    const auto noTransition = threadlight::resolvePlayOutcome(2, 100.0f, false, false);
-    CHECK(noTransition.mode == Mode::Play);
-}
-
-void testProgressionIsAppliedOnceAndChoiceResets() {
-    int waveRewardWave = 0;
-    float bankedEnergy = 7.0f;
-    int waveRewardLevel = 1;
-    int waveRewardChoice = 2;
-    const auto waveReward = threadlight::resolvePlayOutcome(
-        waveRewardWave, 100.0f, true, false);
-    threadlight::applyProgress(waveReward, waveRewardWave, bankedEnergy,
-                               waveRewardLevel, waveRewardChoice);
-    CHECK(waveRewardWave == 1);
-    CHECK(bankedEnergy == 7.0f);
-    CHECK(waveRewardLevel == 2);
-    CHECK(waveRewardChoice == 0);
-
-    int wave = 2;
-    float energy = 9.0f;
-    int level = 4;
-    int choice = 2;
-    const auto outcome = threadlight::resolvePlayOutcome(wave, 100.0f, true, true);
-    threadlight::applyProgress(outcome, wave, energy, level, choice);
-    CHECK(wave == 3);
-    CHECK(energy == 1.0f);
-    CHECK(level == 5);
-    CHECK(choice == 0);
-
-    const auto victory = threadlight::resolvePlayOutcome(4, 100.0f, true, true);
-    threadlight::applyProgress(victory, wave, energy, level, choice);
-    CHECK(wave == 4);
-    CHECK(energy == 1.0f);
-    CHECK(level == 5);
-}
-
 void testPauseStopsThePlayFrame() {
     Mode mode = Mode::Play;
     CHECK(!threadlight::beginPlayFrame(mode, true));
@@ -172,9 +93,7 @@ void testSpawnsStayClearOfPlayerAtScreenEdges() {
 } // namespace
 
 int main() {
-    testAdvertisedWaveCountAndDurations();
-    testOutcomePrecedence();
-    testProgressionIsAppliedOnceAndChoiceResets();
+    testDevelopmentHarnessDurations();
     testPauseStopsThePlayFrame();
     testToneWaveFormatMatchesRaylibFieldOrder();
     testDashTuningAndFrameBoundaryProtection();

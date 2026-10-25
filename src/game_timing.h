@@ -2,10 +2,11 @@
 
 #include <algorithm>
 #include <cmath>
+#include "wave_foundation.h"
 
 namespace threadlight::timing {
 
-constexpr double kFixedStepSeconds = 1.0 / 120.0;
+constexpr double kFixedStepSeconds = 1.0 / foundation::kTicksPerSecond;
 constexpr int kMaxStepsPerFrame = 8;
 
 class FixedStepClock {

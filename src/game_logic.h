@@ -5,6 +5,7 @@
 
 namespace threadlight {
 
+// Development-only M1 harness; the 35-wave campaign is intentionally deferred.
 constexpr int kWaveCount = 5;
 constexpr float kDashDurationSeconds = 0.19f;
 constexpr float kDashCooldownSeconds = 1.85f;
@@ -33,19 +34,8 @@ struct SpawnPoint {
     float y;
 };
 
-struct Resolution {
-    Mode mode;
-    int waveIndex;
-    bool consumeSparkUpgrade;
-    bool countEvolution;
-};
-
 inline float waveDurationSeconds(int waveIndex) {
     return 17.0f + static_cast<float>(waveIndex) * 3.0f;
-}
-
-inline bool waveIsComplete(int waveIndex, float elapsedSeconds, bool spawnDue) {
-    return spawnDue && elapsedSeconds > waveDurationSeconds(waveIndex);
 }
 
 inline bool beginPlayFrame(Mode& mode, bool pausePressed) {
@@ -55,33 +45,6 @@ inline bool beginPlayFrame(Mode& mode, bool pausePressed) {
         return false;
     }
     return true;
-}
-
-// Loss wins over a simultaneous wave completion; final-wave victory wins over
-// a spark threshold. A non-final wave reward and a spark reward share one choice.
-inline Resolution resolvePlayOutcome(int waveIndex, float health,
-                                     bool waveComplete, bool sparkUpgradeReady) {
-    if (health <= 0.0f) return {Mode::Lost, waveIndex, false, false};
-
-    if (waveComplete && waveIndex + 1 >= kWaveCount)
-        return {Mode::Won, waveIndex, false, false};
-
-    if (waveComplete || sparkUpgradeReady) {
-        const int nextWave = waveComplete ? waveIndex + 1 : waveIndex;
-        return {Mode::Upgrade, nextWave, sparkUpgradeReady, true};
-    }
-
-    return {Mode::Play, waveIndex, false, false};
-}
-
-inline void applyProgress(const Resolution& outcome, int& waveIndex, float& energy,
-                          int& level, int& choice) {
-    waveIndex = outcome.waveIndex;
-    if (outcome.consumeSparkUpgrade) energy -= 8.0f;
-    if (outcome.countEvolution) {
-        ++level;
-        choice = 0;
-    }
 }
 
 inline SpawnPoint chooseSafeSpawn(float startAngle, float playerX, float playerY,

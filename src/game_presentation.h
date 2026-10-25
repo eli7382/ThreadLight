@@ -1,6 +1,7 @@
 #pragma once
 
 #include "visual_effects.h"
+#include "spark_pickup.h"
 #include <algorithm>
 #include <array>
 
@@ -34,6 +35,7 @@ struct Foe {
     V p,vel; float r,hp,maxhp,speed,hitCd,phase,hitFlash; int kind;
     V previousP=p;
     float previousPhase=phase,previousHitFlash=hitFlash;
+    foundation::RewardId rewardId = 0;
     void capture(){previousP=p;previousPhase=phase;previousHitFlash=hitFlash;}
     Foe present(float alpha) const {
         auto result=*this;
@@ -46,6 +48,7 @@ struct Foe {
 struct Spark {
     V p; float t;
     V previousP=p; float previousT=t;
+    foundation::PickupState pickup{};
     void capture(){previousP=p;previousT=t;}
     Spark present(float alpha) const {
         auto result=*this;result.p=blend(previousP,p,alpha);result.t=blend(previousT,t,alpha);return result;

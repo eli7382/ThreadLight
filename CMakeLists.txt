@@ -66,4 +66,12 @@ if(BUILD_TESTING)
   add_executable(ThreadlightPresentationTests tests/presentation_test.cpp)
   target_include_directories(ThreadlightPresentationTests PRIVATE src)
   add_test(NAME ThreadlightPresentationTests COMMAND ThreadlightPresentationTests)
+
+  add_executable(ThreadlightFoundationTests tests/foundation_test.cpp)
+  target_include_directories(ThreadlightFoundationTests PRIVATE src)
+  add_test(NAME ThreadlightFoundationTests COMMAND ThreadlightFoundationTests)
+
+  add_executable(ThreadlightFoundationScenarioTests tests/foundation_scenario_test.cpp)
+  target_include_directories(ThreadlightFoundationScenarioTests PRIVATE src)
+  add_test(NAME ThreadlightFoundationScenarioTests COMMAND ThreadlightFoundationScenarioTests)
 endif()
