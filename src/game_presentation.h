@@ -4,6 +4,7 @@
 #include "spark_pickup.h"
 #include "combat.h"
 #include "skitter.h"
+#include "ranged_combat.h"
 #include <algorithm>
 #include <array>
 
@@ -38,9 +39,11 @@ struct Foe {
     float speed,phase,hitFlash;
     combat::EnemyKind kind= combat::EnemyKind::Hunter;
     skitter::State skitterState{};
+    ranged::State rangedState{};
     V previousP=p;
     float previousPhase=phase,previousHitFlash=hitFlash;
     foundation::RewardId rewardId = 0;
+    std::uint64_t projectileTicket = 0;
     void capture(){previousP=p;previousPhase=phase;previousHitFlash=hitFlash;}
     Foe present(float alpha) const {
         auto result=*this;

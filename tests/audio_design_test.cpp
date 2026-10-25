@@ -60,6 +60,18 @@ void testBossCueDefinitions() {
     CHECK(priority(Event::BossPhase) == 3);
 }
 
+void testPhase34CombatCueDefinitions() {
+    using namespace threadlight::audio;
+    CHECK(duration(Event::SpitterShot) > 0.13f && duration(Event::SpitterShot) < 0.15f);
+    CHECK(duration(Event::Afterimage) > 0.19f && duration(Event::Afterimage) < 0.21f);
+    CHECK(eventGain(Event::SpitterShot) == 0.40f);
+    CHECK(eventGain(Event::Afterimage) == 0.40f);
+    CHECK(priority(Event::SpitterShot) == 2);
+    CHECK(priority(Event::Afterimage) == 2);
+    CHECK(synthesize(Event::SpitterShot) != synthesize(Event::EnemyHit));
+    CHECK(synthesize(Event::Afterimage) != synthesize(Event::Dash));
+}
+
 void testMasterVolumeControl() {
     using namespace threadlight::audio;
     CHECK(masterVolumeStep(0.50f, 1) > 0.54f);
@@ -105,6 +117,7 @@ int main() {
     testWaveforms();
     testEventsAreDistinctAndTunable();
     testBossCueDefinitions();
+    testPhase34CombatCueDefinitions();
     testMasterVolumeControl();
     testSparkIsSofterAndVaried();
     testPriorityOrdering();

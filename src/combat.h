@@ -9,14 +9,23 @@ namespace threadlight::combat {
 // Health/damage are integer hundredths. Rendering never writes these records.
 constexpr int kSilkHitIntervalTicks = 33; // Existing nominal 0.27 s at 120 Hz.
 constexpr int kPlayerImmunityTicks = 94; // Existing nominal 0.78 s at 120 Hz.
-enum class EnemyKind { Hunter, Brute, Skitter };
+enum class EnemyKind { Hunter, Brute, Skitter, Spitter };
 
 struct EnemyDefinition { int hp, contactDamage, sparkValue, killScore; float radius, speed; };
-inline EnemyDefinition definition(EnemyKind kind) {
+inline EnemyDefinition definition(EnemyKind kind, int chapter = 1) {
+    if(chapter>=2){
+        switch(kind){
+        case EnemyKind::Hunter:return {200,1100,1,10,14.f,105.f};
+        case EnemyKind::Brute:return {450,1800,2,35,20.f,70.f};
+        case EnemyKind::Skitter:return {200,1300,1,15,11.f,125.f};
+        case EnemyKind::Spitter:return {300,1200,2,30,15.f,72.f};
+        }
+    }
     switch (kind) {
     case EnemyKind::Hunter: return {100, 1000, 1, 10, 14.f, 95.f};
     case EnemyKind::Brute: return {300, 1600, 2, 35, 20.f, 66.f};
     case EnemyKind::Skitter: return {150, 1200, 1, 15, 11.f, 115.f};
+    case EnemyKind::Spitter: return {300,1200,2,30,15.f,72.f};
     }
     return {100, 1000, 1, 10, 14.f, 95.f};
 }
@@ -33,11 +42,18 @@ inline void tick(EnemyHealth& target) { target.silkCooldownTicks = std::max(0, t
 inline void tick(PlayerHealth& target) { target.immunityTicks = std::max(0, target.immunityTicks - 1); }
 
 enum class SilkHit { None, Damaged, Killed };
+// One HP/death calculation for every player damage source. Source-specific gates
+// are separate: an echo never consumes or resets the ordinary silk cooldown.
+inline SilkHit applyDamage(EnemyHealth& target, int damage) {
+    if(!target.alive()||damage<=0)return SilkHit::None;
+    target.hp=std::max(0,target.hp-damage);
+    return target.alive()?SilkHit::Damaged:SilkHit::Killed;
+}
 inline SilkHit applySilk(EnemyHealth& target, int damage) {
-    if (!target.alive() || target.silkCooldownTicks > 0 || damage <= 0) return SilkHit::None;
-    target.hp = std::max(0, target.hp - damage);
-    target.silkCooldownTicks = kSilkHitIntervalTicks;
-    return target.alive() ? SilkHit::Damaged : SilkHit::Killed;
+    if(target.silkCooldownTicks>0)return SilkHit::None;
+    const auto result=applyDamage(target,damage);
+    if(result!=SilkHit::None)target.silkCooldownTicks=kSilkHitIntervalTicks;
+    return result;
 }
 
 inline bool silkContact(foundation::Point previousEnemy, foundation::Point enemy, float enemyRadius,

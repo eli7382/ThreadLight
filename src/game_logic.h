@@ -6,7 +6,7 @@
 
 namespace threadlight {
 
-// Chapter I prototype; later chapters remain deliberately unavailable.
+// Nine-wave slice; the remaining campaign is deliberately unavailable.
 constexpr int kWaveCount = chapter::kEncounterCount;
 constexpr float kDashDurationSeconds = 0.19f;
 constexpr float kDashCooldownSeconds = 1.85f;
@@ -28,7 +28,7 @@ inline bool dashProtectsCollisionThisFrame(float remainingDashSeconds) {
     return remainingDashSeconds > 0.0f;
 }
 
-enum class Mode { Title, Play, Pause, Settings, ExitConfirm, Upgrade, Lost, Won };
+enum class Mode { Title, Play, Pause, Settings, ExitConfirm, Upgrade, Signature, Lost, Won };
 
 struct SpawnPoint {
     float x;

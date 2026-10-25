@@ -103,4 +103,20 @@ if(BUILD_TESTING)
   add_executable(ThreadlightRootwardenScenarioTests tests/rootwarden_scenario_test.cpp)
   target_include_directories(ThreadlightRootwardenScenarioTests PRIVATE src)
   add_test(NAME ThreadlightRootwardenScenarioTests COMMAND ThreadlightRootwardenScenarioTests)
+
+  add_executable(ThreadlightAfterimageTests tests/afterimage_test.cpp)
+  target_include_directories(ThreadlightAfterimageTests PRIVATE src)
+  add_test(NAME ThreadlightAfterimageTests COMMAND ThreadlightAfterimageTests)
+
+  add_executable(ThreadlightRangedTests tests/ranged_combat_test.cpp)
+  target_include_directories(ThreadlightRangedTests PRIVATE src)
+  add_test(NAME ThreadlightRangedTests COMMAND ThreadlightRangedTests)
+
+  add_executable(ThreadlightM4IntegrationTests tests/m4_integration_test.cpp)
+  target_include_directories(ThreadlightM4IntegrationTests PRIVATE src)
+  add_test(NAME ThreadlightM4IntegrationTests COMMAND ThreadlightM4IntegrationTests)
+  add_executable(ThreadlightM4ScenarioTests tests/m4_scenario_test.cpp)
+  target_include_directories(ThreadlightM4ScenarioTests PRIVATE src)
+  add_test(NAME ThreadlightM4ScenarioTests COMMAND ThreadlightM4ScenarioTests)
+
 endif()

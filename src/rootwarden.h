@@ -18,7 +18,8 @@ constexpr int kMaxHp=7000,kDamage=1800,kExposureBonus=100,kCoreValue=10,kSupport
 constexpr float kVulnerableRadius=54.f,kContactRadius=26.f,kRootHalfWidth=20.f;
 struct Metrics {
     std::uint64_t ticks=0,hits=0,exposedHits=0,contactTicks=0,cycles=0;
-    int silkDamage=0,playerDamage=0;
+    int silkDamage=0,playerDamage=0,signatureDamage=0;
+    std::uint64_t signatureHits=0;
 };
 struct State {
     combat::EnemyHealth health{kMaxHp,kMaxHp};
@@ -69,13 +70,15 @@ inline int supports(State& s,int count){
 
 // Called only for an authoritative silk contact. Ordinary target gate remains
 // the single owner of damage timing; exposure changes damage, never hit rate.
-inline DamageResult applySilk(State& s,int baseDamage){
+inline DamageResult applyBossDamage(State& s,int baseDamage,bool ordinary){
     DamageResult result;
     if(!alive(s)||baseDamage<=0)return result;
-    result.exposed=exposed(s);const int before=s.health.hp;
-    result.hit=combat::applySilk(s.health,baseDamage+(result.exposed?kExposureBonus:0));
+    result.exposed=ordinary&&exposed(s);const int before=s.health.hp;
+    result.hit=ordinary?combat::applySilk(s.health,baseDamage+(result.exposed?kExposureBonus:0)):combat::applyDamage(s.health,baseDamage);
     if(result.hit==combat::SilkHit::None)return result;
-    result.damage=before-s.health.hp;++s.metrics.hits;s.metrics.exposedHits+=result.exposed?1:0;s.metrics.silkDamage+=result.damage;
+    result.damage=before-s.health.hp;
+    if(ordinary){++s.metrics.hits;s.metrics.exposedHits+=result.exposed?1:0;s.metrics.silkDamage+=result.damage;}
+    else{++s.metrics.signatureHits;s.metrics.signatureDamage+=result.damage;}
     if(result.hit==combat::SilkHit::Killed){cancel(s);result.events.defeated=true;}
     else if(s.phase==1&&s.health.hp*100<kMaxHp*55){
         s.phase=2;s.branchCount=0;enter(s,Stage::Transition,kTransitionTicks);
@@ -83,6 +86,10 @@ inline DamageResult applySilk(State& s,int baseDamage){
     }
     return result;
 }
+
+inline DamageResult applySilk(State& s,int baseDamage){return applyBossDamage(s,baseDamage,true);}
+// Caller supplies already rounded/resisted signature damage; no exposure bonus.
+inline DamageResult applySignature(State& s,int damage){return applyBossDamage(s,damage,false);}
 
 inline Branch activeBranch(const State& s,int index){
     auto result=s.branches[index];

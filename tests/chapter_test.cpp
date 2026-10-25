@@ -46,13 +46,14 @@ int kindIndex(EnemyKind kind) {
     case EnemyKind::Hunter: return 0;
     case EnemyKind::Brute: return 1;
     case EnemyKind::Skitter: return 2;
+    case EnemyKind::Spitter: return 3;
     }
     return -1;
 }
 
 void waveDefinitionsAndBudgets() {
     using namespace threadlight;
-    CHECK(chapter::kEncounterCount == 7);
+    CHECK(chapter::kEncounterCount == 9);
 
     foundation::RewardLedger perfectCollection;
     int totalEnemies = 0;

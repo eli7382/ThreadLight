@@ -159,7 +159,7 @@ inline void remapBounds(State& state, Point& position, Point& velocity, Bounds f
 
 inline TickResult tick(State& state, Point& position, Point& velocity,
                        Point player, Point playerMotion, Bounds bounds,
-                       bool canCommit = true) {
+                       bool canCommit = true, float flankSpeed = kFlankSpeed) {
     TickResult result;
     bounds = detail::ordered(bounds);
     const Point boundedPosition = detail::clamp(position, bounds);
@@ -173,7 +173,7 @@ inline TickResult tick(State& state, Point& position, Point& velocity,
         detail::moveToward(position, velocity,
                            detail::flankTarget(position, player, playerMotion,
                                               state.side, bounds),
-                           kFlankSpeed, bounds);
+                           std::max(0.f, flankSpeed), bounds);
         if (state.ticksRemaining > 1) {
             --state.ticksRemaining;
         } else if (canCommit) {

@@ -18,6 +18,8 @@ enum class Event : std::uint8_t {
     Defeat,
     BossWarning,
     BossPhase,
+    SpitterShot,
+    Afterimage,
     Count
 };
 
@@ -44,7 +46,9 @@ inline int priority(Event event) {
     case Event::Victory:
     case Event::Defeat: return 4;
     case Event::Dash:
-    case Event::EnemyDeath: return 2;
+    case Event::EnemyDeath:
+    case Event::SpitterShot:
+    case Event::Afterimage: return 2;
     case Event::EnemyHit:
     case Event::Spark: return 1;
     case Event::Count: break;
@@ -64,6 +68,8 @@ inline float duration(Event event) {
     case Event::Defeat: return 0.72f;
     case Event::BossWarning: return 0.22f;
     case Event::BossPhase: return 0.45f;
+    case Event::SpitterShot: return 0.14f;
+    case Event::Afterimage: return 0.20f;
     case Event::Count: break;
     }
     return 0.1f;
@@ -91,6 +97,8 @@ inline float eventGain(Event event) {
     case Event::Defeat: return 0.65f;
     case Event::BossWarning: return 0.44f;
     case Event::BossPhase: return 0.55f;
+    case Event::SpitterShot: return 0.40f;
+    case Event::Afterimage: return 0.40f;
     case Event::Count: break;
     }
     return 0.5f;
@@ -188,6 +196,23 @@ inline std::vector<std::int16_t> synthesize(Event event, float pitchScale = 1.0f
             const float opening = 0.72f + 0.28f * std::sin(pi * position);
             sample = (0.22f * std::sin(low) + 0.13f * std::sin(fifth) +
                       0.045f * std::sin(air)) * opening;
+            break;
+        }
+        case Event::SpitterShot: {
+            const float seed = phase(465.0f * pitchScale, 300.0f * pitchScale, t, length);
+            const float air = phase(1180.0f * pitchScale, 760.0f * pitchScale, t, length);
+            const float release = 1.0f - 0.32f * position;
+            sample = (0.31f * std::sin(seed) + 0.045f * std::sin(air)) * release;
+            break;
+        }
+        case Event::Afterimage: {
+            const float body = phase(350.0f * pitchScale, 520.0f * pitchScale, t, length);
+            const float bloom = phase(525.0f * pitchScale, 780.0f * pitchScale, t, length);
+            const float echo = phase(350.0f * pitchScale, 520.0f * pitchScale,
+                                     std::max(0.0f, t - 0.035f), length);
+            const float swell = 0.72f + 0.28f * std::sin(pi * position);
+            sample = (0.16f * std::sin(body) + 0.075f * std::sin(bloom) +
+                      (t >= 0.035f ? 0.055f * std::sin(echo) : 0.0f)) * swell;
             break;
         }
         case Event::Count: break;
