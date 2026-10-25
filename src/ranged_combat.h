@@ -122,7 +122,7 @@ inline bool committed(const State& state) {
 // granted this Spitter and the caller has reserved its projectile slot.
 inline TickEvents tick(State& state, Point& position, Point& velocity,
                        Point player, Bounds enemyCenterBounds,
-                       bool canCommit) {
+                       bool canCommit, float seekSpeed=kSeekSpeed) {
     TickEvents events;
     enemyCenterBounds = detail::ordered(enemyCenterBounds);
 
@@ -156,8 +156,8 @@ inline TickEvents tick(State& state, Point& position, Point& velocity,
                     ? detail::unitOr({-delta.x, -delta.y}, state.aimDirection)
                     : detail::unitOr(delta, state.aimDirection);
                 const Point previous = position;
-                position = detail::clamp({position.x + direction.x * kSeekSpeed * stepSeconds,
-                                          position.y + direction.y * kSeekSpeed * stepSeconds},
+                position = detail::clamp({position.x + direction.x * seekSpeed * stepSeconds,
+                                          position.y + direction.y * seekSpeed * stepSeconds},
                                          enemyCenterBounds);
                 velocity = {(position.x - previous.x) / stepSeconds,
                             (position.y - previous.y) / stepSeconds};
@@ -231,6 +231,11 @@ inline Point muzzle(Point position, Point direction) {
 
 enum class SlotState { Empty, Reserved, Flying };
 
+struct ShotSpec {
+    float speed=kProjectileSpeed, radius=kProjectileRadius;
+    int damage=kProjectileDamage, lifetimeTicks=kProjectileLifetimeTicks;
+};
+
 struct Projectile {
     std::uint64_t id{};
     std::uint64_t sourceId{};
@@ -239,6 +244,7 @@ struct Projectile {
     Point velocity{};
     int remainingTicks{};
     SlotState state = SlotState::Empty;
+    ShotSpec spec{};
 };
 
 struct Impact {
@@ -284,17 +290,19 @@ public:
         return true;
     }
 
-    bool launch(Ticket ticket, Point origin, Point direction) {
+    bool launch(Ticket ticket, Point origin, Point direction, ShotSpec spec={}) {
         const auto slot = find(ticket);
         if (slot == kProjectileCapacity || items_[slot].state != SlotState::Reserved ||
-            !detail::finite(origin)) return false;
+            !detail::finite(origin)||!std::isfinite(spec.speed)||spec.speed<=0||
+            !std::isfinite(spec.radius)||spec.radius<=0||spec.damage<=0||spec.lifetimeTicks<=0) return false;
         direction = detail::unitOr(direction);
         Projectile& projectile = items_[slot];
         projectile.p = origin;
         projectile.previousP = origin;
-        projectile.velocity = {direction.x * kProjectileSpeed,
-                               direction.y * kProjectileSpeed};
-        projectile.remainingTicks = kProjectileLifetimeTicks;
+        projectile.spec=spec;
+        projectile.velocity = {direction.x * spec.speed,
+                               direction.y * spec.speed};
+        projectile.remainingTicks = spec.lifetimeTicks;
         projectile.state = SlotState::Flying;
         return true;
     }
@@ -333,12 +341,12 @@ public:
 
         fullArena = detail::ordered(fullArena);
         if (!std::isfinite(playerRadius) || playerRadius < 0.0f) playerRadius = 0.0f;
-        const float contactRadius = playerRadius + kProjectileRadius;
-        const float contactDistanceSquared = contactRadius * contactRadius;
         constexpr float stepSeconds = static_cast<float>(timing::kFixedStepSeconds);
 
         for (Projectile& projectile : items_) {
             if (projectile.state != SlotState::Flying) continue;
+            const float contactRadius=playerRadius+projectile.spec.radius;
+            const float contactDistanceSquared=contactRadius*contactRadius;
 
             projectile.previousP = projectile.p;
             projectile.p = {projectile.p.x + projectile.velocity.x * stepSeconds,
@@ -357,7 +365,7 @@ public:
 
             if (hit) {
                 impacts.items[static_cast<std::size_t>(impacts.count++)] =
-                    {projectile.sourceId, projectile.id, kProjectileDamage};
+                    {projectile.sourceId, projectile.id, projectile.spec.damage};
                 projectile = {};
                 continue;
             }
@@ -389,8 +397,8 @@ public:
             const Point mappedDirection = detail::remapVector(
                 oldPosition, detail::unitOr(projectile.velocity), from, to);
             const Point direction = detail::unitOr(mappedDirection, projectile.velocity);
-            projectile.velocity = {direction.x * kProjectileSpeed,
-                                   direction.y * kProjectileSpeed};
+            projectile.velocity = {direction.x * projectile.spec.speed,
+                                   direction.y * projectile.spec.speed};
         }
     }
 

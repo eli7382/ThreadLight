@@ -5,6 +5,7 @@
 #include "combat.h"
 #include "skitter.h"
 #include "ranged_combat.h"
+#include "bulwark.h"
 #include <algorithm>
 #include <array>
 
@@ -29,6 +30,7 @@ inline float decay(float previous,float current,float alpha) {
 struct Thread {
     V p; float age;
     float previousAge=age;
+    std::uint64_t id=0;
     void capture(){previousAge=age;}
 };
 inline V silkPoint(const Thread& knot,bool newest,V shownPlayer) {
@@ -44,6 +46,7 @@ struct Foe {
     float previousPhase=phase,previousHitFlash=hitFlash;
     foundation::RewardId rewardId = 0;
     std::uint64_t projectileTicket = 0;
+    bulwark::State guard{};
     void capture(){previousP=p;previousPhase=phase;previousHitFlash=hitFlash;}
     Foe present(float alpha) const {
         auto result=*this;

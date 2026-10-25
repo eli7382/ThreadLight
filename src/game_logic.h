@@ -6,7 +6,7 @@
 
 namespace threadlight {
 
-// Nine-wave slice; the remaining campaign is deliberately unavailable.
+// Three-chapter prototype; the remaining campaign is deliberately unavailable.
 constexpr int kWaveCount = chapter::kEncounterCount;
 constexpr float kDashDurationSeconds = 0.19f;
 constexpr float kDashCooldownSeconds = 1.85f;

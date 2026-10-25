@@ -24,7 +24,7 @@ namespace sig=threadlight::signature_reward;namespace boss=threadlight::rootward
 
 void chapterBudgetsAndStats(){
     using namespace threadlight;
-    CHECK(chapter::kEncounterCount==9);
+    CHECK(chapter::kEncounterCount==21);
     int sparks=128+4+10;
     const int expected[2][4]={{18,2,4,2},{8,2,8,8}};
     for(int wave=7;wave<=8;++wave){

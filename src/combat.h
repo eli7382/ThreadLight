@@ -9,16 +9,26 @@ namespace threadlight::combat {
 // Health/damage are integer hundredths. Rendering never writes these records.
 constexpr int kSilkHitIntervalTicks = 33; // Existing nominal 0.27 s at 120 Hz.
 constexpr int kPlayerImmunityTicks = 94; // Existing nominal 0.78 s at 120 Hz.
-enum class EnemyKind { Hunter, Brute, Skitter, Spitter };
+enum class EnemyKind { Hunter, Brute, Skitter, Spitter, Bulwark };
 
 struct EnemyDefinition { int hp, contactDamage, sparkValue, killScore; float radius, speed; };
 inline EnemyDefinition definition(EnemyKind kind, int chapter = 1) {
+    if(chapter>=3){
+        switch(kind){
+        case EnemyKind::Hunter:return {250,1200,1,10,14.f,115.f};
+        case EnemyKind::Brute:return {600,2000,2,35,20.f,74.f};
+        case EnemyKind::Skitter:return {250,1500,1,15,11.f,135.f};
+        case EnemyKind::Spitter:return {400,1300,2,30,15.f,78.f};
+        case EnemyKind::Bulwark:return {700,2000,3,45,23.f,52.f};
+        }
+    }
     if(chapter>=2){
         switch(kind){
         case EnemyKind::Hunter:return {200,1100,1,10,14.f,105.f};
         case EnemyKind::Brute:return {450,1800,2,35,20.f,70.f};
         case EnemyKind::Skitter:return {200,1300,1,15,11.f,125.f};
         case EnemyKind::Spitter:return {300,1200,2,30,15.f,72.f};
+        case EnemyKind::Bulwark:return {700,2000,3,45,23.f,52.f};
         }
     }
     switch (kind) {
@@ -26,6 +36,7 @@ inline EnemyDefinition definition(EnemyKind kind, int chapter = 1) {
     case EnemyKind::Brute: return {300, 1600, 2, 35, 20.f, 66.f};
     case EnemyKind::Skitter: return {150, 1200, 1, 15, 11.f, 115.f};
     case EnemyKind::Spitter: return {300,1200,2,30,15.f,72.f};
+    case EnemyKind::Bulwark: return {700,2000,3,45,23.f,52.f};
     }
     return {100, 1000, 1, 10, 14.f, 95.f};
 }
