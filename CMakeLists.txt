@@ -74,4 +74,16 @@ if(BUILD_TESTING)
   add_executable(ThreadlightFoundationScenarioTests tests/foundation_scenario_test.cpp)
   target_include_directories(ThreadlightFoundationScenarioTests PRIVATE src)
   add_test(NAME ThreadlightFoundationScenarioTests COMMAND ThreadlightFoundationScenarioTests)
+
+  add_executable(ThreadlightCombatUpgradesTests tests/combat_upgrades_test.cpp)
+  target_include_directories(ThreadlightCombatUpgradesTests PRIVATE src)
+  add_test(NAME ThreadlightCombatUpgradesTests COMMAND ThreadlightCombatUpgradesTests)
+
+  add_executable(ThreadlightSkitterTests tests/skitter_test.cpp)
+  target_include_directories(ThreadlightSkitterTests PRIVATE src)
+  add_test(NAME ThreadlightSkitterTests COMMAND ThreadlightSkitterTests)
+
+  add_executable(ThreadlightUpgradeLayoutTests tests/upgrade_layout_test.cpp)
+  target_include_directories(ThreadlightUpgradeLayoutTests PRIVATE src)
+  add_test(NAME ThreadlightUpgradeLayoutTests COMMAND ThreadlightUpgradeLayoutTests)
 endif()

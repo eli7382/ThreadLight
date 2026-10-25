@@ -29,13 +29,14 @@ inline float smooth01(float value) {
     return t * t * (3.0f - 2.0f * t);
 }
 
-inline SilkAppearance silkAppearance(float ageSeconds, float shimmer01) {
+inline SilkAppearance silkAppearance(float ageSeconds, float shimmer01, float activeSeconds = kActiveSilkSeconds) {
     const float age = std::clamp(ageSeconds, 0.0f, kSilkLifetimeSeconds);
-    const float coolProgress = (age - kActiveSilkSeconds) / 0.48f;
+    activeSeconds = std::clamp(activeSeconds, 0.f, kSilkLifetimeSeconds - .01f);
+    const float coolProgress = (age - activeSeconds) / 0.48f;
     const float ageBlend = smooth01(coolProgress);
-    const float fadeProgress = (age - kActiveSilkSeconds) /
-                               (kSilkLifetimeSeconds - kActiveSilkSeconds);
-    const float fade = age <= kActiveSilkSeconds
+    const float fadeProgress = (age - activeSeconds) /
+                               (kSilkLifetimeSeconds - activeSeconds);
+    const float fade = age <= activeSeconds
         ? 1.0f
         : 1.0f - smooth01(fadeProgress);
     const float shimmer = 0.97f + 0.03f * std::clamp(shimmer01, 0.0f, 1.0f);

@@ -2,14 +2,14 @@
 
 A small, self-contained top-down survival game built in C++20 with raylib 5.5. Weave a fading silk wake through the hunters and collect sparks manually.
 
-This branch is the **M1 development harness**, based on the accepted Phase 2.2 commit `997ed098471c49883477e3d9c687bc382121ba22`. It retains five legacy encounters and temporary legacy upgrade choices while introducing the new lifecycle and reward ledger. The 35-wave campaign, bosses, signatures, and ranked catalog are not implemented. See [M1-FOUNDATION.md](M1-FOUNDATION.md) for contracts, pinned build commands, telemetry, and acceptance checks.
+This branch is the **M2 development harness**, based on accepted M1 `115b323df60d1196fee6274414e7a535e74b0612`. It retains five encounters and M1's lifecycle/manual reward accounting, adds shared combat and ranked player stats, and introduces telegraphed Skitters in Wave 4. The 35-wave campaign, bosses, signatures, and remaining enemies/upgrades are deferred. See [M2-CONTRACTS.md](M2-CONTRACTS.md) for architecture, exact provisional rank values, verification, limitations, and manual acceptance checks. [M1-FOUNDATION.md](M1-FOUNDATION.md) remains the historical M1 handoff.
 
 ## Play
 
 - **WASD** or **arrow keys**: move
 - **Space**: dash (briefly invulnerable)
 - **P**: pause and resume during play; **Esc** does not pause or exit during play
-- During an evolution choice, press **1 / 2 / 3** (or **A / D / S**) and then **Enter**
+- During an evolution choice, select with **1 / 2 / 3**, **A / D / S**, **Left / Right**, or the mouse; confirm with **Enter / Space** or the **Confirm Evolution** button
 - **Enter** ends a safe collection period early; uncollected sparks carry over without being awarded
 - **Enter** starts and retries; **R** restarts from pause; **Esc** returns to title while paused
 - **Esc** on the title opens an exit confirmation; **Esc** in that dialog cancels
@@ -22,7 +22,7 @@ Effects are synthesized at startup and cover dash, silk hits and kills, spark co
 
 Open **Settings** from the title or pause menu. The Video section selects a 30, 60, 120, or Unlimited frame-rate limit and toggles the measured FPS display. The Audio section provides a mouse-operated SFX slider and Left / Right keyboard adjustment in 5% steps. Volume changes apply immediately. Settings are saved under the current user's `%APPDATA%\ThreadLight\settings.ini`.
 
-M1 is a feature-branch candidate for owner acceptance. Historical Phase 2.2 pre-release package notes describe that older test package, not the status of the approved source baseline. The root `Threadlight.exe` is preserved and is not rebuilt by these changes; launch the new executable from its build directory.
+M1 is accepted; M2 is a feature-branch candidate for owner acceptance. Historical Phase 2.2 pre-release package notes describe that older test package, not the status of the approved source baseline. The root `Threadlight.exe` is preserved and is not rebuilt by these changes; launch the new executable from its build directory.
 
 ### Manual listening check
 
@@ -41,15 +41,15 @@ Then run `build\Release\Threadlight.exe`. If raylib is installed outside vcpkg, 
 
 ## Regression tests
 
-Configure the ten regression executables without the game executable with:
+Configure the thirteen regression executables without the game executable with:
 
 ```powershell
 cmake -S . -B build-tests -DTHREADLIGHT_BUILD_GAME=OFF
-cmake --build build-tests
-ctest --test-dir build-tests --output-on-failure
+cmake --build build-tests --config Release
+ctest --test-dir build-tests -C Release --output-on-failure
 ```
 
-The new foundation suites cover lifecycle boundaries, manual pickups, credit accounting, and a deterministic helper scenario at multiple render rates. The legacy logic suite now retains movement/spawn/control checks; its superseded automatic-wave-upgrade assertions have been removed. A passing test run does not establish balance, visual quality, or a human playthrough.
+The foundation suites cover lifecycle boundaries, manual pickups, credit accounting, and a deterministic helper scenario at multiple render rates. M2 adds focused combat/rank/offer tests, Skitter state and render-schedule tests, and upgrade-card layout/hit testing. The legacy logic suite now retains movement/spawn/control checks; its superseded automatic-wave-upgrade assertions have been removed. A passing test run does not establish balance, visual quality, or a human playthrough.
 
 The preserved root executable was built with MSVC 19.44.35229.0, Windows x64, and raylib 5.5. Raylib's license is included in `RAYLIB-LICENSE.txt`.
 

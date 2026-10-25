@@ -1,12 +1,12 @@
 #pragma once
 
 #include "reward_ledger.h"
+#include "game_geometry.h"
 #include <algorithm>
 #include <cmath>
 
 namespace threadlight::foundation {
 
-struct Point { float x{}, y{}; };
 enum class PickupResult { None, Collected, Expired };
 struct PickupState {
     RewardId id = 0;
@@ -15,14 +15,6 @@ struct PickupState {
     float pullSpeed = 220.0f;
     PickupResult terminal = PickupResult::None;
 };
-
-inline float segmentDistanceSquared(Point point, Point a, Point b) {
-    const float dx = b.x - a.x, dy = b.y - a.y;
-    const float lengthSquared = dx * dx + dy * dy;
-    const float t = lengthSquared > 0 ? std::clamp(((point.x - a.x) * dx + (point.y - a.y) * dy) / lengthSquared, 0.f, 1.f) : 0.f;
-    const float x = a.x + t * dx - point.x, y = a.y + t * dy - point.y;
-    return x * x + y * y;
-}
 
 // One 120 Hz tick. active=false freezes motion, contact, and age. combat=false
 // permits safe collection without expiry. Contact wins on the last lifetime tick.

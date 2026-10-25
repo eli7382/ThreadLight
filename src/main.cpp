@@ -9,6 +9,8 @@
 #include "game_audio.h"
 #include "visual_feedback.h"
 #include "visual_effects.h"
+#include "player_upgrades.h"
+#include "upgrade_layout.h"
 #include <algorithm>
 #include <array>
 #include <cmath>
@@ -34,8 +36,8 @@ int main(int argc, char** argv){
  std::uint32_t spawnSeed=7382;
  for(int i=1;i<argc;i++){
   const std::string_view arg=argv[i];
-  if(arg=="--m1-telemetry")m1Telemetry=true;
-  else if(arg=="--m1-seed"&&i+1<argc){
+  if((arg=="--m1-telemetry"||arg=="--m2-telemetry"))m1Telemetry=true;
+  else if((arg=="--m1-seed"||arg=="--m2-seed")&&i+1<argc){
    const std::string_view text=argv[++i];std::uint32_t parsed=0;
    const auto result=std::from_chars(text.data(),text.data()+text.size(),parsed);
    if(result.ec!=std::errc{}||result.ptr!=text.data()+text.size())return 2;
@@ -61,12 +63,23 @@ int main(int argc, char** argv){
  Mode mode=Mode::Title,settingsReturn=Mode::Title; bool exitRequested=false; int mainSelection=0,pauseSelection=0,exitSelection=threadlight::menu::kDefaultExitSelection,settingsTab=0,settingsFocus=0;
  threadlight::settings::PendingEdits settingsEdits;
  namespace foundation=threadlight::foundation;
+ namespace battle=threadlight::combat;
+ namespace upgrades=threadlight::upgrades;
+ namespace skitter=threadlight::skitter;
+ namespace upgradeUI=threadlight::upgrade_ui;
  foundation::WaveLifecycle lifecycle;
  foundation::RewardLedger rewards;
  std::mt19937 spawnRng(spawnSeed);
  std::uint64_t simulationTick=0;
- foundation::CreditId shownCredit=0;
- V player{(playArea.left+playArea.right)*.5f,(playArea.top+playArea.bottom)*.5f}; float hp=100, hitInvuln=0,dashCd=0,dashTime=0, shake=0, pulse=0, damageFeedback=0; int wave=0, spawnTicks=0, choice=0; float speed=255, trailDmg=1, radius=kPlayerRadius; bool dashUpgrade=false, dashVisualActive=false;
+ battle::PlayerHealth health;
+ upgrades::Ranks ranks;
+ upgrades::Stats stats=upgrades::derive(ranks);
+ upgrades::OfferState offers;offers.rng=spawnSeed^0x9e3779b9u;
+ V player{(playArea.left+playArea.right)*.5f,(playArea.top+playArea.bottom)*.5f};
+ float dashCd=0,dashTime=0,shake=0,pulse=0,damageFeedback=0;
+ int wave=0,spawnTicks=0,spawnedThisWave=0,choice=0;
+ const float radius=kPlayerRadius;
+ bool dashVisualActive=false;
  float dashEchoTimer=0,dashEchoFade=0; size_t dashEchoCount=0; std::array<V,6> dashEcho{};
  std::vector<Thread> thread; std::vector<Foe> foes; std::vector<Spark> sparks; std::vector<Particle> particles; std::vector<DeathEffect> deathEffects; std::vector<V> stars;
  thread.reserve(240); foes.reserve(80); sparks.reserve(48); particles.reserve(threadlight::visual::kParticleLimit); deathEffects.reserve(threadlight::visual::kDeathEffectLimit); stars.reserve(110);
@@ -97,10 +110,11 @@ int main(int argc, char** argv){
  auto burst=[&](V p,Color col,int n,float force){for(int i=0;i<n&&particles.size()<threadlight::visual::kParticleLimit;i++){float a=(float)GetRandomValue(0,6283)/1000.f,s=(float)GetRandomValue(25,(int)force);particles.push_back({p,{std::cos(a)*s,std::sin(a)*s},.65f,.65f,(float)GetRandomValue(2,6),col});}};
  auto addDeathEffect=[&](const Foe& foe){
   if(deathEffects.size()>=threadlight::visual::kDeathEffectLimit)deathEffects.erase(deathEffects.begin());
-  DeathEffect effect{};effect.p=foe.p;effect.kind=foe.kind;
-  const int count=foe.kind?threadlight::visual::kHeavyShardCount:threadlight::visual::kSmallShardCount;
+  const bool heavy=foe.kind==battle::EnemyKind::Brute;
+  DeathEffect effect{};effect.p=foe.p;effect.kind=heavy?1:0;
+  const int count=heavy?threadlight::visual::kHeavyShardCount:threadlight::visual::kSmallShardCount;
   const float phase=foe.phase*.71f;
-  for(int i=0;i<count;i++){const float a=phase+6.2831853f*(float)i/count+(float)GetRandomValue(-20,20)*.01f;const float force=foe.kind?65.f:160.f;effect.velocity[i]={std::cos(a)*(force+(float)GetRandomValue(-15,15)),std::sin(a)*(force+(float)GetRandomValue(-15,15))};}
+  for(int i=0;i<count;i++){const float a=phase+6.2831853f*(float)i/count+(float)GetRandomValue(-20,20)*.01f;const float force=heavy?65.f:160.f;effect.velocity[i]={std::cos(a)*(force+(float)GetRandomValue(-15,15)),std::sin(a)*(force+(float)GetRandomValue(-15,15))};}
   deathEffects.push_back(effect);
  };
  auto traceM1=[&](const char* event,foundation::RewardId id=0,int value=0){
@@ -115,18 +129,40 @@ int main(int argc, char** argv){
  };
  auto startEncounter=[&](){
   lifecycle.start({(int)std::lround(threadlight::waveDurationSeconds(wave)*foundation::kTicksPerSecond),false});
-  spawnTicks=0;thread.clear();dashTime=0;dashVisualActive=false;dashEchoCount=0;dashEchoFade=0;
+  spawnTicks=0;spawnedThisWave=0;thread.clear();dashTime=0;dashVisualActive=false;dashEchoCount=0;dashEchoFade=0;
   traceM1("encounter_start");
  };
- auto reset=[&](){player={(playArea.left+playArea.right)*.5f,(playArea.top+playArea.bottom)*.5f};hp=100;hitInvuln=dashCd=dashTime=shake=pulse=damageFeedback=0;wave=0;choice=0;simulationTick=0;shownCredit=0;rewards=foundation::RewardLedger{};spawnRng.seed(spawnSeed);speed=255;trailDmg=1;radius=kPlayerRadius;dashUpgrade=false;dashVisualActive=false;dashEchoTimer=dashEchoFade=0;dashEchoCount=0;dashEcho.fill(player);thread.clear();foes.clear();sparks.clear();particles.clear();deathEffects.clear();stepClock.clear();dashPressPending=collectionContinuePending=false;mode=Mode::Play;startEncounter();};
- auto addFoe=[&](int w){float a=(float)(spawnRng()%6284)/1000.f;int k=(spawnRng()%10<(w>2?3u:2u))?1:0;float r=k?20:14;const float playWidth=playArea.right-playArea.left,playHeight=playArea.bottom-playArea.top;const float padding=r+5.f;auto spawn=threadlight::chooseSafeSpawn(a,player.x-playArea.left,player.y-playArea.top,playWidth,playHeight,padding,std::max(padding,playWidth*.53f),std::max(padding,playHeight*.53f),radius+r+70.f);V p{spawn.x+playArea.left,spawn.y+playArea.top};foes.push_back({p,{},r,k?3.f:1.f,k?3.f:1.f,k?66.f:95.f,0,a,0,k});foes.back().rewardId=rewards.registerEnemy(k?2:1,k?35:10);traceM1("spawn",foes.back().rewardId,k?2:1);};
+ auto reset=[&](){
+  player={(playArea.left+playArea.right)*.5f,(playArea.top+playArea.bottom)*.5f};
+  health={};ranks={};stats=upgrades::derive(ranks);offers={};offers.rng=spawnSeed^0x9e3779b9u;
+  dashCd=dashTime=shake=pulse=damageFeedback=0;wave=0;choice=0;simulationTick=0;
+  rewards=foundation::RewardLedger{};spawnRng.seed(spawnSeed);dashVisualActive=false;
+  dashEchoTimer=dashEchoFade=0;dashEchoCount=0;dashEcho.fill(player);
+  thread.clear();foes.clear();sparks.clear();particles.clear();deathEffects.clear();
+  stepClock.clear();dashPressPending=collectionContinuePending=false;mode=Mode::Play;startEncounter();
+ };
+ auto addFoe=[&](int w){
+  const float a=(float)(spawnRng()%6284)/1000.f;const auto draw=spawnRng()%10;
+  auto kind=draw<(w>2?3u:2u)?battle::EnemyKind::Brute:battle::EnemyKind::Hunter;
+  // Development harness: introduce the M2 enemy in Wave 4; campaign scheduling is deferred.
+  if(w>=3&&(spawnedThisWave==0||draw>=8))kind=battle::EnemyKind::Skitter;
+  const auto def=battle::definition(kind);const float r=def.radius;
+  const float playWidth=playArea.right-playArea.left,playHeight=playArea.bottom-playArea.top;
+  const float padding=r+5.f;
+  auto spawn=threadlight::chooseSafeSpawn(a,player.x-playArea.left,player.y-playArea.top,playWidth,playHeight,padding,std::max(padding,playWidth*.53f),std::max(padding,playHeight*.53f),radius+r+70.f);
+  V p{spawn.x+playArea.left,spawn.y+playArea.top};
+  foes.push_back({p,{},r,{def.hp,def.hp},def.speed,a,0,kind});
+  auto& foe=foes.back();foe.rewardId=rewards.registerEnemy(def.sparkValue,def.killScore);
+  foe.skitterState.side=(foe.rewardId%2)?1:-1;++spawnedThisWave;
+  traceM1("spawn",foe.rewardId,def.sparkValue);
+  if(m1Telemetry)TraceLog(LOG_INFO,"M2 enemy id=%llu kind=%d hp=%d",(unsigned long long)foe.rewardId,(int)kind,def.hp);
+ };
  auto finishEncounter=[&](){
   if(!lifecycle.finishRewards(rewards.pendingCredits()!=0))return;
   traceM1("encounter_complete");
   if(wave+1>=threadlight::kWaveCount){mode=Mode::Won;sfx.play(threadlight::audio::Event::Victory);traceM1("harness_complete");}
   else{++wave;startEncounter();}
  };
- auto segDist=[](V p,V a,V b){V ab=b-a;float q=ab.x*ab.x+ab.y*ab.y;float t=q>0?std::clamp(((p.x-a.x)*ab.x+(p.y-a.y)*ab.y)/q,0.f,1.f):0;return dist(p,a+ab*t);};
  auto drawText=[&](const char* s,int x,int y,int size,Color c){DrawText(s,x,y,size,c);};
   auto applyMenuAction=[&](threadlight::menu::Action action){threadlight::menu::apply(mode,settingsReturn,exitRequested,exitSelection,action);};
   auto changeFrameLimit=[&](int value){if(!threadlight::settings::validFrameRateLimit(value)||value==appSettings.frameRateLimit)return;appSettings.frameRateLimit=value;settingsEdits.dirty=true;saveSettings();};
@@ -150,7 +186,15 @@ int main(int argc, char** argv){
     auto remapWorldPoint=[&](V& point){const auto mapped=threadlight::layout::remapPoint({point.x,point.y},playArea,nextPlayArea);point={mapped.x,mapped.y};};
     remapWorldPoint(player);
     for(auto& item:thread)remapWorldPoint(item.p);
-    for(auto& foe:foes)remapWorldPoint(foe.p);
+    for(auto& foe:foes){
+     if(foe.kind==battle::EnemyKind::Skitter){
+      foundation::Point p{foe.p.x,foe.p.y},v{foe.vel.x,foe.vel.y};
+      skitter::remapBounds(foe.skitterState,p,v,
+       {playArea.left+foe.r,playArea.right-foe.r,playArea.top+foe.r,playArea.bottom-foe.r},
+       {nextPlayArea.left+foe.r,nextPlayArea.right-foe.r,nextPlayArea.top+foe.r,nextPlayArea.bottom-foe.r});
+      foe.p={p.x,p.y};foe.vel={v.x,v.y};
+     }else remapWorldPoint(foe.p);
+    }
     for(auto& spark:sparks)remapWorldPoint(spark.p);
     for(auto& particle:particles)remapWorldPoint(particle.p);
     for(auto& effect:deathEffects)remapWorldPoint(effect.p);
@@ -188,7 +232,8 @@ int main(int argc, char** argv){
    const bool menuKey=IsKeyPressed(KEY_UP)||IsKeyPressed(KEY_DOWN)||
        IsKeyPressed(KEY_LEFT)||IsKeyPressed(KEY_RIGHT)||IsKeyPressed(KEY_ENTER)||
        IsKeyPressed(KEY_SPACE)||IsKeyPressed(KEY_TAB)||IsKeyPressed(KEY_ESCAPE)||
-       IsKeyPressed(KEY_P)||IsKeyPressed(KEY_R);
+       IsKeyPressed(KEY_P)||IsKeyPressed(KEY_R)||
+       (mode==Mode::Upgrade&&(IsKeyPressed(KEY_ONE)||IsKeyPressed(KEY_TWO)||IsKeyPressed(KEY_THREE)||IsKeyPressed(KEY_A)||IsKeyPressed(KEY_D)||IsKeyPressed(KEY_S)));
    menuFocus.update(mouseDelta.x!=0.f||mouseDelta.y!=0.f,
                     IsMouseButtonPressed(MOUSE_BUTTON_LEFT),menuKey);
    auto hovered=[&](Rectangle rectangle){return menuFocus.mouseOwnsFocus()&&contains(rectangle,mouse);};
@@ -300,11 +345,11 @@ int main(int argc, char** argv){
        continue;
       }
       if(!combat&&tickPhase!=foundation::Phase::Collection)break;
-      hitInvuln=std::max(0.f,hitInvuln-dt);dashCd=std::max(0.f,dashCd-dt);pulse=std::max(0.f,pulse-dt);damageFeedback=std::max(0.f,damageFeedback-dt);shake=std::max(0.f,shake-dt);dashVisualActive=dashTime>0;dashEchoTimer=std::max(0.f,dashEchoTimer-dt);
+      battle::tick(health);dashCd=std::max(0.f,dashCd-dt);pulse=std::max(0.f,pulse-dt);damageFeedback=std::max(0.f,damageFeedback-dt);shake=std::max(0.f,shake-dt);dashVisualActive=dashTime>0;dashEchoTimer=std::max(0.f,dashEchoTimer-dt);
       V mv{(float)(IsKeyDown(KEY_D)||IsKeyDown(KEY_RIGHT))-(float)(IsKeyDown(KEY_A)||IsKeyDown(KEY_LEFT)),(float)(IsKeyDown(KEY_S)||IsKeyDown(KEY_DOWN))-(float)(IsKeyDown(KEY_W)||IsKeyDown(KEY_UP))}; if(len(mv)>0)mv=norm(mv);
       const bool dashPressed=dashPressPending;dashPressPending=false;
-      if(dashPressed&&dashCd<=0&&len(mv)>0){dashTime=threadlight::kDashDurationSeconds;dashCd=dashUpgrade?threadlight::kUpgradedDashCooldownSeconds:threadlight::kDashCooldownSeconds;dashEcho.fill(player);dashEchoCount=0;dashEchoFade=.22f;dashEchoTimer=0;dashVisualActive=true;burst(player,C(132,244,255),10,150);sfx.play(threadlight::audio::Event::Dash);}
-      const bool dashActiveThisFrame=threadlight::dashProtectsCollisionThisFrame(dashTime);dashVisualActive=dashVisualActive||dashActiveThisFrame;dashEchoFade=std::max(0.f,dashEchoFade-dt);float mult=dashActiveThisFrame?3.7f:1.f;if(dashActiveThisFrame)dashTime=std::max(0.f,dashTime-dt);player=player+mv*(speed*mult*dt);player.x=threadlight::layout::clampPlayerX(player.x,playArea);player.y=threadlight::layout::clampPlayerY(player.y,playArea);
+      if(dashPressed&&dashCd<=0&&len(mv)>0){dashTime=threadlight::kDashDurationSeconds;dashCd=stats.dashCooldownSeconds;dashEcho.fill(player);dashEchoCount=0;dashEchoFade=.22f;dashEchoTimer=0;dashVisualActive=true;burst(player,C(132,244,255),10,150);sfx.play(threadlight::audio::Event::Dash);}
+      const bool dashActiveThisFrame=threadlight::dashProtectsCollisionThisFrame(dashTime);dashVisualActive=dashVisualActive||dashActiveThisFrame;dashEchoFade=std::max(0.f,dashEchoFade-dt);float mult=dashActiveThisFrame?3.7f:1.f;if(dashActiveThisFrame)dashTime=std::max(0.f,dashTime-dt);player=player+mv*(stats.moveSpeed*mult*dt);player.x=threadlight::layout::clampPlayerX(player.x,playArea);player.y=threadlight::layout::clampPlayerY(player.y,playArea);
       if(dashActiveThisFrame&&dashEchoTimer<=0){const size_t last=std::min(dashEchoCount,dashEcho.size()-1);for(size_t i=last;i>0;i--)dashEcho[i]=dashEcho[i-1];dashEcho[0]=player;dashEchoCount=std::min(dashEchoCount+1,dashEcho.size());dashEchoTimer=.028f;dashEchoFade=std::max(dashEchoFade,.22f);}
       if(combat){
        if(thread.empty()||dist(thread.back().p,player)>9)thread.push_back({player,0});
@@ -313,32 +358,55 @@ int main(int argc, char** argv){
        if(tickPhase==foundation::Phase::Spawning&&spawnTicks--<=0){
         addFoe(wave);spawnTicks=std::max(1,(int)std::lround(std::max(.30f,1.08f-wave*.09f)*foundation::kTicksPerSecond))-1;
        }
+       int commitments=0;
+       for(const auto& f:foes)if(f.kind==battle::EnemyKind::Skitter&&skitter::committed(f.skitterState))++commitments;
+       battle::IncomingHit incoming;
        for(auto &f:foes){
-        V d=norm(player-f.p);f.phase+=dt;f.hitCd=std::max(0.f,f.hitCd-dt);f.hitFlash=std::max(0.f,f.hitFlash-dt);
-        float wob=std::sin(f.phase*3)*.28f;f.vel=f.vel+(d+V{-d.y*wob,d.x*wob})*(f.speed*dt*2.5f);
-        float vl=len(f.vel);if(vl>f.speed)f.vel=f.vel*(f.speed/vl);f.p=f.p+f.vel*dt;
-        for(size_t i=1;i<thread.size();i++){
-         if(thread[i].age>threadlight::visual::kActiveSilkSeconds)continue;
-         if(segDist(f.p,thread[i-1].p,thread[i].p)<f.r+5&&f.hitCd<=0){
-          f.hp-=trailDmg;f.hitCd=.27f;f.hitFlash=threadlight::visual::kEnemyHitFlashSeconds;burst(f.p,C(83,255,226,220),4,70);
-          if(f.hp<=0){
-           if(const auto drop=rewards.defeatEnemy(f.rewardId)){
-            V p{threadlight::layout::clampPlayerX(f.p.x,playArea),threadlight::layout::clampPlayerY(f.p.y,playArea)};
-            Spark spark{p,0};spark.pickup.id=drop->id;sparks.push_back(spark);
-            addDeathEffect(f);shake=std::max(shake,f.kind?.105f:.045f);sfx.play(threadlight::audio::Event::EnemyDeath);traceM1("kill",drop->id,drop->sparkValue);
-           }
-           f.r=0;
-          }else sfx.play(threadlight::audio::Event::EnemyHit);
-          break;
-         }
+        const V oldPosition=f.p;const bool wasCommitted=f.kind==battle::EnemyKind::Skitter&&skitter::committed(f.skitterState);
+        f.phase+=dt;battle::tick(f.health);f.hitFlash=std::max(0.f,f.hitFlash-dt);
+        if(f.kind==battle::EnemyKind::Skitter){
+         foundation::Point p{f.p.x,f.p.y},v{f.vel.x,f.vel.y};
+         const auto result=skitter::tick(f.skitterState,p,v,{player.x,player.y},{player.x-previousPlayer.x,player.y-previousPlayer.y},
+          {playArea.left+f.r,playArea.right-f.r,playArea.top+f.r,playArea.bottom-f.r},commitments<2);
+         f.p={p.x,p.y};f.vel={v.x,v.y};
+         commitments+=(skitter::committed(f.skitterState)?1:0)-(wasCommitted?1:0);
+         if(result.telegraphStarted)traceM1("skitter_windup",f.rewardId);
+         if(result.burstStarted)traceM1("skitter_burst",f.rewardId);
+        }else{
+         const V d=norm(player-f.p);const float wob=std::sin(f.phase*3)*.28f;
+         f.vel=f.vel+(d+V{-d.y*wob,d.x*wob})*(f.speed*dt*2.5f);
+         const float vl=len(f.vel);if(vl>f.speed)f.vel=f.vel*(f.speed/vl);f.p=f.p+f.vel*dt;
         }
-        if(f.r>0&&dist(f.p,player)<f.r+radius&&!dashActiveThisFrame&&hitInvuln<=0){hp-=f.kind?16:10;hitInvuln=.78f;damageFeedback=threadlight::visual::kDamageFeedbackDuration;shake=threadlight::visual::kDamageShakeSeconds;sfx.play(threadlight::audio::Event::PlayerDamage);burst(player,C(255,92,119),13,170);}
+        for(size_t i=1;i<thread.size();i++){
+         if(thread[i].age>stats.activeSilkSeconds)continue;
+         if(!battle::silkContact({oldPosition.x,oldPosition.y},{f.p.x,f.p.y},f.r,
+             {thread[i-1].p.x,thread[i-1].p.y},{thread[i].p.x,thread[i].p.y},stats.silkHalfWidth))continue;
+         const auto hit=battle::applySilk(f.health,stats.silkDamage);
+         if(hit==battle::SilkHit::None)break;
+         f.hitFlash=threadlight::visual::kEnemyHitFlashSeconds;burst(f.p,C(83,255,226,220),4,70);
+         if(hit==battle::SilkHit::Killed){
+          if(const auto drop=rewards.defeatEnemy(f.rewardId)){
+           V p{threadlight::layout::clampPlayerX(f.p.x,playArea),threadlight::layout::clampPlayerY(f.p.y,playArea)};
+           Spark spark{p,0};spark.pickup.id=drop->id;sparks.push_back(spark);
+           addDeathEffect(f);shake=std::max(shake,f.kind==battle::EnemyKind::Brute?.105f:.045f);
+           sfx.play(threadlight::audio::Event::EnemyDeath);traceM1("kill",drop->id,drop->sparkValue);
+          }
+          if(f.kind==battle::EnemyKind::Skitter&&skitter::committed(f.skitterState))--commitments;
+         }else sfx.play(threadlight::audio::Event::EnemyHit);
+         break;
+        }
+        if(f.health.alive()&&battle::bodyContact({previousPlayer.x,previousPlayer.y},{player.x,player.y},radius,
+             {oldPosition.x,oldPosition.y},{f.p.x,f.p.y},f.r))incoming.consider(battle::definition(f.kind).contactDamage,f.rewardId);
        }
-       foes.erase(std::remove_if(foes.begin(),foes.end(),[](const Foe& f){return f.r<=0;}),foes.end());
+       if(battle::applyIncoming(health,incoming,dashActiveThisFrame)){
+        damageFeedback=threadlight::visual::kDamageFeedbackDuration;shake=threadlight::visual::kDamageShakeSeconds;
+        sfx.play(threadlight::audio::Event::PlayerDamage);burst(player,C(255,92,119),13,170);
+       }
+       foes.erase(std::remove_if(foes.begin(),foes.end(),[](const Foe& f){return !f.health.alive();}),foes.end());
       }
       for(auto &s:sparks){
        s.t+=dt;foundation::Point position{s.p.x,s.p.y};
-       const auto result=foundation::tickPickup(s.pickup,position,{previousPlayer.x,previousPlayer.y},{player.x,player.y},radius,combat,true);
+       const auto result=foundation::tickPickup(s.pickup,position,{previousPlayer.x,previousPlayer.y},{player.x,player.y},radius,combat,true,stats.pickupRadius,stats.pickupPullSpeed);
        s.p={position.x,position.y};
        if(result==foundation::PickupResult::Collected){
         const auto before=rewards.counters().creditsIssued;
@@ -359,29 +427,37 @@ int main(int argc, char** argv){
       else if(lifecycle.phase()!=tickPhase)traceM1("transition");
       // Complete bookkeeping on a lethal tick, but never open rewards or advance
       // encounters after defeat. Loss retains outcome precedence.
-      if(hp<=0){mode=Mode::Lost;sfx.play(threadlight::audio::Event::Defeat);traceM1("defeat");continue;}
+      if(!health.alive()){mode=Mode::Lost;sfx.play(threadlight::audio::Event::Defeat);traceM1("defeat");continue;}
       if(events.enteredPendingRewards){
        if(rewards.pendingCredits()){
-        shownCredit=rewards.nextCredit();choice=0;mode=Mode::Upgrade;sfx.play(threadlight::audio::Event::Evolution);traceM1("offer_open",shownCredit);
+        upgrades::prepareOffer(offers,ranks,health,rewards.nextCredit(),wave+1<threadlight::kWaveCount);choice=0;mode=Mode::Upgrade;sfx.play(threadlight::audio::Event::Evolution);traceM1("offer_open",offers.current.credit);
        }else finishEncounter();
       }
      }
      if(mode!=Mode::Play)stepClock.clear();
     }
    }else if(screenAtFrameStart==Mode::Upgrade){
+    const auto cards=upgradeUI::layout(SW,SH,offers.current.count);
+    const int pointed=menuFocus.mouseOwnsFocus()?upgradeUI::cardAt(cards,mouse.x,mouse.y,offers.current.count):-1;
+    if(pointed>=0)choice=pointed;
     if(IsKeyPressed(KEY_ONE)||IsKeyPressed(KEY_A))choice=0;
     else if(IsKeyPressed(KEY_TWO)||IsKeyPressed(KEY_D))choice=1;
     else if(IsKeyPressed(KEY_THREE)||IsKeyPressed(KEY_S))choice=2;
-    else if(IsKeyPressed(KEY_ENTER)||IsKeyPressed(KEY_SPACE)){
-     if(rewards.resolveCredit(shownCredit,lifecycle.phase())){
-      // Development-only legacy choices keep the M1 harness playable. M2 owns ranks/offers.
-      if(choice==0)hp=std::min(100.f,hp+35);
-      if(choice==1)trailDmg+=.65f;
-      if(choice==2){speed+=24;dashUpgrade=true;}
-      traceM1("credit_resolved",shownCredit);shownCredit=rewards.nextCredit();choice=0;
-      if(!shownCredit){mode=Mode::Play;finishEncounter();}
-      else traceM1("offer_open",shownCredit);
-     }
+    else if(IsKeyPressed(KEY_LEFT))choice=threadlight::menu::moveSelection(choice,-1,offers.current.count);
+    else if(IsKeyPressed(KEY_RIGHT))choice=threadlight::menu::moveSelection(choice,1,offers.current.count);
+    choice=std::clamp(choice,0,std::max(0,offers.current.count-1));
+    const bool confirm=IsKeyPressed(KEY_ENTER)||IsKeyPressed(KEY_SPACE)||
+     (menuFocus.mouseOwnsFocus()&&IsMouseButtonPressed(MOUSE_BUTTON_LEFT)&&upgradeUI::contains(cards.confirm,mouse.x,mouse.y));
+    const auto selected=offers.current.count>0?offers.current.cards[choice]:upgrades::Id::Count;
+    if(confirm&&(offers.current.count==0
+       ?upgrades::resolveExhaustedCredit(rewards,lifecycle.phase(),offers.current,ranks,health,wave+1<threadlight::kWaveCount)
+       :upgrades::resolveChoice(rewards,lifecycle.phase(),offers.current,choice,ranks,health,wave+1<threadlight::kWaveCount))){
+     stats=upgrades::derive(ranks);traceM1("credit_resolved",offers.current.credit);
+     if(m1Telemetry)TraceLog(LOG_INFO,"M2 evolution credit=%llu upgrade=%d rank=%d damage=%d speed=%.0f cooldown=%.2f hp=%d maxhp=%d",
+      (unsigned long long)offers.current.credit,(int)selected,upgrades::rank(ranks,selected),stats.silkDamage,stats.moveSpeed,stats.dashCooldownSeconds,health.hp,health.maxHp);
+     choice=0;
+     if(!rewards.pendingCredits()){mode=Mode::Play;finishEncounter();}
+     else{upgrades::prepareOffer(offers,ranks,health,rewards.nextCredit(),wave+1<threadlight::kWaveCount);traceM1("offer_open",offers.current.credit);}
      stepClock.clear();dashPressPending=collectionContinuePending=false;
     }
    }
@@ -437,15 +513,15 @@ int main(int argc, char** argv){
      const V a=catmullRom(p0,p1,p2,p3,t0),b=catmullRom(p0,p1,p2,p3,t1);
      const float age=silkAge(i-1)+(silkAge(i)-silkAge(i-1))*(t0+t1)*.5f;
      const float shimmer=.5f+.5f*std::sin(time*5.f-age*1.6f);
-     const auto silk=threadlight::visual::silkAppearance(age,shimmer);
+     const auto silk=threadlight::visual::silkAppearance(age,shimmer,stats.activeSilkSeconds);
      Color halo=ColorLerp(C(0,222,211),C(42,129,165),silk.ageBlend);
      Color body=ColorLerp(C(14,247,220),C(45,151,184),silk.ageBlend);
      Color core=ColorLerp(C(224,255,246),C(119,184,204),silk.ageBlend);
      halo.a=(unsigned char)std::lround(silk.haloOpacity*255.f);
      body.a=(unsigned char)std::lround(silk.bodyOpacity*(.94f+.06f*shimmer)*255.f);
      core.a=(unsigned char)std::lround(silk.coreOpacity*255.f);
-     DrawLineEx(cv(a),cv(b),8.5f-1.5f*silk.ageBlend,halo);
-     DrawLineEx(cv(a),cv(b),4.4f-1.0f*silk.ageBlend,body);
+     DrawLineEx(cv(a),cv(b),8.5f+(stats.silkHalfWidth-5.f)*2.f-1.5f*silk.ageBlend,halo);
+     DrawLineEx(cv(a),cv(b),4.4f+(stats.silkHalfWidth-5.f)-1.0f*silk.ageBlend,body);
      DrawLineEx(cv(a),cv(b),1.75f-.35f*silk.ageBlend,core);
     }
    }
@@ -484,21 +560,33 @@ int main(int argc, char** argv){
     if(i%2==0)DrawCircleV(cv(pos),1.3f*remain,C(186,255,243,(unsigned char)(175.f*remain)));
    }
   }
+  // Locked burst lanes use simulation state; they remain visible throughout the burst.
+  for(const auto& f:foes)if(f.kind==battle::EnemyKind::Skitter&&skitter::committed(f.skitterState)){
+   const auto& state=f.skitterState;
+   const Vector2 a{state.burstStart.x,state.burstStart.y},b{state.burstEnd.x,state.burstEnd.y};
+   const V direction=norm(V{b.x-a.x,b.y-a.y});const V side{-direction.y*(f.r+radius),direction.x*(f.r+radius)};
+   DrawLineEx(a,b,(f.r+radius)*2.f,C(255,157,118,23));
+   DrawLineEx({a.x+side.x,a.y+side.y},{b.x+side.x,b.y+side.y},1.f,C(255,177,139,175));
+   DrawLineEx({a.x-side.x,a.y-side.y},{b.x-side.x,b.y-side.y},1.f,C(255,177,139,175));
+   DrawCircleLines((int)b.x,(int)b.y,f.r+radius,C(255,177,139,130));
+  }
   for(const auto& source:foes){auto f=source.present(alpha);
    const float flash=threadlight::visual::hitFlashStrength(f.hitFlash);
-   const Color base=f.kind?C(255,116,178):C(255,97,132);
+   const bool heavy=f.kind==battle::EnemyKind::Brute,skitterBody=f.kind==battle::EnemyKind::Skitter;
+   const int sides=skitterBody?3:heavy?6:4;
+   const Color base=skitterBody?C(255,164,125):heavy?C(255,116,178):C(255,97,132);
    const Color edge=ColorLerp(base,C(207,255,246,255),flash);
    const float bob=std::sin(f.phase*5.f)*2.2f,breath=1.f+std::sin(f.phase*3.2f)*.035f;
    const Vector2 pos={f.p.x,f.p.y+bob};
    DrawCircleV({pos.x,pos.y+f.r*.48f},f.r*.7f,C(3,9,22,95));
    DrawCircleV(pos,f.r+8,C(255,63,123,(unsigned char)(14+flash*30)));
-   DrawPoly(pos,f.kind?6:4,f.r*breath,time*40.f,C(25,22,45));
-   DrawPolyLinesEx(pos,f.kind?6:4,f.r*breath,time*40.f,1.5f+flash*1.1f,edge);
-   if(f.kind){const float arc=time*25.f;DrawCircleV(pos,3.f,C(255,116,178,175));DrawRing(pos,f.r*.67f,f.r*.75f,arc,arc+55.f,18,C(255,173,207,120));}
+   DrawPoly(pos,sides,f.r*breath,time*40.f,C(25,22,45));
+   DrawPolyLinesEx(pos,sides,f.r*breath,time*40.f,1.5f+flash*1.1f,edge);
+   if(heavy){const float arc=time*25.f;DrawCircleV(pos,3.f,C(255,116,178,175));DrawRing(pos,f.r*.67f,f.r*.75f,arc,arc+55.f,18,C(255,173,207,120));}
    else DrawLineEx({pos.x-6,pos.y+5},{pos.x+6,pos.y+5},1.f,C(255,141,167,165));
    DrawCircleV({pos.x-4,pos.y-2},2.2f,C(255,238,220));DrawCircleV({pos.x+4,pos.y-2},2.2f,C(255,238,220));
    if(flash>0)DrawCircleV(pos,f.r*.56f,C(219,255,249,(unsigned char)(105.f*flash)));
-   if(f.hp<f.maxhp){DrawRectangle((int)(f.p.x-f.r),(int)(f.p.y-f.r-10),((int)(2*f.r)),3,C(50,48,71));DrawRectangle((int)(f.p.x-f.r),(int)(f.p.y-f.r-10),(int)(2*f.r*std::clamp(f.hp/f.maxhp,0.f,1.f)),3,C(255,118,157));}
+   if(f.health.hp<f.health.maxHp){DrawRectangle((int)(f.p.x-f.r),(int)(f.p.y-f.r-10),((int)(2*f.r)),3,C(50,48,71));DrawRectangle((int)(f.p.x-f.r),(int)(f.p.y-f.r-10),(int)(2*f.r*std::clamp((float)f.health.hp/f.health.maxHp,0.f,1.f)),3,C(255,118,157));}
   }
   for(const auto& source:particles){auto p=source.present(alpha);float a=std::clamp(p.life/p.maxLife,0.f,1.f);DrawCircleV(cv(p.p),p.size*a,Fade(p.color,a));}
   if(mode!=Mode::Title){
@@ -524,9 +612,9 @@ int main(int argc, char** argv){
    DrawLine(0,(int)hudHeight,SW,(int)hudHeight,C(60,152,156,80));
    drawText("THREADLIGHT",26,22,titleSize,C(200,255,243));
    if(SW>=1180)drawText("THE BRIAR CIRCUIT",214,31,13,C(91,167,179));
-   DrawText("VITALITY",(int)hud.healthX,17,11,C(120,164,178));
+   DrawText(TextFormat("VITALITY %.0f / %d",health.hp/100.f,health.maxHp/100),(int)hud.healthX,17,11,C(120,164,178));
    DrawRectangle((int)hud.healthX,38,(int)hud.healthWidth,10,C(34,49,67));
-   DrawRectangle((int)hud.healthX,38,(int)(hud.healthWidth*std::clamp(hp/100.f,0.f,1.f)),10,hp>35?C(72,225,190):C(255,91,127));
+   DrawRectangle((int)hud.healthX,38,(int)(hud.healthWidth*std::clamp((float)health.hp/health.maxHp,0.f,1.f)),10,health.hp>health.maxHp*.35f?C(72,225,190):C(255,91,127));
    drawText(TextFormat("WAVE %d / 5",std::min(wave+1,threadlight::kWaveCount)),(int)hud.waveX,22,18,C(217,239,242));
    drawText(TextFormat("SPARKS %lld / %d",(long long)rewards.remainder(),rewards.nextThreshold()),(int)hud.sparksX,24,15,C(255,213,131));
    drawText(TextFormat("SCORE %06llu",(unsigned long long)rewards.score()),(int)hud.scoreX,24,17,C(177,208,221));
@@ -566,7 +654,7 @@ int main(int argc, char** argv){
    return bounds;
   };
   if(mode==Mode::Title){
-   const Rectangle bounds=panel("M1 DEVELOPMENT HARNESS","THREADLIGHT","Five legacy waves; new lifecycle and reward accounting");
+   const Rectangle bounds=panel("M2 DEVELOPMENT HARNESS","THREADLIGHT","Five waves; ranked evolutions and telegraphed Skitters");
    DrawText("Move to weave a fading thread. Circle the hunters; let silk do the cutting.",(int)bounds.x+52,(int)bounds.y+153,15,C(175,211,213));
    DrawText("WASD / arrows move     SPACE dash     P pauses",(int)bounds.x+52,(int)bounds.y+181,15,C(121,196,197));
    DrawText("Collect sparks manually. Spend earned credits between encounters.",(int)bounds.x+52,(int)bounds.y+207,15,C(121,196,197));
@@ -627,8 +715,45 @@ int main(int argc, char** argv){
    drawButton(noButton,"No, Stay",exitSelection==1,hovered(noButton),15);
    DrawText("ESC CANCELS",SW/2-45,SH/2+122,12,C(108,167,178));
   }
-  if(mode==Mode::Upgrade){panel("M1 LEGACY CHOICES - RANKED CATALOG DEFERRED","CHOOSE AN EVOLUTION",TextFormat("%llu credit(s) pending - 1 / 2 / 3 then ENTER",(unsigned long long)rewards.pendingCredits()));const char* names[3]={"01   RESTITCH","02   RAZOR FILAMENT","03   QUICKSTEP"};const char* desc[3]={"Restore 35 vitality","Silk damage +0.65","Speed +24; dash 1.45s"};for(int i=0;i<3;i++){int x=SW/2-260+i*176;Color outline=choice==i?C(133,255,221,220):C(67,115,132,100);DrawRectangleRounded({(float)x,(float)(SH/2+5),160,126},.08f,8,C(20,42,57,230));DrawRectangleRoundedLines({(float)x,(float)(SH/2+5),160,126},.08f,8,outline);DrawText(names[i],x+12,SH/2+23,13,C(212,249,231));DrawText(desc[i],x+12,SH/2+57,13,C(139,191,193));}DrawText("SELECT WITH 1 / 2 / 3, OR A / D / S",SW/2-185,SH/2+159,14,C(255,218,135));}
-  if(mode==Mode::Lost||mode==Mode::Won){panel(mode==Mode::Won?"M1 DEVELOPMENT HARNESS":"THE THREAD GOES QUIET",mode==Mode::Won?"HARNESS COMPLETE":"LOST TO THE BRIAR",mode==Mode::Won?"The 35-wave campaign is not implemented.":"The hunters remember your path.");DrawText(TextFormat("Score %06llu   Kills %llu   Evolutions %llu",(unsigned long long)rewards.score(),(unsigned long long)rewards.counters().killed,(unsigned long long)rewards.counters().creditsResolved),SW/2-255,SH/2+24,18,C(179,225,216));DrawText("ENTER / R  —  weave again",SW/2-255,SH/2+76,16,C(255,218,135));DrawText("ESC  —  return to title",SW/2-255,SH/2+111,15,C(136,188,192));}
+  if(mode==Mode::Upgrade){
+   const auto ui=upgradeUI::layout(SW,SH,offers.current.count);
+   auto rect=[](upgradeUI::Rect r){return Rectangle{r.x,r.y,r.width,r.height};};
+   DrawRectangle(0,0,SW,SH,C(3,7,18,205));
+   DrawRectangleRounded(rect(ui.panel),.045f,16,C(11,22,40,250));
+   DrawRectangleRoundedLines(rect(ui.panel),.045f,16,C(91,216,197,145));
+   DrawText("EVOLUTION",(int)ui.panel.x+28,(int)ui.panel.y+25,13,C(107,228,206));
+   DrawText("CHOOSE YOUR NEXT THREAD",(int)ui.panel.x+28,(int)ui.panel.y+48,28,C(226,255,247));
+   DrawText(TextFormat("%llu credit(s) pending - collect sparks to earn more",(unsigned long long)rewards.pendingCredits()),(int)ui.panel.x+28,(int)ui.panel.y+87,14,C(162,193,204));
+   constexpr const char* roman[]={"-","I","II","III","IV","V"};
+   auto wrapped=[&](const std::string& text,float x,float y,float width,int size,Color color){
+    std::string line;size_t start=0;
+    while(start<text.size()){
+     const auto end=text.find(' ',start);const auto word=text.substr(start,end==std::string::npos?end:end-start);
+     const auto candidate=line.empty()?word:line+" "+word;
+     if(!line.empty()&&MeasureText(candidate.c_str(),size)>width){DrawText(line.c_str(),(int)x,(int)y,size,color);y+=size+7;line=word;}else line=candidate;
+     if(end==std::string::npos)break;start=end+1;
+    }
+    if(!line.empty())DrawText(line.c_str(),(int)x,(int)y,size,color);
+   };
+   for(int i=0;i<offers.current.count;i++){
+    const auto r=ui.cards[i];const auto id=offers.current.cards[i];const int current=upgrades::rank(ranks,id),cap=upgrades::maximum(id);
+    DrawRectangleRounded(rect(r),.06f,8,choice==i?C(19,55,64,245):C(15,32,48,245));
+    DrawRectangleRoundedLines(rect(r),.06f,8,choice==i?C(133,255,221,230):C(67,115,132,125));
+    DrawText(TextFormat("0%d",i+1),(int)r.x+16,(int)r.y+15,14,C(255,218,135));
+    wrapped(upgrades::name(id),r.x+16,r.y+43,r.width-32,17,C(212,249,231));
+    DrawText(cap?TextFormat("RANK %s -> %s / %s",roman[current],roman[current+1],roman[cap]):"REPEATABLE RECOVERY",(int)r.x+16,(int)r.y+96,12,C(137,203,203));
+    for(int j=0;j<cap;j++)DrawRectangle((int)r.x+16+j*22,(int)r.y+119,16,3,j<current?C(107,228,206):j==current?C(255,213,131):C(53,83,97));
+    wrapped(upgrades::effectText(id,ranks,health),r.x+16,r.y+144,r.width-32,15,C(172,211,211));
+    if(cap&&current+1==cap)DrawText("MAX RANK NEXT",(int)r.x+16,(int)r.y+216,11,C(255,218,135));
+   }
+   if(offers.current.count==0){
+    DrawText("ALL AVAILABLE RANKS COMPLETE",(int)ui.panel.x+28,(int)ui.panel.y+166,20,C(212,249,231));
+    DrawText("No useful recovery is available. Discard this unused credit to continue.",(int)ui.panel.x+28,(int)ui.panel.y+210,15,C(172,211,211));
+   }
+   drawButton(rect(ui.confirm),offers.current.count?"CONFIRM EVOLUTION":"DISCARD CREDIT",true,hovered(rect(ui.confirm)),13);
+   DrawText("1 / 2 / 3 SELECT    LEFT / RIGHT CYCLE    ENTER CONFIRMS",(int)ui.panel.x+28,(int)(ui.panel.y+ui.panel.height-20),11,C(108,167,178));
+  }
+  if(mode==Mode::Lost||mode==Mode::Won){panel(mode==Mode::Won?"M2 DEVELOPMENT HARNESS":"THE THREAD GOES QUIET",mode==Mode::Won?"HARNESS COMPLETE":"LOST TO THE BRIAR",mode==Mode::Won?"The 35-wave campaign is not implemented.":"The hunters remember your path.");DrawText(TextFormat("Score %06llu   Kills %llu   Evolutions %llu",(unsigned long long)rewards.score(),(unsigned long long)rewards.counters().killed,(unsigned long long)rewards.counters().creditsResolved),SW/2-255,SH/2+24,18,C(179,225,216));DrawText("ENTER / R  —  weave again",SW/2-255,SH/2+76,16,C(255,218,135));DrawText("ESC  —  return to title",SW/2-255,SH/2+111,15,C(136,188,192));}
   if(appSettings.showFps)
    DrawText(TextFormat("FPS %d",(int)std::lround(measuredFps)),8,5,10,Fade(C(174,222,228),.32f));
   sfx.update();

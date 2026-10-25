@@ -2,6 +2,8 @@
 
 #include "visual_effects.h"
 #include "spark_pickup.h"
+#include "combat.h"
+#include "skitter.h"
 #include <algorithm>
 #include <array>
 
@@ -32,7 +34,10 @@ inline V silkPoint(const Thread& knot,bool newest,V shownPlayer) {
     return newest&&knot.previousAge==0.f?shownPlayer:knot.p;
 }
 struct Foe {
-    V p,vel; float r,hp,maxhp,speed,hitCd,phase,hitFlash; int kind;
+    V p,vel; float r; combat::EnemyHealth health;
+    float speed,phase,hitFlash;
+    combat::EnemyKind kind= combat::EnemyKind::Hunter;
+    skitter::State skitterState{};
     V previousP=p;
     float previousPhase=phase,previousHitFlash=hitFlash;
     foundation::RewardId rewardId = 0;

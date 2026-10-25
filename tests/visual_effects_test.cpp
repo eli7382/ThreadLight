@@ -33,6 +33,10 @@ void testSilkCoolsContinuouslyAndFadesWithAge() {
     CHECK(std::abs(active.energy - justHarmless.energy) < 0.03f);
     CHECK(std::abs(active.coreOpacity - justHarmless.coreOpacity) < 0.03f);
     CHECK(active.energy <= 1.0f);
+    const auto extended = silkAppearance(1.8f, .5f, 2.1f);
+    CHECK(extended.ageBlend == 0.f && extended.fade == 1.f);
+    CHECK(silkAppearance(2.1f + .01f, .5f, 2.1f).ageBlend < .01f);
+    CHECK(silkAppearance(kSilkLifetimeSeconds, .5f, 2.1f).fade == 0.f);
 }
 
 void testPlayerBoundsFollowLogicalClientAndCameraShake() {

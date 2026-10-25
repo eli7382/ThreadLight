@@ -20,7 +20,7 @@ void testFramePresentationCadence() {
     for(double fps : {30.,60.,120.,144.,165.,1000.,10000.}) {
         FixedStepClock clock;
         V player{},previous{};
-        Foe foe{{0,0},{},14,1,1,95,0,0,0,0};
+        Foe foe{{0,0},{},14,{100,100},95,0,0,threadlight::combat::EnemyKind::Hunter};
         Particle<int> particle{{0,0},{},1,1,2,0};
         Spark spark{{0,0},0};
         DeathEffect effect{};
@@ -54,8 +54,8 @@ void testFramePresentationCadence() {
 }
 
 void testSpawnRemovalEffectsAndSilk() {
-    Foe first{{10,20},{},14,1,1,95,0,3,0,0};
-    Foe second{{500,600},{},20,3,3,66,0,4,0,1};
+    Foe first{{10,20},{},14,{100,100},95,3,0,threadlight::combat::EnemyKind::Hunter};
+    Foe second{{500,600},{},20,{300,300},66,4,0,threadlight::combat::EnemyKind::Brute};
     CHECK(second.present(0).p.x==500); // New spawn never blends from origin.
     std::vector<Foe> foes{first,second};
     for(auto& foe:foes){foe.capture();foe.p.x+=10;foe.phase+=dt;}
@@ -81,7 +81,7 @@ void testDiscontinuitiesAndBoundedSampling() {
     // These boundaries all capture the new current state and clear the clock.
     for(int boundary=0;boundary<6;++boundary) { // pause/resume/evolve/restart/resize/end
         FixedStepClock clock;clock.advance(.003);
-        Foe foe{{10,20},{},14,1,1,95,0,0,0,0};
+        Foe foe{{10,20},{},14,{100,100},95,0,0,threadlight::combat::EnemyKind::Hunter};
         foe.capture();foe.p={900,700};foe.phase=5;
         clock.clear();foe.capture();
         for(float alpha : {0.f,.3f,1.f}) {
