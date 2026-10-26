@@ -1,8 +1,10 @@
 #include "game_presentation.h"
 #include "game_timing.h"
+#include "silk_collision.h"
 #include <cmath>
 #include <cstdlib>
 #include <iostream>
+#include <limits>
 #include <vector>
 
 namespace {
@@ -62,6 +64,11 @@ void testSpawnRemovalEffectsAndSilk() {
     foes.erase(foes.begin());
     CHECK(foes[0].present(.5f).p.x==505); // Compaction keeps the correct history.
     CHECK(foes[0].p.x==510);
+    foes[0].previousHitFlash=.1f;foes[0].hitFlash=.16f;
+    const auto shown=foes[0].present(.5f);
+    CHECK(shown.p.x==505 && near(shown.phase,4+dt*.5f));
+    CHECK(shown.hitFlash==.16f && foes[0].p.x==510); // Immediate hit impulse; no simulation mutation.
+    CHECK(sizeof(FoeView)<sizeof(Foe));
     Particle<int> particle{{100,200},{},.65f,.65f,3,0};
     particle.capture();particle.p.x=102;particle.life-=dt;
     CHECK(particle.present(.5f).p.x==101);
@@ -96,11 +103,73 @@ void testDiscontinuitiesAndBoundedSampling() {
     CHECK(clock.advance(10)==threadlight::timing::kMaxStepsPerFrame);
     CHECK(clock.presentationAlpha()>=0&&clock.presentationAlpha()<=1);
 }
+
+void testActiveSilkAndCooldownEquivalence() {
+    namespace combat=threadlight::combat;
+    using threadlight::foundation::Point;
+    auto first=[](const std::vector<Thread>& knots,float lifetime){
+        return threadlight::silk::firstActiveSegment(std::span<const Thread>(knots),lifetime);
+    };
+    std::vector<Thread> empty;
+    CHECK(first(empty,1.2f)==0);
+    empty.push_back({{0,0},0});CHECK(first(empty,1.2f)==1);
+    std::vector<Thread> knots{{{0,0},2.2f},{{10,0},1.3f},{{20,0},1.2f},{{30,0},.1f}};
+    CHECK(first(knots,1.2f)==2); // Equality is active; segment still starts at knot 1.
+    CHECK(first(knots,0.f)==knots.size());
+    CHECK(first(knots,3.f)==1);
+    std::vector<Thread> evolving;
+    for(int tick=0;tick<1200;++tick){
+        if(tick%3==0)evolving.push_back({{float(tick),0},0});
+        for(auto& knot:evolving)knot.age+=dt;
+        while(!evolving.empty()&&evolving.front().age>5.5f)evolving.erase(evolving.begin());
+        for(float lifetime : {1.2f,1.5f,1.8f,2.1f}){
+            std::size_t reference=evolving.size();
+            for(std::size_t i=1;i<evolving.size();++i)if(evolving[i].age<=lifetime){reference=i;break;}
+            CHECK(first(evolving,lifetime)==reference);
+        }
+    }
+    combat::EnemyHealth oldHealth{10000,10000},newHealth=oldHealth;
+    for(int tick=0;tick<300;++tick){
+        combat::tick(oldHealth);combat::tick(newHealth);
+        const Point from{float((tick%50)-10),-2},to{from.x+3,2};
+        const float lifetime=tick%2?1.2f:2.1f;
+        combat::SilkHit oldHit=combat::SilkHit::None,newHit=oldHit;
+        std::size_t oldIndex=knots.size(),newIndex=knots.size();
+        for(std::size_t i=1;i<knots.size();++i){
+            if(knots[i].age>lifetime)continue;
+            if(!combat::silkContact(from,to,2,{knots[i-1].p.x,knots[i-1].p.y},{knots[i].p.x,knots[i].p.y},1))continue;
+            oldHit=combat::applySilk(oldHealth,100);oldIndex=i;break;
+        }
+        if(newHealth.silkCooldownTicks==0)for(std::size_t i=first(knots,lifetime);i<knots.size();++i){
+            if(!combat::silkContact(from,to,2,{knots[i-1].p.x,knots[i-1].p.y},{knots[i].p.x,knots[i].p.y},1))continue;
+            newHit=combat::applySilk(newHealth,100);newIndex=i;break;
+        }
+        CHECK(oldHit==newHit);
+        if(oldHit!=combat::SilkHit::None)CHECK(oldIndex==newIndex);
+        CHECK(oldHealth.hp==newHealth.hp && oldHealth.silkCooldownTicks==newHealth.silkCooldownTicks);
+    }
+}
+
+void testKnotSamplingBoundary(){
+    const V origin{0,0};
+    const float infinity=std::numeric_limits<float>::infinity();
+    const float nan=std::numeric_limits<float>::quiet_NaN();
+    auto old=[](V a,V b){const auto d=a-b;return std::sqrt(d.x*d.x+d.y*d.y)>9.f;};
+    for(float x : {0.f,8.99f,std::nextafter(9.f,0.f),9.f,std::nextafter(9.f,infinity),9.01f,infinity,nan})
+        for(float y : {0.f,.001f,1.f,5.f})
+            CHECK(threadlight::silk::shouldAppendKnot(origin,V{x,y})==old(origin,V{x,y}));
+    for(int i=-1000;i<=1000;++i){
+        V point{9.f+i*.000001f,.002f};
+        CHECK(threadlight::silk::shouldAppendKnot(origin,point)==old(origin,point));
+    }
+}
 }
 int main() {
     testFramePresentationCadence();
     testSpawnRemovalEffectsAndSilk();
     testDiscontinuitiesAndBoundedSampling();
+    testActiveSilkAndCooldownEquivalence();
+    testKnotSamplingBoundary();
     if(failures)return EXIT_FAILURE;
     std::cout<<"Presentation cadence, entity history, and discontinuity checks passed.\n";
 }

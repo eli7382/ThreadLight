@@ -5,7 +5,6 @@
 
 #include <algorithm>
 #include <array>
-#include <cstring>
 
 namespace threadlight {
 
@@ -19,14 +18,13 @@ public:
             const auto event = static_cast<audio::Event>(eventIndex);
             for (int variant = 0; variant < audio::kVoiceVariants; ++variant) {
                 const float tuning = variant == 0 ? 0.972f : 1.028f;
-                const auto pcm = audio::synthesize(event, tuning);
-                auto* samples = static_cast<short*>(MemAlloc(pcm.size() * sizeof(short)));
-                if (!samples) continue;
-                std::memcpy(samples, pcm.data(), pcm.size() * sizeof(short));
+                auto pcm = audio::synthesize(event, tuning);
+                // LoadSoundFromWave converts into its own sound buffer before it
+                // returns. This Wave only borrows the vector's storage; it must
+                // never be passed to UnloadWave.
                 Wave wave{static_cast<unsigned int>(pcm.size()), audio::kSampleRate,
-                          16u, 1u, samples};
+                          16u, 1u, pcm.data()};
                 sounds_[eventIndex][variant] = LoadSoundFromWave(wave);
-                UnloadWave(wave);
             }
         }
         setMasterVolume(masterVolume_);

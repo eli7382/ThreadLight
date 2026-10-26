@@ -152,6 +152,14 @@ void testStationaryHoverCannotReclaimKeyboardFocus() {
 }
 
 int main() {
+    using threadlight::Mode;
+    using threadlight::menu::shouldAutoPause;
+    CHECK(shouldAutoPause(Mode::Play, false, false, false));
+    CHECK(shouldAutoPause(Mode::Play, true, true, false));
+    CHECK(!shouldAutoPause(Mode::Play, true, false, false));
+    CHECK(!shouldAutoPause(Mode::Play, false, true, true));
+    for (Mode mode : {Mode::Title, Mode::Pause, Mode::Settings, Mode::Upgrade, Mode::Signature, Mode::Lost, Mode::Won})
+        CHECK(!shouldAutoPause(mode, false, true, false));
     testPauseAndEscapeRules();
     testSettingsOriginAndExitConfirmation();
     testMenuActionsAreScopedToTheirScreen();

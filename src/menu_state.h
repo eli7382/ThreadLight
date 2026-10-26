@@ -4,6 +4,11 @@
 
 namespace threadlight::menu {
 
+// Fixture render checks deliberately run in a hidden window.
+inline bool shouldAutoPause(Mode mode, bool focused, bool minimized, bool hiddenFixture) {
+    return mode == Mode::Play && !hiddenFixture && (!focused || minimized);
+}
+
 class FocusOwner {
 public:
     void update(bool mouseMoved, bool mouseClicked, bool keyboardUsed) {

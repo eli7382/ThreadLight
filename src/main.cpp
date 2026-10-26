@@ -11,6 +11,7 @@
 #include "visual_effects.h"
 #include "player_upgrades.h"
 #include "upgrade_layout.h"
+#include "upgrade_text_cache.h"
 #include "chapter_one.h"
 #include "rootwarden.h"
 #include "chapter_hud.h"
@@ -26,6 +27,8 @@
 #include "silk_utilities.h"
 #include "needle_interception.h"
 #include "bestiary.h"
+#include "silk_collision.h"
+#include "performance_metrics.h"
 #include <algorithm>
 #include <array>
 #include <cmath>
@@ -33,6 +36,11 @@
 #include <charconv>
 #include <random>
 #include <string_view>
+#include <chrono>
+#include <cstdio>
+#include <filesystem>
+#include <memory>
+#include <string>
 
 #if defined(_WIN32)
 extern "C" unsigned int __stdcall timeBeginPeriod(unsigned int);
@@ -50,8 +58,20 @@ using Particle=threadlight::presentation::Particle<Color>;
 float len(V a){return std::sqrt(a.x*a.x+a.y*a.y);} float dist(V a,V b){return len(a-b);} V norm(V a){float l=len(a);return l>0.001f?a*(1/l):V{};} Vector2 cv(V a){return {a.x,a.y};}
 V catmullRom(V p0,V p1,V p2,V p3,float t){const float t2=t*t,t3=t2*t;return (p1*2.f+(p2-p0)*t+(p0*2.f-p1*5.f+p2*4.f-p3)*t2+(p0*-1.f+p1*3.f-p2*3.f+p3)*t3)*.5f;}
 Color C(unsigned char r,unsigned char g,unsigned char b,unsigned char a=255){return {r,g,b,a};}
+const char* modeName(threadlight::Mode mode){
+ using threadlight::Mode;
+ switch(mode){
+ case Mode::Title:return "title";case Mode::Play:return "play";case Mode::Pause:return "pause";
+ case Mode::Settings:return "settings";case Mode::ExitConfirm:return "exit_confirm";
+ case Mode::Upgrade:return "upgrade";case Mode::Signature:return "signature";
+ case Mode::Lost:return "lost";case Mode::Won:return "won";
+ }
+ return "unknown";
+}
 }
 int main(int argc, char** argv){
+ using PerfClock=std::chrono::steady_clock;
+ const auto bootTime=PerfClock::now();
  bool m1Telemetry=false;
  bool m6RenderCheck=false;
  int bossFixture=-1; // Explicit development-only CLI fixture; never a campaign checkpoint.
@@ -61,9 +81,11 @@ int main(int argc, char** argv){
  int fixtureOptions=0;
  int rewardFixture=0;bool utilityFixture=false,minimumQaWindow=false;
  std::uint32_t spawnSeed=7382;
+ std::string perfLogPath;
  for(int i=1;i<argc;i++){
   const std::string_view arg=argv[i];
-  if(arg=="--m6-render-check"||arg=="--m7-render-check")m6RenderCheck=true;
+   if(arg=="--perf-log"&&i+1<argc){if(!perfLogPath.empty())return 2;perfLogPath=argv[++i];if(perfLogPath.empty())return 2;}
+   else if(arg=="--m6-render-check"||arg=="--m7-render-check")m6RenderCheck=true;
   else if(arg=="--m7-min-window")minimumQaWindow=true;
   else if(arg=="--m7-utility-fixture"){
    if(++fixtureOptions>1)return 2;utilityFixture=true;waveFixture=4;waveFixtureWave=7;
@@ -97,6 +119,11 @@ int main(int argc, char** argv){
  if(bossFixture>=0&&waveFixture>=0)return 2;
  if(m6RenderCheck&&rewardFixture==0&&!utilityFixture&&(bossFixture<0||bossFixtureWave<27))return 2;
  if(minimumQaWindow&&!m6RenderCheck)return 2;
+ std::unique_ptr<threadlight::performance::Recorder> perf;
+ if(!perfLogPath.empty()){
+  perf=std::make_unique<threadlight::performance::Recorder>();
+  if(!perf->open(std::filesystem::u8path(perfLogPath))){std::fprintf(stderr,"Could not create performance log (path must be new and writable).\n");return 3;}
+ }
  SetConfigFlags(FLAG_WINDOW_HIGHDPI|FLAG_WINDOW_RESIZABLE|FLAG_MSAA_4X_HINT|(m6RenderCheck?FLAG_WINDOW_HIDDEN:0));
  InitWindow(threadlight::layout::kInitialScreenWidth,threadlight::layout::kInitialScreenHeight,"THREADLIGHT | A small game of living silk");
  const auto windowCoordinates=threadlight::layout::WindowCoordinates::atStartup(
@@ -216,7 +243,8 @@ int main(int argc, char** argv){
  bool dashPressPending=false,collectionContinuePending=false;
  threadlight::timing::MovementPressBuffer movementPressPending;
  threadlight::menu::FocusOwner menuFocus;
- float measuredFps=60.0f;
+ float measuredFps=60.0f,lastFrameSeconds=0.0f;
+ upgradeUI::OfferTextCache offerTextCache;
  auto saveSettings=[&](){
   SetTargetFPS(appSettings.frameRateLimit);
   sfx.setMasterVolume(appSettings.sfxVolumePercent/100.0f);
@@ -414,7 +442,7 @@ int main(int argc, char** argv){
  auto drawText=[&](const char* s,int x,int y,int size,Color c){DrawText(s,x,y,size,c);};
   auto applyMenuAction=[&](threadlight::menu::Action action){threadlight::menu::apply(mode,settingsReturn,exitRequested,exitSelection,action);};
   auto changeFrameLimit=[&](int value){if(!threadlight::settings::validFrameRateLimit(value)||value==appSettings.frameRateLimit)return;appSettings.frameRateLimit=value;updateTimerResolution(value!=0);settingsEdits.dirty=true;saveSettings();};
-  auto changeShowFps=[&](){appSettings.showFps=!appSettings.showFps;settingsEdits.dirty=true;saveSettings();};
+  auto changeShowFps=[&](){appSettings.showFps=!appSettings.showFps;if(appSettings.showFps)measuredFps=threadlight::timing::initialMeasuredFps(lastFrameSeconds);settingsEdits.dirty=true;saveSettings();};
   auto changeSfxVolume=[&](int value,bool persist=true){value=std::clamp(value,0,100);if(value==appSettings.sfxVolumePercent)return;appSettings.sfxVolumePercent=value;settingsEdits.dirty=true;sfx.setMasterVolume(value/100.0f);if(persist)saveSettings();};
   auto contains=[](Rectangle rectangle,Vector2 point){return CheckCollisionPointRec(point,rectangle);};
   auto buttonRect=[&](int index,int count,float centerY,float width=300.f,float height=46.f,float gap=54.f){return Rectangle{(SW-width)*.5f,centerY+(index-(count-1)*.5f)*gap-height*.5f,width,height};};
@@ -440,11 +468,18 @@ int main(int argc, char** argv){
   int loggedWidth=0,loggedHeight=0,loggedRenderWidth=0,loggedRenderHeight=0;
   Vector2 loggedDpi{0.0f,0.0f};
   int renderCheckFrames=0;bool capturedWarning=false,capturedActive=false;
+   auto previousPerfFrame=PerfClock::time_point{};
+   auto lastMemorySample=PerfClock::time_point{};
+   threadlight::performance::MemorySample memorySample{};
+   std::uint64_t perfFrameNumber=0;
   if(m6RenderCheck)reset();
   while(!WindowShouldClose()&&!exitRequested){
+    const auto frameStart=perf?PerfClock::now():PerfClock::time_point{};
+    double simulationMs=0,discardedMs=0;int frameSteps=0;
    const Mode screenAtFrameStart=mode;
    const double frameSeconds=std::max(0.0,static_cast<double>(GetFrameTime()));
-   measuredFps=threadlight::timing::smoothMeasuredFps(measuredFps,static_cast<float>(frameSeconds));
+   lastFrameSeconds=static_cast<float>(frameSeconds);
+   if(appSettings.showFps)measuredFps=threadlight::timing::smoothMeasuredFps(measuredFps,lastFrameSeconds);
    const int nextSW=windowCoordinates.width(GetRenderWidth()),nextSH=windowCoordinates.height(GetRenderHeight());
    const auto nextPlayArea=threadlight::layout::playBounds(nextSW,nextSH);
    const bool resized=nextSW!=SW||nextSH!=SH;
@@ -540,7 +575,12 @@ int main(int argc, char** argv){
    if(settingsEdits.finishDrag(mode==Mode::Settings&&settingsTab==1,
        IsWindowFocused(),IsMouseButtonDown(MOUSE_BUTTON_LEFT),menuKey))saveSettings();
 
-   if(screenAtFrameStart==Mode::Title&&titleView==1){
+   const bool focused=IsWindowFocused(),minimized=IsWindowMinimized();
+   if(threadlight::menu::shouldAutoPause(screenAtFrameStart,focused,minimized,m6RenderCheck)){
+    applyMenuAction(threadlight::menu::Action::Pause);
+   }else if(screenAtFrameStart==Mode::Pause&&!m6RenderCheck&&(!focused||minimized)){
+    // Wait for focus and an intentional resume; do not consume stale input.
+   }else if(screenAtFrameStart==Mode::Title&&titleView==1){
     if(IsKeyPressed(KEY_ESCAPE))titleView=0;
     else if(IsKeyPressed(KEY_UP))codexSelection=threadlight::menu::moveSelection(codexSelection,-1,11);
     else if(IsKeyPressed(KEY_DOWN))codexSelection=threadlight::menu::moveSelection(codexSelection,1,11);
@@ -644,8 +684,11 @@ int main(int argc, char** argv){
      movementPressPending.add((IsKeyPressed(KEY_A)||IsKeyPressed(KEY_LEFT)?1u:0u)|(IsKeyPressed(KEY_D)||IsKeyPressed(KEY_RIGHT)?2u:0u)|(IsKeyPressed(KEY_W)||IsKeyPressed(KEY_UP)?4u:0u)|(IsKeyPressed(KEY_S)||IsKeyPressed(KEY_DOWN)?8u:0u));
      if(lifecycle.phase()==foundation::Phase::Collection)
       collectionContinuePending=collectionContinuePending||IsKeyPressed(KEY_ENTER);
+     const auto simulationStart=perf?PerfClock::now():PerfClock::time_point{};
      const int steps=stepClock.advance(frameSeconds);
+     if(perf)discardedMs=stepClock.discardedSeconds()*1000.0;
      for(int tick=0;tick<steps&&mode==Mode::Play;tick++){
+      if(perf)++frameSteps;
       capturePresentation();
       constexpr float dt=static_cast<float>(threadlight::timing::kFixedStepSeconds);
       ++simulationTick;
@@ -695,9 +738,10 @@ int main(int argc, char** argv){
        const auto formation=cocoon::tick(cocoonState,{previousPlayer.x,previousPlayer.y},{player.x,player.y},std::span<const cross::Segment>(loopHistory.data(),loopCount),true,cocoonReward.owned);
        if(formation.formed){++cocoonsFormed;burst(player,C(208,241,193),12,100);sfx.play(threadlight::audio::Event::Afterimage);traceM1("cocoon_formed",formation.segmentId,(int)formation.area);}
        if(pulseTicks>0)--pulseTicks;
-       if(thread.empty()||dist(thread.back().p,player)>9){thread.push_back({player,0});thread.back().id=++nextThreadId;}
+       if(thread.empty()||threadlight::silk::shouldAppendKnot(thread.back().p,player)){thread.push_back({player,0});thread.back().id=++nextThreadId;}
        for(auto &t:thread)t.age+=dt;
        while(!thread.empty()&&(thread.front().age>threadlight::visual::kSilkLifetimeSeconds||thread.size()>520))thread.erase(thread.begin());
+       const size_t firstActiveSilk=threadlight::silk::firstActiveSegment(std::span<const Thread>(thread),stats.activeSilkSeconds);
        std::array<cross::Segment,520> history{};size_t historyCount=0;
        if(crossReward.owned)for(size_t i=1;i<thread.size();++i)
         history[historyCount++]={thread[i].id,{thread[i-1].p.x,thread[i-1].p.y},{thread[i].p.x,thread[i].p.y},(int)std::lround(thread[i].age*120.f)};
@@ -721,8 +765,8 @@ int main(int argc, char** argv){
         releaseSupports(bossEvents.supports);
         if(bossEvents.warning){if(boss.corridor.enabled)ground.cancelUnsafeCorridors(boss.corridor);sfx.play(threadlight::audio::Event::BossWarning);traceBoss("warning");}
         bool touched=false;
-        for(size_t i=1;i<thread.size();++i){
-         if(thread[i].age>stats.activeSilkSeconds||!root::silkContact(boss,{thread[i-1].p.x,thread[i-1].p.y},{thread[i].p.x,thread[i].p.y},stats.silkHalfWidth))continue;
+        for(size_t i=firstActiveSilk;i<thread.size();++i){
+         if(!root::silkContact(boss,{thread[i-1].p.x,thread[i-1].p.y},{thread[i].p.x,thread[i].p.y},stats.silkHalfWidth))continue;
          touched=true;const auto hit=root::applySilk(boss,stats.silkDamage);
          if(hit.hit==battle::SilkHit::None)break;
          if(hit.hit!=battle::SilkHit::None&&loom::onHit(loomState,loomReward.owned,true,loom::HitKind::OrdinarySilk)){loomPending=true;loomSource={bossRewardId,boss.p,0,1};}
@@ -740,7 +784,7 @@ int main(int argc, char** argv){
         }
         for(int i=0;i<boss.budCount;++i)if(boss.buds[i].health.alive()){
          const auto& bud=boss.buds[i];
-         for(size_t t=1;t<thread.size();++t)if(thread[t].age<=stats.activeSilkSeconds&&battle::silkContact(bud.p,bud.p,16,{thread[t-1].p.x,thread[t-1].p.y},{thread[t].p.x,thread[t].p.y},stats.silkHalfWidth)){
+         for(size_t t=firstActiveSilk;t<thread.size();++t)if(battle::silkContact(bud.p,bud.p,16,{thread[t-1].p.x,thread[t-1].p.y},{thread[t].p.x,thread[t].p.y},stats.silkHalfWidth)){
           budHit(i,stats.silkDamage,true);break;
          }
          if(bud.health.alive()&&afterimage::claimContact(offensiveEcho,bud.id,bud.p,bud.p,16)){
@@ -778,6 +822,9 @@ int main(int argc, char** argv){
         for(int i=0;i<grants.count;++i)if(grants.items[i].kind==attacks::Kind::Spitter)
          for(auto& f:foes)if(f.rewardId==grants.items[i].id)f.projectileTicket=projectiles.reserve(f.rewardId);
        }
+       // The boss pool is stable during this enemy loop, after boss updates and
+       // defeat handling. Compute its occupancy only if a Sower needs it.
+       float bossFieldArea=0.f;bool bossFieldAreaKnown=false;
        battle::IncomingHit incoming;
        int incomingKind=0;
        auto considerDamage=[&](int amount,std::uint64_t id,int kind){const auto before=incoming;incoming.consider(amount,id);if(before.damage!=incoming.damage||before.sourceId!=incoming.sourceId)incomingKind=kind;};
@@ -812,8 +859,9 @@ int main(int argc, char** argv){
          }
         }else if(f.kind==battle::EnemyKind::Sower){
          foundation::Point p{f.p.x,f.p.y},v{f.vel.x,f.vel.y};
+         if(!bossFieldAreaKnown){bossFieldArea=boss.fields.areaOccupied({playArea.left,playArea.right,playArea.top,playArea.bottom});bossFieldAreaKnown=true;}
          const auto event=sower::tick(f.sowerState,p,v,{player.x,player.y},{(player.x-previousPlayer.x)*120,(player.y-previousPlayer.y)*120},
-          {playArea.left,playArea.right,playArea.top,playArea.bottom},ground,bossEncounter?boss.corridor:field::Corridor{},boss.fields.areaOccupied({playArea.left,playArea.right,playArea.top,playArea.bottom}),grants.contains(f.rewardId));
+          {playArea.left,playArea.right,playArea.top,playArea.bottom},ground,bossEncounter?boss.corridor:field::Corridor{},bossFieldArea,grants.contains(f.rewardId));
          f.p={p.x,p.y};f.vel={v.x,v.y};
          if(event.warningStarted){traceM1("sower_warning",f.rewardId,(int)event.ticket);sfx.play(threadlight::audio::Event::BossWarning);}
         }else{
@@ -824,8 +872,7 @@ int main(int argc, char** argv){
         const bool nowCommitted=f.kind==battle::EnemyKind::Skitter?skitter::committed(f.skitterState):f.kind==battle::EnemyKind::Sower?sower::committed(f.sowerState):f.kind==battle::EnemyKind::Spitter&&ranged::committed(f.rangedState);
         if(!wasCommitted&&!nowCommitted)f.p=oldPosition+(f.p-oldPosition)*pursuitFactor;
         commitments+=(nowCommitted?1:0)-(wasCommitted?1:0);
-        for(size_t i=1;i<thread.size();i++){
-         if(thread[i].age>stats.activeSilkSeconds)continue;
+        if(f.health.silkCooldownTicks==0)for(size_t i=firstActiveSilk;i<thread.size();i++){
          if(!battle::silkContact({oldPosition.x,oldPosition.y},{f.p.x,f.p.y},f.r,
              {thread[i-1].p.x,thread[i-1].p.y},{thread[i].p.x,thread[i].p.y},stats.silkHalfWidth))continue;
          const int hpBefore=f.health.hp;
@@ -903,10 +950,11 @@ int main(int argc, char** argv){
          traceM1("needlecatch",caught.id,caught.pool);
         }
        }
-       for(const auto& f:foes)if(f.health.alive()&&battle::bodyContact({previousPlayer.x,previousPlayer.y},{player.x,player.y},radius,
+       const bool bodyCanHurt=battle::canReceiveIncoming(health,dashActiveThisFrame);
+       if(bodyCanHurt)for(const auto& f:foes)if(f.health.alive()&&battle::bodyContact({previousPlayer.x,previousPlayer.y},{player.x,player.y},radius,
           {f.previousP.x,f.previousP.y},{f.p.x,f.p.y},f.r))considerDamage(battle::definition(f.kind,chapter::encounter(wave).chapter).contactDamage,f.rewardId,0);
        if(bossEncounter&&root::alive(boss)){
-        considerDamage(root::incomingDamage(boss,{previousPlayer.x,previousPlayer.y},{player.x,player.y},radius),bossRewardId,1);
+        if(bodyCanHurt)considerDamage(root::incomingDamage(boss,{previousPlayer.x,previousPlayer.y},{player.x,player.y},radius),bossRewardId,1);
         const auto bossImpacts=root::projectileTick(boss,{previousPlayer.x,previousPlayer.y},{player.x,player.y},radius,bossArena());
         for(int i=0;i<bossImpacts.count;++i)considerDamage(bossImpacts.items[i].damage,bossRewardId,1);
         const auto fieldHit=boss.fields.tick({previousPlayer.x,previousPlayer.y},{player.x,player.y},radius);
@@ -976,6 +1024,7 @@ int main(int argc, char** argv){
        }else finishEncounter();
       }
      }
+     if(perf)simulationMs=std::chrono::duration<double,std::milli>(PerfClock::now()-simulationStart).count();
      if(mode!=Mode::Play)stepClock.clear();
     }
    }else if(screenAtFrameStart==Mode::Upgrade){
@@ -1046,6 +1095,7 @@ int main(int argc, char** argv){
    const float shownDamageFeedback=threadlight::presentation::decay(previousDamageFeedback,damageFeedback,alpha);
    const float shownDashEchoFade=threadlight::presentation::decay(previousDashEchoFade,dashEchoFade,alpha);
 
+  const auto drawStart=perf?PerfClock::now():PerfClock::time_point{};
   BeginDrawing();ClearBackground(C(7,12,27));
   // Own the modelview for the entire frame: raylib's retained screenScale can
   // change independently of its startup mouse scale. Its projection/viewport
@@ -1320,14 +1370,14 @@ int main(int argc, char** argv){
    if(boss.kind!=root::Kind::Rootwarden)DrawRectangle((int)(barX+barWidth*threshold2)-1,(int)barY,2,5,C(255,239,210));
    if(boss.kind==root::Kind::Heart)DrawRectangle((int)(barX+barWidth*.25f)-1,(int)barY,2,5,C(255,239,210));
   }
-  for(const auto& source:foes){auto f=source.present(alpha);
-   const float flash=threadlight::visual::hitFlashStrength(f.hitFlash);
+  for(const auto& f:foes){const auto shown=f.present(alpha);
+   const float flash=threadlight::visual::hitFlashStrength(shown.hitFlash);
    const bool heavy=f.kind==battle::EnemyKind::Brute,skitterBody=f.kind==battle::EnemyKind::Skitter,spitterBody=f.kind==battle::EnemyKind::Spitter,bulwarkBody=f.kind==battle::EnemyKind::Bulwark,sowerBody=f.kind==battle::EnemyKind::Sower;
    const int sides=sowerBody?6:bulwarkBody?8:spitterBody?5:skitterBody?3:heavy?6:4;
    const Color base=sowerBody?C(177,217,144):bulwarkBody?(f.guard.guarded?C(153,172,205):C(244,212,139)):spitterBody?C(226,139,194):skitterBody?C(255,164,125):heavy?C(255,116,178):C(255,97,132);
    const Color edge=ColorLerp(base,C(207,255,246,255),flash);
-   const float bob=std::sin(f.phase*5.f)*2.2f,breath=1.f+std::sin(f.phase*3.2f)*.035f;
-   const Vector2 pos={f.p.x,f.p.y+bob};
+   const float bob=std::sin(shown.phase*5.f)*2.2f,breath=1.f+std::sin(shown.phase*3.2f)*.035f;
+   const Vector2 pos={shown.p.x,shown.p.y+bob};
    if(f.slow.remainingTicks>0)DrawCircleLines((int)pos.x,(int)pos.y,f.r+5,C(124,210,215,155));
    if(anchorState.targetId==f.rewardId&&anchorState.windowTicks>0)DrawPolyLinesEx(pos,4,f.r+8,45,1.4f,C(239,214,148,210));
    DrawCircleV({pos.x,pos.y+f.r*.48f},f.r*.7f,C(3,9,22,95));
@@ -1348,7 +1398,7 @@ int main(int argc, char** argv){
    else DrawLineEx({pos.x-6,pos.y+5},{pos.x+6,pos.y+5},1.f,C(255,141,167,165));
    DrawCircleV({pos.x-4,pos.y-2},2.2f,C(255,238,220));DrawCircleV({pos.x+4,pos.y-2},2.2f,C(255,238,220));
    if(flash>0)DrawCircleV(pos,f.r*.56f,C(219,255,249,(unsigned char)(105.f*flash)));
-   if(f.health.hp<f.health.maxHp){DrawRectangle((int)(f.p.x-f.r),(int)(f.p.y-f.r-10),((int)(2*f.r)),3,C(50,48,71));DrawRectangle((int)(f.p.x-f.r),(int)(f.p.y-f.r-10),(int)(2*f.r*std::clamp((float)f.health.hp/f.health.maxHp,0.f,1.f)),3,C(255,118,157));}
+   if(f.health.hp<f.health.maxHp){DrawRectangle((int)(shown.p.x-f.r),(int)(shown.p.y-f.r-10),((int)(2*f.r)),3,C(50,48,71));DrawRectangle((int)(shown.p.x-f.r),(int)(shown.p.y-f.r-10),(int)(2*f.r*std::clamp((float)f.health.hp/f.health.maxHp,0.f,1.f)),3,C(255,118,157));}
   }
   for(const auto& source:particles){auto p=source.present(alpha);float a=std::clamp(p.life/p.maxLife,0.f,1.f);DrawCircleV(cv(p.p),p.size*a,Fade(p.color,a));}
   for(const auto& shot:projectiles.items())if(shot.state==ranged::SlotState::Flying){
@@ -1583,25 +1633,20 @@ int main(int argc, char** argv){
    DrawText("CHOOSE YOUR NEXT THREAD",(int)ui.panel.x+28,(int)ui.panel.y+48,28,C(226,255,247));
    DrawText(TextFormat("%llu credit(s) pending - collect sparks to earn more",(unsigned long long)rewards.pendingCredits()),(int)ui.panel.x+28,(int)ui.panel.y+87,14,C(162,193,204));
    constexpr const char* roman[]={"-","I","II","III","IV","V"};
-   auto wrapped=[&](const std::string& text,float x,float y,float width,int size,Color color){
-    std::string line;size_t start=0;
-    while(start<text.size()){
-     const auto end=text.find(' ',start);const auto word=text.substr(start,end==std::string::npos?end:end-start);
-     const auto candidate=line.empty()?word:line+" "+word;
-     if(!line.empty()&&MeasureText(candidate.c_str(),size)>width){DrawText(line.c_str(),(int)x,(int)y,size,color);y+=size+7;line=word;}else line=candidate;
-     if(end==std::string::npos)break;start=end+1;
-    }
-    if(!line.empty())DrawText(line.c_str(),(int)x,(int)y,size,color);
+   if(offers.current.count>0)offerTextCache.update(offers.current,ranks,health,ui.cards[0].width-32,
+    [](const char* text,int size){return MeasureText(text,size);});
+   auto wrapped=[](const std::vector<std::string>& lines,float x,float y,int size,Color color){
+    for(const auto& line:lines){DrawText(line.c_str(),(int)x,(int)y,size,color);y+=size+7;}
    };
    for(int i=0;i<offers.current.count;i++){
     const auto r=ui.cards[i];const auto id=offers.current.cards[i];const int current=upgrades::rank(ranks,id),cap=upgrades::maximum(id);
     DrawRectangleRounded(rect(r),.06f,8,choice==i?C(19,55,64,245):C(15,32,48,245));
     DrawRectangleRoundedLines(rect(r),.06f,8,choice==i?C(133,255,221,230):C(67,115,132,125));
     DrawText(TextFormat("0%d",i+1),(int)r.x+16,(int)r.y+15,14,C(255,218,135));
-    wrapped(upgrades::name(id),r.x+16,r.y+43,r.width-32,17,C(212,249,231));
+    wrapped(offerTextCache.card(i).name,r.x+16,r.y+43,17,C(212,249,231));
     DrawText(cap?TextFormat("RANK %s -> %s / %s",roman[current],roman[current+1],roman[cap]):"REPEATABLE RECOVERY",(int)r.x+16,(int)r.y+96,12,C(137,203,203));
     for(int j=0;j<cap;j++)DrawRectangle((int)r.x+16+j*22,(int)r.y+119,16,3,j<current?C(107,228,206):j==current?C(255,213,131):C(53,83,97));
-    wrapped(upgrades::effectText(id,ranks,health),r.x+16,r.y+144,r.width-32,15,C(172,211,211));
+    wrapped(offerTextCache.card(i).effect,r.x+16,r.y+144,15,C(172,211,211));
     if(cap&&current+1==cap)DrawText("MAX RANK NEXT",(int)r.x+16,(int)r.y+216,11,C(255,218,135));
    }
    if(offers.current.count==0){
@@ -1668,11 +1713,37 @@ int main(int argc, char** argv){
    }
    if((capturedWarning&&capturedActive)||renderCheckFrames>=1200)exitRequested=true;
   }
+  const auto presentStart=perf?PerfClock::now():PerfClock::time_point{};
   EndDrawing();
+  if(perf){
+   const auto frameEnd=PerfClock::now();
+   auto ms=[](auto duration){return std::chrono::duration<double,std::milli>(duration).count();};
+   if(lastMemorySample==PerfClock::time_point{}||frameEnd-lastMemorySample>=std::chrono::seconds(1)){
+    memorySample=threadlight::performance::processMemory();lastMemorySample=frameEnd;
+   }
+   const size_t first=threadlight::silk::firstActiveSegment(std::span<const Thread>(thread),stats.activeSilkSeconds);
+   threadlight::performance::Frame sample;
+   sample.number=++perfFrameNumber;sample.elapsedSeconds=std::chrono::duration<double>(frameStart-bootTime).count();
+   sample.intervalMs=previousPerfFrame==PerfClock::time_point{}?0:ms(frameStart-previousPerfFrame);previousPerfFrame=frameStart;
+   sample.raylibFrameMs=frameSeconds*1000;sample.updateMs=ms(drawStart-frameStart);sample.simulationMs=simulationMs;
+   sample.drawMs=ms(presentStart-drawStart);sample.presentMs=ms(frameEnd-presentStart);
+   sample.discardedMs=discardedMs;sample.steps=frameSteps;sample.mode=modeName(screenAtFrameStart);
+   sample.phase=foundation::phaseName(lifecycle.phase());sample.wave=wave+1;sample.width=GetRenderWidth();sample.height=GetRenderHeight();
+   sample.enemies=foes.size();sample.silk=thread.empty()?0:thread.size()-1;sample.activeSilk=thread.size()-first;
+   sample.sparks=sparks.size();sample.particles=particles.size();sample.projectiles=projectiles.flyingCount()+boss.bullets.flyingCount();
+   sample.groundHazards=ground.liveCount();sample.bossHazards=boss.fields.liveCount();sample.memory=memorySample;
+   if(!perf->record(sample)){TraceLog(LOG_WARNING,"Performance log write failed; stopping diagnostics.");perf.reset();}
+  }
  }
  settingsEdits.dragging=false;
  if(!m6RenderCheck)saveSettings();
  updateTimerResolution(false);
+ if(perf){
+  perf->finish();const auto& h=perf->intervals();
+  TraceLog(LOG_INFO,"PERF intervals=%llu p50<=%.1fms p95<=%.1fms p99<=%.1fms max=%.2fms discarded=%.2fms frames=%llu%s",
+   (unsigned long long)h.count(),h.percentile(.50),h.percentile(.95),h.percentile(.99),h.maxMs(),perf->discardedMs(),
+   (unsigned long long)perf->discardedFrames(),perf->healthy()?"":" (log flush failed)");
+ }
  sfx.shutdown();
  if(audioReady)CloseAudioDevice();
  CloseWindow();return 0;

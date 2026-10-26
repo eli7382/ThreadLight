@@ -60,17 +60,22 @@ void testSweptCollisionAndIncomingOwnership() {
     CHECK(first.damage == reversed.damage && first.sourceId == reversed.sourceId);
     CHECK(first.damage == 1600 && first.sourceId == 3);
     c::PlayerHealth player;
+    CHECK(c::canReceiveIncoming(player,false));
+    CHECK(!c::canReceiveIncoming(player,true));
     CHECK(c::applyIncoming(player, first, threadlight::dashProtectsCollisionThisFrame(.00001f)) == 0);
     CHECK(player.hp == 10000 && player.immunityTicks == 0);
     CHECK(c::applyIncoming(player, first, false) == 1600);
     CHECK(player.hp == 8400);
+    CHECK(!c::canReceiveIncoming(player,false));
     for (int i = 0; i < 93; ++i) c::tick(player);
     CHECK(c::applyIncoming(player, first, false) == 0);
     c::tick(player);
+    CHECK(c::canReceiveIncoming(player,false));
     CHECK(c::applyIncoming(player, first, false) == 1600);
     c::PlayerHealth dying{100, 10000};
     CHECK(c::applyIncoming(dying, first, false) == 100);
     CHECK(!dying.alive() && c::applyIncoming(dying, first, false) == 0);
+    CHECK(!c::canReceiveIncoming(dying,false));
 }
 
 void testDerivedRankValues() {

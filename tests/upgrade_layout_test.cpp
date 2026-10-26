@@ -1,8 +1,11 @@
 #include "../src/upgrade_layout.h"
+#include "../src/upgrade_text_cache.h"
 
 #include <cmath>
 #include <iostream>
 #include <utility>
+#include <string>
+#include <vector>
 
 namespace {
 int failures = 0;
@@ -24,9 +27,50 @@ bool overlaps(const threadlight::upgrade_ui::Rect& a,
     return a.x < b.x + b.width && b.x < a.x + a.width &&
            a.y < b.y + b.height && b.y < a.y + a.height;
 }
+
+std::vector<std::string> referenceWrap(const std::string& text,float width,int size) {
+    std::vector<std::string> lines;std::string line;std::size_t start=0;
+    while(start<text.size()){
+        const auto end=text.find(' ',start);const auto word=text.substr(start,end==std::string::npos?end:end-start);
+        const auto candidate=line.empty()?word:line+" "+word;
+        if(!line.empty()&&candidate.size()*size>width){lines.push_back(line);line=word;}else line=candidate;
+        if(end==std::string::npos)break;start=end+1;
+    }
+    if(!line.empty())lines.push_back(line);
+    return lines;
+}
+
+void testTextCache(){
+    namespace u=threadlight::upgrades;
+    threadlight::upgrade_ui::OfferTextCache cache;
+    u::Offer offer{1,{u::Id::Razor,u::Id::Restitch,u::Id::Bloodstitch},3};
+    u::Ranks ranks;threadlight::combat::PlayerHealth health{5000,10000};
+    int measurements=0;
+    auto measure=[&](const char* text,int size){++measurements;return static_cast<int>(std::string(text).size())*size;};
+    for(float width : {42.f,100.f,248.f}){
+        check(cache.update(offer,ranks,health,width,measure),"width change rebuilds cached text");
+        for(int i=0;i<offer.count;++i){
+            const auto id=offer.cards[i];
+            check(cache.card(i).name==referenceWrap(u::name(id),width,17),"cached name matches original wrapping");
+            check(cache.card(i).effect==referenceWrap(u::effectText(id,ranks,health),width,15),"cached effect matches original wrapping");
+        }
+        const int before=measurements;
+        check(!cache.update(offer,ranks,health,width,measure) && measurements==before,"unchanged offer does not measure text again");
+    }
+    health.hp=6000;
+    check(cache.update(offer,ranks,health,248.f,measure),"health change invalidates recovery text");
+    check(cache.card(1).effect==referenceWrap(u::effectText(u::Id::Restitch,ranks,health),248.f,15),"recovery text is current");
+    ++ranks.value[u::index(u::Id::Razor)];
+    check(cache.update(offer,ranks,health,248.f,measure),"rank change invalidates text");
+    offer.cards[0]=u::Id::Living;
+    check(cache.update(offer,ranks,health,248.f,measure),"offer change invalidates text");
+    offer.count=1;
+    check(cache.update(offer,ranks,health,248.f,measure) && cache.card(1).name.empty(),"removed cards are cleared");
+}
 }
 
 int main() {
+    testTextCache();
     using namespace threadlight::upgrade_ui;
     for (const auto& [w, h] : {std::pair{960, 640}, {1280, 800}, {1600, 900}, {1920, 1080}}) {
         const Layout value = layout(w, h);

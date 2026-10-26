@@ -107,12 +107,22 @@ void testTimeStepScheduleAcrossConfiguredRates() {
 void testHitchesAreBoundedAndFpsSmoothingIsStable() {
     threadlight::timing::FixedStepClock clock;
     CHECK(clock.advance(1.0) == threadlight::timing::kMaxStepsPerFrame);
+    CHECK(std::abs(clock.discardedSeconds() - (1.0 - 8.0 / 120.0)) < 1.e-9);
     CHECK(clock.remainder() < threadlight::timing::kFixedStepSeconds);
+    clock.clear();
+    CHECK(clock.discardedSeconds() == 0);
+    CHECK(clock.advance(threadlight::timing::kFixedStepSeconds * .5) == 0);
+    CHECK(clock.discardedSeconds() == 0);
+    CHECK(clock.advance(threadlight::timing::kFixedStepSeconds * 8) == 8);
+    CHECK(std::abs(clock.discardedSeconds() - threadlight::timing::kFixedStepSeconds * .5) < 1.e-9);
+    CHECK(clock.advance(-1) == 0 && clock.discardedSeconds() == 0);
     CHECK(threadlight::timing::smoothMeasuredFps(60.0f, 1.0f / 60.0f) == 60.0f);
     const float smoothed = threadlight::timing::smoothMeasuredFps(60.0f, 1.0f / 30.0f);
     CHECK(smoothed > 30.0f);
     CHECK(smoothed < 60.0f);
     CHECK(threadlight::timing::smoothMeasuredFps(smoothed, 0.0f) == smoothed);
+    CHECK(threadlight::timing::initialMeasuredFps(0.0f) == 60.0f);
+    CHECK(std::abs(threadlight::timing::initialMeasuredFps(1.0f/144.0f)-144.0f)<.01f);
     CHECK(threadlight::timing::dampingMultiplier(.96f,60.0f,0.0f) == 1.0f);
     const float sixtyFrameDamping=std::pow(threadlight::timing::dampingMultiplier(.96f,60.0f,1.0f/60.0f),60.0f);
     const float oneTwentyFrameDamping=std::pow(threadlight::timing::dampingMultiplier(.96f,60.0f,1.0f/120.0f),120.0f);

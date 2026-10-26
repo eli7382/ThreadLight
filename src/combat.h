@@ -63,6 +63,9 @@ struct PlayerHealth {
     int hp = 10000, maxHp = 10000, immunityTicks = 0;
     bool alive() const { return hp > 0; }
 };
+inline bool canReceiveIncoming(const PlayerHealth& player, bool dashProtected) {
+    return player.alive() && !dashProtected && player.immunityTicks <= 0;
+}
 inline void tick(EnemyHealth& target) { target.silkCooldownTicks = std::max(0, target.silkCooldownTicks - 1); }
 inline void tick(PlayerHealth& target) { target.immunityTicks = std::max(0, target.immunityTicks - 1); }
 
@@ -112,7 +115,7 @@ struct IncomingHit {
     }
 };
 inline int applyIncoming(PlayerHealth& player, IncomingHit hit, bool dashProtected, int* barrierCenti=nullptr,int reductionPercent=0) {
-    if (!player.alive() || dashProtected || player.immunityTicks > 0 || hit.damage <= 0 || !hit.sourceId) return 0;
+    if (!canReceiveIncoming(player,dashProtected) || hit.damage <= 0 || !hit.sourceId) return 0;
     hit.damage=std::max(1,static_cast<int>((static_cast<std::int64_t>(hit.damage)*(100-std::clamp(reductionPercent,0,24))+50)/100));
     if(barrierCenti){const int absorbed=std::min(std::max(0,*barrierCenti),hit.damage);*barrierCenti-=absorbed;hit.damage-=absorbed;}
     if(hit.damage<=0)return 0; // Absorption grants no additional immunity.

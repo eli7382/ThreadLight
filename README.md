@@ -9,6 +9,7 @@ This branch is the **M7 campaign acceptance candidate**, based on accepted M6 `4
 - **WASD** or **arrow keys**: move
 - **Space**: dash (briefly invulnerable)
 - **P**: pause and resume during play; **Esc** does not pause or exit during play
+- Losing window focus or minimizing automatically pauses active play. Return to the game and resume intentionally.
 - During an evolution or signature choice, **A / D** or **Left / Right** move between cards, **S** selects the middle, and **1 / 2 / 3** select directly; confirm with **Enter / Space** or the button.
 - **Enter** ends a safe collection period early; uncollected sparks carry over without being awarded
 - **Enter** starts and retries; from pause, **R** requests a restart and **Esc** requests a return to title. Both ask for confirmation.
@@ -35,18 +36,69 @@ Listen at a comfortable system volume, then try the Settings SFX slider at low, 
 
 ## Windows build
 
-To build from source, install Visual Studio 2022 C++ tools, CMake, and raylib 5.5 with a CMake package configuration (for example, the `x64-windows` raylib package from vcpkg). From this directory, configure and build:
+To build from source, install Visual Studio 2022 C++ tools, CMake, and an MSVC-compatible raylib 5.5 package with a CMake configuration and a matching static CRT (for example, the `x64-windows-static` raylib package from vcpkg). From this directory, configure and build:
 
 ```powershell
-cmake -S . -B build -DCMAKE_TOOLCHAIN_FILE=C:\vcpkg\scripts\buildsystems\vcpkg.cmake -DVCPKG_TARGET_TRIPLET=x64-windows
+cmake -S . -B build -DCMAKE_TOOLCHAIN_FILE=C:\vcpkg\scripts\buildsystems\vcpkg.cmake -DVCPKG_TARGET_TRIPLET=x64-windows-static
 cmake --build build --config Release
 ```
 
 Then run `build\Release\Threadlight.exe`. If raylib is installed outside vcpkg, configure `CMAKE_PREFIX_PATH` to its package prefix instead.
 
+For a reproducible build with this project's MSVC-compatible static raylib package,
+install MSVC toolset **14.44.35207** and CMake 3.21 or newer, then point the preset
+at the package root (it must contain `include/raylib.h`, `lib/raylib.lib`, and
+`lib/cmake/raylib/raylib-config.cmake`):
+
+```powershell
+$env:THREADLIGHT_RAYLIB_ROOT = 'C:\AI-Game-Benchmark\shared\raylib-5.5'
+cmake --preset windows-msvc
+cmake --build --preset windows-msvc-release
+ctest --preset windows-msvc-release
+```
+
+The preset uses a new `build-windows-msvc` directory and the matching static CRT.
+Use a separate build directory when choosing a different installed toolset or raylib
+package. MSVC cannot link a MinGW `.a` archive; configuration reports that mismatch.
+
+## Opt-in performance capture
+
+Run the new executable with `--perf-log` followed by a **new**, writable CSV path:
+
+```powershell
+.\build-windows-msvc\Release\Threadlight.exe --perf-log C:\Temp\threadlight-run.csv
+```
+
+The game refuses to overwrite an existing capture. Normal launches do not record
+diagnostics. Capture representative early and late waves and boss encounters at
+the desired frame limit; repeat the same route and settings for comparisons.
+The CSV contains frame-start intervals, raylib frame time, wall time spent in
+update, simulation, draw submission and `EndDrawing`, simulation steps and time
+discarded by the existing eight-step cap, frame-start mode, post-update phase and
+wave, framebuffer dimensions, entity counts and once-per-second Windows process
+working-set/private-memory samples. `elapsed_s` starts before window initialization,
+so the first row gives a rough startup-to-first-loop time. Missing memory readings
+are blank. The last known memory sample is repeated between samples.
+
+On a normal exit, the log output reports frame-interval p50/p95/p99 for all
+captured modes using bounded
+0.1 ms histogram buckets (values above 1000 ms use the observed maximum as an
+upper bound), the maximum, and total/count of frames with discarded simulation
+time. The first frame has no preceding interval and is excluded from percentiles.
+Intentional clock clears at pause, resize and screen transitions are not counted as
+overload drops. Per-frame CSV writes and sampling add overhead, so compare like
+captures and verify the result with profiling disabled. Timing columns are wall
+times, not CPU utilization or GPU timings: draw submission and `EndDrawing` can
+include driver work, GPU synchronization, buffer presentation, the frame limiter
+and input polling. Draw submission also includes end-of-frame audio maintenance
+and any fixture screenshot work. Filter CSV rows by `mode_at_start`, phase and
+wave when comparing gameplay; use an external GPU profiler to measure GPU time and memory.
+Hidden `--m7-render-check` fixtures may also be combined with `--perf-log` for a
+smoke test, but their screenshots and capture work are not representative gameplay.
+
 ## Regression tests
 
-Configure the thirty-four regression executables without the game executable with:
+Configure the thirty-five regression executables without the game executable with:
 
 ```powershell
 cmake -S . -B build-tests -DTHREADLIGHT_BUILD_GAME=OFF
@@ -54,7 +106,7 @@ cmake --build build-tests --config Release
 ctest --test-dir build-tests -C Release --output-on-failure
 ```
 
-The foundation suites cover lifecycle boundaries, manual pickups, credit accounting, and a deterministic helper scenario at multiple render rates. M2 adds focused combat/rank/offer tests, Skitter state and render-schedule tests, and upgrade-card layout/hit testing. M3 adds chapter schedules, Rootwarden state/geometry, dash/boss HUD, and explicitly scripted geometric boss scenarios. M4 adds completed-dash echo/signature accounting, ranged projectile/AI invariants, combined attack coordination and render-rate integration, and explicitly scripted Chapter II combat scenarios. M5 adds chapter budgets, Crossweave/Bulwark boundaries, boss state/geometry/scenarios and combined boss/support coordination with render-rate checks. M6 adds chapter budgets, Sower and swept ground-hazard geometry, Cocoon/Resonance, spatial boss invariants and terminal reward/resize integration. M7 adds ranked utility/healing boundaries, six-signature seeded offers, chronological cross-pool interception, damage reduction, render-rate integration and an explicitly assumed campaign economy/offer model. No simulation result is a human playtest. The legacy logic suite now retains movement/spawn/control checks; its superseded automatic-wave-upgrade assertions have been removed. A passing test run does not establish balance, visual quality, or a human playthrough.
+The foundation suites cover lifecycle boundaries, manual pickups, credit accounting, and a deterministic helper scenario at multiple render rates. M2 adds focused combat/rank/offer tests, Skitter state and render-schedule tests, and upgrade-card layout/hit testing. M3 adds chapter schedules, Rootwarden state/geometry, dash/boss HUD, and explicitly scripted geometric boss scenarios. M4 adds completed-dash echo/signature accounting, ranged projectile/AI invariants, combined attack coordination and render-rate integration, and explicitly scripted Chapter II combat scenarios. M5 adds chapter budgets, Crossweave/Bulwark boundaries, boss state/geometry/scenarios and combined boss/support coordination with render-rate checks. M6 adds chapter budgets, Sower and swept ground-hazard geometry, Cocoon/Resonance, spatial boss invariants and terminal reward/resize integration. M7 adds ranked utility/healing boundaries, six-signature seeded offers, chronological cross-pool interception, damage reduction, render-rate integration and an explicitly assumed campaign economy/offer model. When the game is built, an additional mocked raylib test checks that sound loading preserves the synthesized waveforms and does not free borrowed sample storage. No simulation result is a human playtest. The legacy logic suite now retains movement/spawn/control checks; its superseded automatic-wave-upgrade assertions have been removed. A passing test run does not establish balance, visual quality, or a human playthrough.
 
 The preserved root executable was built with MSVC 19.44.35229.0, Windows x64, and raylib 5.5. Raylib's license is included in `RAYLIB-LICENSE.txt`.
 

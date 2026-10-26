@@ -162,8 +162,7 @@ inline float outerRadius(const PatchSpec& s) {
 
 inline bool validSpec(const PatchSpec& s) {
     if (!s.ownerId || s.warningTicks < 1 || s.activeTicks < 1 || s.damage < 1 ||
-        !finite(s.center) || !std::isfinite(s.warningTicks) ||
-        !std::isfinite(s.activeTicks) || !std::isfinite(s.damage)) return false;
+        !finite(s.center)) return false;
     switch (s.shape) {
     case Shape::Disk:
         return std::isfinite(s.radius) && s.radius > 0.0f;

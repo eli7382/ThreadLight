@@ -28,7 +28,7 @@ inline float decay(float previous,float current,float alpha) {
 
 // History lives on each entity, so erasing/compacting a vector cannot blend
 // unrelated objects. New objects initialize history at their actual spawn.
-// present() returns a drawing copy and never changes simulation state.
+// present() returns drawing data and never changes simulation state.
 struct Thread {
     V p; float age;
     float previousAge=age;
@@ -38,6 +38,7 @@ struct Thread {
 inline V silkPoint(const Thread& knot,bool newest,V shownPlayer) {
     return newest&&knot.previousAge==0.f?shownPlayer:knot.p;
 }
+struct FoeView { V p; float phase, hitFlash; };
 struct Foe {
     V p,vel; float r; combat::EnemyHealth health;
     float speed,phase,hitFlash;
@@ -52,12 +53,9 @@ struct Foe {
     sower::State sowerState{};
     signature_effects::SlowState slow{};
     void capture(){previousP=p;previousPhase=phase;previousHitFlash=hitFlash;}
-    Foe present(float alpha) const {
-        auto result=*this;
-        result.p=blend(previousP,p,alpha);
-        result.phase=blend(previousPhase,phase,alpha);
-        result.hitFlash=decay(previousHitFlash,hitFlash,alpha);
-        return result;
+    FoeView present(float alpha) const {
+        return {blend(previousP,p,alpha), blend(previousPhase,phase,alpha),
+                decay(previousHitFlash,hitFlash,alpha)};
     }
 };
 struct Spark {
