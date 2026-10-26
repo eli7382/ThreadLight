@@ -9,6 +9,16 @@ namespace threadlight::timing {
 constexpr double kFixedStepSeconds = 1.0 / foundation::kTicksPerSecond;
 constexpr int kMaxStepsPerFrame = 8;
 
+// Retain brief direction presses until a simulation step consumes them.
+class MovementPressBuffer {
+public:
+    void add(unsigned presses) { pending_ |= presses & 15u; }
+    unsigned consume() { const unsigned result = pending_; pending_ = 0; return result; }
+    void clear() { pending_ = 0; }
+private:
+    unsigned pending_ = 0;
+};
+
 class FixedStepClock {
 public:
     int advance(double frameSeconds) {

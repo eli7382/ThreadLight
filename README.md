@@ -9,12 +9,17 @@ This branch is the **M7 campaign acceptance candidate**, based on accepted M6 `4
 - **WASD** or **arrow keys**: move
 - **Space**: dash (briefly invulnerable)
 - **P**: pause and resume during play; **Esc** does not pause or exit during play
-- During an evolution choice, select with **1 / 2 / 3**, **A / D / S**, **Left / Right**, or the mouse; confirm with **Enter / Space** or the **Confirm Evolution** button
+- During an evolution or signature choice, **A / D** or **Left / Right** move between cards, **S** selects the middle, and **1 / 2 / 3** select directly; confirm with **Enter / Space** or the button.
 - **Enter** ends a safe collection period early; uncollected sparks carry over without being awarded
-- **Enter** starts and retries; **R** restarts from pause; **Esc** returns to title while paused
+- **Enter** starts and retries; from pause, **R** requests a restart and **Esc** requests a return to title. Both ask for confirmation.
+- In the pause menu, choose **Upgrades & Signatures** or press **I** to inspect your build; **I** also opens it from the run recap.
 - **Esc** on the title opens an exit confirmation; **Esc** in that dialog cancels
 
 All visuals and sound effects are generated at runtime. No external art or audio assets are needed.
+
+On the first normal game, a separate practice tutorial introduces movement, dash, silk combat, and spark collection with ten hunters. Hold **B** for three seconds to skip, or press **Enter** after defeating all ten to begin the campaign. Practice progress is reset before the run starts; completing or skipping the tutorial is saved in settings. Development fixtures bypass the tutorial.
+
+The main menu's enemy codex unlocks entries as enemies are encountered in normal play. Best Run records completed normal runs, ranking victory first, then the furthest wave, then score. Development fixtures do not update either record.
 
 ## Audio (Phase 2.1)
 

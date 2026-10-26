@@ -25,6 +25,7 @@
 #include "signature_effects.h"
 #include "silk_utilities.h"
 #include "needle_interception.h"
+#include "bestiary.h"
 #include <algorithm>
 #include <array>
 #include <cmath>
@@ -32,6 +33,11 @@
 #include <charconv>
 #include <random>
 #include <string_view>
+
+#if defined(_WIN32)
+extern "C" unsigned int __stdcall timeBeginPeriod(unsigned int);
+extern "C" unsigned int __stdcall timeEndPeriod(unsigned int);
+#endif
 
 namespace {
 constexpr float kPlayerRadius=threadlight::layout::kPlayerRadius;
@@ -105,10 +111,24 @@ int main(int argc, char** argv){
  if(!sfx.initialize(audioReady))TraceLog(LOG_WARNING,"Audio device unavailable; event sounds are disabled.");
  const auto settingsPath=threadlight::settings::userSettingsPath();
  auto appSettings=threadlight::settings::load(settingsPath);
+ bool highResolutionTimer=false;
+ auto updateTimerResolution=[&](bool capped){
+#if defined(_WIN32)
+  if(capped&&!highResolutionTimer)highResolutionTimer=timeBeginPeriod(1)==0;
+  else if(!capped&&highResolutionTimer){timeEndPeriod(1);highResolutionTimer=false;}
+#else
+  (void)capped;
+#endif
+ };
+ updateTimerResolution(!m6RenderCheck&&appSettings.frameRateLimit!=0);
  sfx.setMasterVolume(appSettings.sfxVolumePercent/100.0f);
  SetTargetFPS(m6RenderCheck?60:appSettings.frameRateLimit);
  using threadlight::Mode;
  Mode mode=Mode::Title,settingsReturn=Mode::Title; bool exitRequested=false; int mainSelection=0,pauseSelection=0,exitSelection=threadlight::menu::kDefaultExitSelection,settingsTab=0,settingsFocus=0;
+ bool tutorial=false,tutorialMoved=false,tutorialDashed=false,inventoryOpen=false;
+ int titleView=0,codexSelection=0;
+ float tutorialSkipHold=0.f, bossPhaseNotice=0.f;
+ int pauseConfirm=0,confirmSelection=1,tutorialSpawnStart=-1;
  threadlight::settings::PendingEdits settingsEdits;
  namespace foundation=threadlight::foundation;
  namespace battle=threadlight::combat;
@@ -147,6 +167,7 @@ int main(int argc, char** argv){
  utilities::NeedlecatchState needlecatch;
  foundation::Point needleFlash{};int needleFlashTicks=0;
  std::uint64_t needleCatches=0,anchorProcs=0;int bloodHealing=0;
+ std::array<int,4> runDamageTaken{};
  cocoon::State cocoonState;
  loom::State loomState;
  loom::Target loomSource{};bool loomPending=false,finalBossDefeated=false;
@@ -193,6 +214,7 @@ int main(int argc, char** argv){
   for(auto& item:deathEffects)item.capture();
  };
  bool dashPressPending=false,collectionContinuePending=false;
+ threadlight::timing::MovementPressBuffer movementPressPending;
  threadlight::menu::FocusOwner menuFocus;
  float measuredFps=60.0f;
  auto saveSettings=[&](){
@@ -231,6 +253,10 @@ int main(int argc, char** argv){
    (unsigned long long)m.ticks,(unsigned long long)m.hits,(unsigned long long)m.exposedHits,
    (unsigned long long)m.contactTicks,(unsigned long long)m.cycles,m.silkDamage,m.playerDamage,boss.supportsReleased);
  };
+ auto unlockCodex=[&](int index){
+  if(bossFixture>=0||waveFixture>=0||m6RenderCheck)return;
+  const int bit=1<<index;if(!(appSettings.codexSeen&bit)){appSettings.codexSeen|=bit;settingsEdits.dirty=true;}
+ };
  auto startEncounter=[&](){
   const auto encounter=chapter::encounter(wave);
   giftReward={};anchorState={};bossSlow={};bloodstitch={};needlecatch={};needleFlashTicks=0;
@@ -243,11 +269,13 @@ int main(int argc, char** argv){
    const V start=dist(center,player)>220?center:player+direction*230.f;
    supportQueued=supportSpawned=0;
    root::start(boss,{start.x,start.y},bossArena(),wave==13?root::Kind::Dancer:wave==20?root::Kind::Conductor:wave==27?root::Kind::Hollow:wave==34?root::Kind::Heart:root::Kind::Rootwarden);
+   unlockCodex(6+static_cast<int>(boss.kind));
    bossRewardId=rewards.registerEnemy(root::kCoreValue,250);boss.hazardOwner=bossRewardId;traceBoss("start");
   }
   traceM1("encounter_start");
  };
  auto reset=[&](){
+  tutorial=false;inventoryOpen=false;pauseConfirm=0;bossPhaseNotice=0;runDamageTaken={};
   player={(playArea.left+playArea.right)*.5f,(playArea.top+playArea.bottom)*.5f};
   health={};playerWasMoving=false;ranks={};
   const int fixture=waveFixture>=0?waveFixture:bossFixture;
@@ -305,6 +333,7 @@ int main(int argc, char** argv){
   }
  };
  auto addFoe=[&](battle::EnemyKind kind,float a){
+  unlockCodex(static_cast<int>(kind));
   const auto def=battle::definition(kind,chapter::encounter(wave).chapter);const float r=def.radius;
   const float playWidth=playArea.right-playArea.left,playHeight=playArea.bottom-playArea.top;
   const float padding=r+5.f;
@@ -355,7 +384,7 @@ int main(int argc, char** argv){
  auto bossHit=[&](const root::DamageResult& hit,bool ordinary=false){
   if(hit.hit==battle::SilkHit::None)return;
   burst({boss.p.x,boss.p.y},C(194,255,227),4,80);traceBoss("silk_or_echo_hit");
-  if(hit.events.phaseChanged){sfx.play(threadlight::audio::Event::BossPhase);releaseSupports(hit.events.supports);traceBoss("phase_two");}
+  if(hit.events.phaseChanged){bossPhaseNotice=2.5f;sfx.play(threadlight::audio::Event::BossPhase);releaseSupports(hit.events.supports);traceBoss("phase_two");}
   if(hit.events.defeated){
    anchorState.targetId=0;anchorState.windowTicks=0;
    for(const auto& foe:foes){rewards.despawnEnemy(foe.rewardId);traceM1("boss_support_removal",foe.rewardId);}
@@ -384,13 +413,29 @@ int main(int argc, char** argv){
  };
  auto drawText=[&](const char* s,int x,int y,int size,Color c){DrawText(s,x,y,size,c);};
   auto applyMenuAction=[&](threadlight::menu::Action action){threadlight::menu::apply(mode,settingsReturn,exitRequested,exitSelection,action);};
-  auto changeFrameLimit=[&](int value){if(!threadlight::settings::validFrameRateLimit(value)||value==appSettings.frameRateLimit)return;appSettings.frameRateLimit=value;settingsEdits.dirty=true;saveSettings();};
+  auto changeFrameLimit=[&](int value){if(!threadlight::settings::validFrameRateLimit(value)||value==appSettings.frameRateLimit)return;appSettings.frameRateLimit=value;updateTimerResolution(value!=0);settingsEdits.dirty=true;saveSettings();};
   auto changeShowFps=[&](){appSettings.showFps=!appSettings.showFps;settingsEdits.dirty=true;saveSettings();};
   auto changeSfxVolume=[&](int value,bool persist=true){value=std::clamp(value,0,100);if(value==appSettings.sfxVolumePercent)return;appSettings.sfxVolumePercent=value;settingsEdits.dirty=true;sfx.setMasterVolume(value/100.0f);if(persist)saveSettings();};
   auto contains=[](Rectangle rectangle,Vector2 point){return CheckCollisionPointRec(point,rectangle);};
   auto buttonRect=[&](int index,int count,float centerY,float width=300.f,float height=46.f,float gap=54.f){return Rectangle{(SW-width)*.5f,centerY+(index-(count-1)*.5f)*gap-height*.5f,width,height};};
-  auto mainButton=[&](int index){return buttonRect(index,3,SH*.5f+96.f,310.f,46.f,56.f);};
-  auto pauseButton=[&](int index){return buttonRect(index,4,SH*.5f+72.f,330.f,44.f,50.f);};
+  auto mainButton=[&](int index){return buttonRect(index,5,SH*.5f+86.f,310.f,38.f,43.f);};
+  auto codexButton=[&](int index){return Rectangle{SW*.5f-390.f,SH*.5f-205.f+index*29.f,240.f,26.f};};
+  auto titleBack=[&](){return Rectangle{SW*.5f-90.f,SH*.5f+190.f,180.f,38.f};};
+  auto pauseButton=[&](int index){return buttonRect(index,5,SH*.5f+72.f,330.f,38.f,43.f);};
+  auto confirmButton=[&](int index){return Rectangle{SW*.5f-160.f+index*165.f,SH*.5f+25.f,155.f,42.f};};
+  auto startGame=[&](){
+   reset();
+   if(!appSettings.tutorialCompleted&&bossFixture<0&&waveFixture<0){
+    tutorial=true;tutorialMoved=tutorialDashed=false;tutorialSkipHold=0.f;tutorialSpawnStart=-1;
+    lifecycle.start({24*60*60*foundation::kTicksPerSecond,false});
+    spawnSchedule={};spawnSchedule.count=10;
+    for(int i=0;i<10;++i)spawnSchedule.items[i]={i*180,battle::EnemyKind::Hunter,(i%2)*chapter::kPi};
+    spawnCursor=0;
+   }
+  };
+  auto finishTutorial=[&](){
+   tutorial=false;appSettings.tutorialCompleted=true;settingsEdits.dirty=true;saveSettings();reset();
+  };
 
   int loggedWidth=0,loggedHeight=0,loggedRenderWidth=0,loggedRenderHeight=0;
   Vector2 loggedDpi{0.0f,0.0f};
@@ -459,7 +504,7 @@ int main(int argc, char** argv){
      for(size_t i=0;i<offensiveEcho.count;++i){offensiveEcho.path[i].x+=shift.x;offensiveEcho.path[i].y+=shift.y;}
      offensiveEcho.path[offensiveEcho.count-1]={player.x,player.y};
     }
-    stepClock.clear();dashPressPending=collectionContinuePending=false;capturePresentation();
+    stepClock.clear();dashPressPending=collectionContinuePending=false;movementPressPending.clear();capturePresentation();
    }
 
    const float settingsWidth=std::min(860.f,static_cast<float>(SW-40));
@@ -495,38 +540,57 @@ int main(int argc, char** argv){
    if(settingsEdits.finishDrag(mode==Mode::Settings&&settingsTab==1,
        IsWindowFocused(),IsMouseButtonDown(MOUSE_BUTTON_LEFT),menuKey))saveSettings();
 
-   if(screenAtFrameStart==Mode::Title){
+   if(screenAtFrameStart==Mode::Title&&titleView==1){
+    if(IsKeyPressed(KEY_ESCAPE))titleView=0;
+    else if(IsKeyPressed(KEY_UP))codexSelection=threadlight::menu::moveSelection(codexSelection,-1,11);
+    else if(IsKeyPressed(KEY_DOWN))codexSelection=threadlight::menu::moveSelection(codexSelection,1,11);
+    else if(hovered(titleBack())&&IsMouseButtonPressed(MOUSE_BUTTON_LEFT))titleView=0;
+    else for(int i=0;i<11;++i)if(hovered(codexButton(i))&&IsMouseButtonPressed(MOUSE_BUTTON_LEFT))codexSelection=i;
+   }else if(screenAtFrameStart==Mode::Title&&titleView==2){
+    if(IsKeyPressed(KEY_ESCAPE)||IsKeyPressed(KEY_ENTER)||IsKeyPressed(KEY_SPACE)||(hovered(titleBack())&&IsMouseButtonPressed(MOUSE_BUTTON_LEFT)))titleView=0;
+   }else if(screenAtFrameStart==Mode::Title){
     if(IsKeyPressed(KEY_ESCAPE))applyMenuAction(threadlight::menu::Action::Escape);
-    else if(IsKeyPressed(KEY_UP))mainSelection=threadlight::menu::moveSelection(mainSelection,-1,3);
-    else if(IsKeyPressed(KEY_DOWN))mainSelection=threadlight::menu::moveSelection(mainSelection,1,3);
+    else if(IsKeyPressed(KEY_UP))mainSelection=threadlight::menu::moveSelection(mainSelection,-1,5);
+    else if(IsKeyPressed(KEY_DOWN))mainSelection=threadlight::menu::moveSelection(mainSelection,1,5);
     else if(IsKeyPressed(KEY_ENTER)||IsKeyPressed(KEY_SPACE)){
-     if(mainSelection==0)reset();
-     else if(mainSelection==1)applyMenuAction(threadlight::menu::Action::OpenSettings);
+     if(mainSelection==0)startGame();
+     else if(mainSelection==1)titleView=1;
+     else if(mainSelection==2)titleView=2;
+     else if(mainSelection==3)applyMenuAction(threadlight::menu::Action::OpenSettings);
      else applyMenuAction(threadlight::menu::Action::RequestExit);
-    }else for(int i=0;i<3;i++)if(hovered(mainButton(i))){
+    }else for(int i=0;i<5;i++)if(hovered(mainButton(i))){
      mainSelection=i;
      if(IsMouseButtonPressed(MOUSE_BUTTON_LEFT)){
-      if(i==0)reset();else if(i==1)applyMenuAction(threadlight::menu::Action::OpenSettings);else applyMenuAction(threadlight::menu::Action::RequestExit);
+      if(i==0)startGame();else if(i==1)titleView=1;else if(i==2)titleView=2;else if(i==3)applyMenuAction(threadlight::menu::Action::OpenSettings);else applyMenuAction(threadlight::menu::Action::RequestExit);
      }
     }
    }else if(screenAtFrameStart==Mode::Pause){
-    if(IsKeyPressed(KEY_P))applyMenuAction(threadlight::menu::Action::Resume);
-    else if(IsKeyPressed(KEY_ESCAPE))applyMenuAction(threadlight::menu::Action::Escape);
-    else if(IsKeyPressed(KEY_R))reset();
-    else if(IsKeyPressed(KEY_UP))pauseSelection=threadlight::menu::moveSelection(pauseSelection,-1,4);
-    else if(IsKeyPressed(KEY_DOWN))pauseSelection=threadlight::menu::moveSelection(pauseSelection,1,4);
+    if(pauseConfirm){
+     if(IsKeyPressed(KEY_ESCAPE)){pauseConfirm=0;}
+     else if(IsKeyPressed(KEY_LEFT)||IsKeyPressed(KEY_RIGHT)||IsKeyPressed(KEY_UP)||IsKeyPressed(KEY_DOWN))confirmSelection=1-confirmSelection;
+     else if(IsKeyPressed(KEY_ENTER)||IsKeyPressed(KEY_SPACE)){
+      if(confirmSelection==0){if(pauseConfirm==1)startGame();else {tutorial=false;applyMenuAction(threadlight::menu::Action::ReturnToMainMenu);}}
+      pauseConfirm=0;
+     }else for(int i=0;i<2;++i)if(hovered(confirmButton(i))){confirmSelection=i;if(IsMouseButtonPressed(MOUSE_BUTTON_LEFT)){if(i==0){if(pauseConfirm==1)startGame();else {tutorial=false;applyMenuAction(threadlight::menu::Action::ReturnToMainMenu);}}pauseConfirm=0;}}
+    }else if(inventoryOpen){if(IsKeyPressed(KEY_ESCAPE)||IsKeyPressed(KEY_I)||IsKeyPressed(KEY_P)||(IsMouseButtonPressed(MOUSE_BUTTON_LEFT)&&hovered(Rectangle{SW*.5f-90.f,SH*.5f+235.f,180.f,38.f})))inventoryOpen=false;}
+    else if(IsKeyPressed(KEY_P))applyMenuAction(threadlight::menu::Action::Resume);
+    else if(IsKeyPressed(KEY_ESCAPE)){pauseConfirm=2;confirmSelection=1;}
+    else if(IsKeyPressed(KEY_R)){pauseConfirm=1;confirmSelection=1;}
+    else if(IsKeyPressed(KEY_I))inventoryOpen=true;
+    else if(IsKeyPressed(KEY_UP))pauseSelection=threadlight::menu::moveSelection(pauseSelection,-1,5);
+    else if(IsKeyPressed(KEY_DOWN))pauseSelection=threadlight::menu::moveSelection(pauseSelection,1,5);
     else if(IsKeyPressed(KEY_ENTER)||IsKeyPressed(KEY_SPACE)){
      if(pauseSelection==0)applyMenuAction(threadlight::menu::Action::Resume);
      else if(pauseSelection==1)applyMenuAction(threadlight::menu::Action::OpenSettings);
-     else if(pauseSelection==2)reset();
-     else applyMenuAction(threadlight::menu::Action::ReturnToMainMenu);
-    }else for(int i=0;i<4;i++)if(hovered(pauseButton(i))){
+     else if(pauseSelection==2)inventoryOpen=true;
+     else {pauseConfirm=pauseSelection==3?1:2;confirmSelection=1;}
+    }else for(int i=0;i<5;i++)if(hovered(pauseButton(i))){
      pauseSelection=i;
      if(IsMouseButtonPressed(MOUSE_BUTTON_LEFT)){
       if(i==0)applyMenuAction(threadlight::menu::Action::Resume);
       else if(i==1)applyMenuAction(threadlight::menu::Action::OpenSettings);
-      else if(i==2)reset();
-      else applyMenuAction(threadlight::menu::Action::ReturnToMainMenu);
+      else if(i==2)inventoryOpen=true;
+      else {pauseConfirm=i==3?1:2;confirmSelection=1;}
      }
     }
    }else if(screenAtFrameStart==Mode::Settings){
@@ -569,11 +633,15 @@ int main(int argc, char** argv){
     else if(hovered(yesButton)){exitSelection=0;if(IsMouseButtonPressed(MOUSE_BUTTON_LEFT))applyMenuAction(threadlight::menu::Action::ConfirmExit);}
     else if(hovered(noButton)){exitSelection=1;if(IsMouseButtonPressed(MOUSE_BUTTON_LEFT))applyMenuAction(threadlight::menu::Action::CancelExit);}
    }else if(screenAtFrameStart==Mode::Play){
-    if(IsKeyPressed(KEY_P)){
+    if(tutorial){tutorialSkipHold=IsWindowFocused()&&IsKeyDown(KEY_B)?std::min(3.f,tutorialSkipHold+(float)frameSeconds):0.f;}
+    if(tutorial&&(tutorialSkipHold>=3.f||(rewards.counters().killed>=10&&IsKeyPressed(KEY_ENTER)))){
+     finishTutorial();
+    }else if(IsKeyPressed(KEY_P)){
      applyMenuAction(threadlight::menu::Action::Pause);
      stepClock.clear();dashPressPending=collectionContinuePending=false;
     }else{
      dashPressPending=dashPressPending||IsKeyPressed(KEY_SPACE);
+     movementPressPending.add((IsKeyPressed(KEY_A)||IsKeyPressed(KEY_LEFT)?1u:0u)|(IsKeyPressed(KEY_D)||IsKeyPressed(KEY_RIGHT)?2u:0u)|(IsKeyPressed(KEY_W)||IsKeyPressed(KEY_UP)?4u:0u)|(IsKeyPressed(KEY_S)||IsKeyPressed(KEY_DOWN)?8u:0u));
      if(lifecycle.phase()==foundation::Phase::Collection)
       collectionContinuePending=collectionContinuePending||IsKeyPressed(KEY_ENTER);
      const int steps=stepClock.advance(frameSeconds);
@@ -586,16 +654,20 @@ int main(int argc, char** argv){
       const bool combat=foundation::isCombat(tickPhase);
       const bool continueCollection=collectionContinuePending;collectionContinuePending=false;
       if(tickPhase==foundation::Phase::Countdown){
-       dashPressPending=false;
+       dashPressPending=false;movementPressPending.clear();
        lifecycle.tick(foes.size());
        if(lifecycle.phase()!=tickPhase)traceM1("transition");
        continue;
       }
       if(!combat&&tickPhase!=foundation::Phase::Collection)break;
       battle::tick(health);dashCd=std::max(0.f,dashCd-dt);pulse=std::max(0.f,pulse-dt);damageFeedback=std::max(0.f,damageFeedback-dt);shake=std::max(0.f,shake-dt);dashVisualActive=dashTime>0;dashEchoTimer=std::max(0.f,dashEchoTimer-dt);
-      V mv{(float)(IsKeyDown(KEY_D)||IsKeyDown(KEY_RIGHT))-(float)(IsKeyDown(KEY_A)||IsKeyDown(KEY_LEFT)),(float)(IsKeyDown(KEY_S)||IsKeyDown(KEY_DOWN))-(float)(IsKeyDown(KEY_W)||IsKeyDown(KEY_UP))}; if(len(mv)>0)mv=norm(mv);playerWasMoving=len(mv)>0;
+      const unsigned pressedDirections=movementPressPending.consume();
+      V mv{(float)(IsKeyDown(KEY_D)||IsKeyDown(KEY_RIGHT)||(pressedDirections&2))-(float)(IsKeyDown(KEY_A)||IsKeyDown(KEY_LEFT)||(pressedDirections&1)),(float)(IsKeyDown(KEY_S)||IsKeyDown(KEY_DOWN)||(pressedDirections&8))-(float)(IsKeyDown(KEY_W)||IsKeyDown(KEY_UP)||(pressedDirections&4))}; if(len(mv)>0)mv=norm(mv);playerWasMoving=len(mv)>0;
+      if(tutorial&&playerWasMoving)tutorialMoved=true;
       const bool dashPressed=dashPressPending;dashPressPending=false;
       if(dashPressed&&dashCd<=0&&len(mv)>0){afterimage::beginDash(offensiveEcho,{player.x,player.y},combat,signatureReward.owned);dashTime=threadlight::kDashDurationSeconds;dashCd=stats.dashCooldownSeconds;dashCycleDuration=dashCd;dashEcho.fill(player);dashEchoCount=0;dashEchoFade=.22f;dashEchoTimer=0;dashVisualActive=true;burst(player,C(132,244,255),10,150);sfx.play(threadlight::audio::Event::Dash);}
+      if(tutorial&&dashTime>0&&!tutorialDashed){tutorialDashed=true;tutorialSpawnStart=phaseElapsedAtStart;}
+      bossPhaseNotice=std::max(0.f,bossPhaseNotice-dt);
       const bool dashActiveThisFrame=threadlight::dashProtectsCollisionThisFrame(dashTime);dashVisualActive=dashVisualActive||dashActiveThisFrame;dashEchoFade=std::max(0.f,dashEchoFade-dt);float mult=dashActiveThisFrame?stats.dashMultiplier:1.f;if(dashActiveThisFrame)dashTime=std::max(0.f,dashTime-dt);player=player+mv*(stats.moveSpeed*mult*dt);player.x=threadlight::layout::clampPlayerX(player.x,playArea);player.y=threadlight::layout::clampPlayerY(player.y,playArea);
       if(dashActiveThisFrame){
        afterimage::appendDash(offensiveEcho,{previousPlayer.x,previousPlayer.y},{player.x,player.y},combat);
@@ -633,7 +705,7 @@ int main(int argc, char** argv){
        if(crossPulse.triggered){pulseCenter=crossPulse.center;pulseRadius=cross::kPulseRadius;pulseTicks=24;++crossPulses;sfx.play(threadlight::audio::Event::Afterimage);burst({pulseCenter.x,pulseCenter.y},C(170,237,226),12,110);traceM1("crossweave_pulse",crossPulses);}
        const bool bossEncounter=chapter::encounter(wave).boss;
        if(tickPhase==foundation::Phase::Spawning&&!bossEncounter){
-        while(spawnCursor<spawnSchedule.count&&spawnSchedule.items[spawnCursor].tick<=phaseElapsedAtStart){
+        while((!tutorial||tutorialSpawnStart>=0)&&spawnCursor<spawnSchedule.count&&spawnSchedule.items[spawnCursor].tick<=phaseElapsedAtStart-(tutorial?tutorialSpawnStart:0)){
          const auto entry=spawnSchedule.items[spawnCursor++];addFoe(entry.kind,entry.angle);
         }
        }
@@ -707,6 +779,8 @@ int main(int argc, char** argv){
          for(auto& f:foes)if(f.rewardId==grants.items[i].id)f.projectileTicket=projectiles.reserve(f.rewardId);
        }
        battle::IncomingHit incoming;
+       int incomingKind=0;
+       auto considerDamage=[&](int amount,std::uint64_t id,int kind){const auto before=incoming;incoming.consider(amount,id);if(before.damage!=incoming.damage||before.sourceId!=incoming.sourceId)incomingKind=kind;};
        for(auto &f:foes){
         const V oldPosition=f.p;
         const float pursuitFactor=effects::factor(f.slow,false);
@@ -830,20 +904,20 @@ int main(int argc, char** argv){
         }
        }
        for(const auto& f:foes)if(f.health.alive()&&battle::bodyContact({previousPlayer.x,previousPlayer.y},{player.x,player.y},radius,
-          {f.previousP.x,f.previousP.y},{f.p.x,f.p.y},f.r))incoming.consider(battle::definition(f.kind,chapter::encounter(wave).chapter).contactDamage,f.rewardId);
+          {f.previousP.x,f.previousP.y},{f.p.x,f.p.y},f.r))considerDamage(battle::definition(f.kind,chapter::encounter(wave).chapter).contactDamage,f.rewardId,0);
        if(bossEncounter&&root::alive(boss)){
-        incoming.consider(root::incomingDamage(boss,{previousPlayer.x,previousPlayer.y},{player.x,player.y},radius),bossRewardId);
+        considerDamage(root::incomingDamage(boss,{previousPlayer.x,previousPlayer.y},{player.x,player.y},radius),bossRewardId,1);
         const auto bossImpacts=root::projectileTick(boss,{previousPlayer.x,previousPlayer.y},{player.x,player.y},radius,bossArena());
-        for(int i=0;i<bossImpacts.count;++i)incoming.consider(bossImpacts.items[i].damage,bossRewardId);
+        for(int i=0;i<bossImpacts.count;++i)considerDamage(bossImpacts.items[i].damage,bossRewardId,1);
         const auto fieldHit=boss.fields.tick({previousPlayer.x,previousPlayer.y},{player.x,player.y},radius);
-        incoming.consider(fieldHit.damage,fieldHit.sourceId);
+        considerDamage(fieldHit.damage,fieldHit.sourceId,1);
        }
        const auto groundHit=ground.tick({previousPlayer.x,previousPlayer.y},{player.x,player.y},radius);
-       incoming.consider(groundHit.damage,groundHit.sourceId);
+       considerDamage(groundHit.damage,groundHit.sourceId,3);
        const auto impacts=projectiles.tick({previousPlayer.x,previousPlayer.y},{player.x,player.y},radius,
         {playArea.left,playArea.right,playArea.top,playArea.bottom});
        for(int i=0;i<impacts.count;++i){
-        incoming.consider(impacts.items[i].damage,impacts.items[i].sourceId);
+        considerDamage(impacts.items[i].damage,impacts.items[i].sourceId,2);
         traceM1("projectile_contact",impacts.items[i].projectileId,(int)impacts.items[i].sourceId);
        }
        afterimage::advance(offensiveEcho,true);
@@ -851,6 +925,7 @@ int main(int argc, char** argv){
        const int damage=battle::applyIncoming(health,incoming,dashActiveThisFrame,cocoon::barrierActive(cocoonState)?&cocoonState.barrierCenti:nullptr,stats.damageReductionPercent);
        if(barrierBefore>cocoonState.barrierCenti){barrierAbsorbed+=barrierBefore-cocoonState.barrierCenti;burst(player,C(221,239,185),8,90);traceM1("cocoon_absorbed",incoming.sourceId,barrierBefore-cocoonState.barrierCenti);}
        if(damage){
+        runDamageTaken[incomingKind]+=damage;
         if(bossEncounter)boss.metrics.playerDamage+=damage;
         traceM1("player_damage",incoming.sourceId,damage);
         damageFeedback=threadlight::visual::kDamageFeedbackDuration;shake=threadlight::visual::kDamageShakeSeconds;
@@ -881,7 +956,8 @@ int main(int argc, char** argv){
       else if(lifecycle.phase()!=tickPhase)traceM1("transition");
       // Complete bookkeeping on a lethal tick, but never open rewards or advance
       // encounters after defeat. Loss retains outcome precedence.
-      if(!health.alive()){signatureCatalog={};giftReward={};anchorState={};bossSlow={};needleFlashTicks=0;signatureReward={};crossReward={};cocoonReward={};loomReward={};cross::clear(crossState);cocoon::clear(cocoonState);loom::clear(loomState);loomPending=false;ground.clear();pulseTicks=0;root::clearThreats(boss);afterimage::clear(offensiveEcho);projectiles.clear();attackCoordinator.clear();mode=Mode::Lost;sfx.play(threadlight::audio::Event::Defeat);traceM1("defeat");continue;}
+      if(tutorial&&!health.alive())health.hp=health.maxHp;
+      if(!health.alive()){giftReward={};anchorState={};bossSlow={};needleFlashTicks=0;signatureReward={};crossReward={};cocoonReward={};loomReward={};cross::clear(crossState);cocoon::clear(cocoonState);loom::clear(loomState);loomPending=false;ground.clear();pulseTicks=0;root::clearThreats(boss);afterimage::clear(offensiveEcho);projectiles.clear();attackCoordinator.clear();mode=Mode::Lost;sfx.play(threadlight::audio::Event::Defeat);traceM1("defeat");continue;}
       if(finalBossDefeated){mode=Mode::Won;sfx.play(threadlight::audio::Event::Victory);traceM1("campaign_victory");continue;}
       if(events.enteredPendingRewards){
        if(m1Telemetry)TraceLog(LOG_INFO,"M5 wave=%d cross_pulses=%llu cross_hits=%llu cross_damage=%d",wave+1,(unsigned long long)crossPulses,(unsigned long long)crossHits,crossDamage);
@@ -906,11 +982,11 @@ int main(int argc, char** argv){
     const auto cards=upgradeUI::layout(SW,SH,offers.current.count);
     const int pointed=menuFocus.mouseOwnsFocus()?upgradeUI::cardAt(cards,mouse.x,mouse.y,offers.current.count):-1;
     if(pointed>=0)choice=pointed;
-    if(IsKeyPressed(KEY_ONE)||IsKeyPressed(KEY_A))choice=0;
-    else if(IsKeyPressed(KEY_TWO)||IsKeyPressed(KEY_D))choice=1;
-    else if(IsKeyPressed(KEY_THREE)||IsKeyPressed(KEY_S))choice=2;
-    else if(IsKeyPressed(KEY_LEFT))choice=threadlight::menu::moveSelection(choice,-1,offers.current.count);
-    else if(IsKeyPressed(KEY_RIGHT))choice=threadlight::menu::moveSelection(choice,1,offers.current.count);
+    if(IsKeyPressed(KEY_ONE))choice=0;
+    else if(IsKeyPressed(KEY_TWO)||IsKeyPressed(KEY_S))choice=1;
+    else if(IsKeyPressed(KEY_THREE))choice=2;
+    else if(IsKeyPressed(KEY_LEFT)||IsKeyPressed(KEY_A))choice=threadlight::menu::moveSelection(choice,-1,offers.current.count);
+    else if(IsKeyPressed(KEY_RIGHT)||IsKeyPressed(KEY_D))choice=threadlight::menu::moveSelection(choice,1,offers.current.count);
     choice=std::clamp(choice,0,std::max(0,offers.current.count-1));
     const bool confirm=IsKeyPressed(KEY_ENTER)||IsKeyPressed(KEY_SPACE)||
      (menuFocus.mouseOwnsFocus()&&IsMouseButtonPressed(MOUSE_BUTTON_LEFT)&&upgradeUI::contains(cards.confirm,mouse.x,mouse.y));
@@ -933,11 +1009,11 @@ int main(int argc, char** argv){
     const auto ui=upgradeUI::layout(SW,SH,count);
     const int pointed=menuFocus.mouseOwnsFocus()?upgradeUI::cardAt(ui,mouse.x,mouse.y,count):-1;
     if(pointed>=0)choice=pointed;
-    if(IsKeyPressed(KEY_ONE)||IsKeyPressed(KEY_A))choice=0;
-    else if(IsKeyPressed(KEY_TWO)||IsKeyPressed(KEY_D))choice=1;
-    else if(IsKeyPressed(KEY_THREE)||IsKeyPressed(KEY_S))choice=2;
-    else if(IsKeyPressed(KEY_LEFT))choice=threadlight::menu::moveSelection(choice,-1,count);
-    else if(IsKeyPressed(KEY_RIGHT))choice=threadlight::menu::moveSelection(choice,1,count);
+    if(IsKeyPressed(KEY_ONE))choice=0;
+    else if(IsKeyPressed(KEY_TWO)||IsKeyPressed(KEY_S))choice=1;
+    else if(IsKeyPressed(KEY_THREE))choice=2;
+    else if(IsKeyPressed(KEY_LEFT)||IsKeyPressed(KEY_A))choice=threadlight::menu::moveSelection(choice,-1,count);
+    else if(IsKeyPressed(KEY_RIGHT)||IsKeyPressed(KEY_D))choice=threadlight::menu::moveSelection(choice,1,count);
     choice=std::clamp(choice,0,std::max(0,count-1));
     const bool confirm=IsKeyPressed(KEY_ENTER)||IsKeyPressed(KEY_SPACE)||
      (menuFocus.mouseOwnsFocus()&&IsMouseButtonPressed(MOUSE_BUTTON_LEFT)&&upgradeUI::contains(ui.confirm,mouse.x,mouse.y));
@@ -951,12 +1027,19 @@ int main(int argc, char** argv){
      stepClock.clear();dashPressPending=collectionContinuePending=false;mode=Mode::Play;finishEncounter();
     }
    }
-   else if(screenAtFrameStart==Mode::Lost||screenAtFrameStart==Mode::Won){if(IsKeyPressed(KEY_ENTER)||IsKeyPressed(KEY_R))reset();else if(IsKeyPressed(KEY_ESCAPE))applyMenuAction(threadlight::menu::Action::Escape);}
+   else if(screenAtFrameStart==Mode::Lost||screenAtFrameStart==Mode::Won){if(inventoryOpen){if(IsKeyPressed(KEY_ESCAPE)||IsKeyPressed(KEY_I)||(IsMouseButtonPressed(MOUSE_BUTTON_LEFT)&&hovered(Rectangle{SW*.5f-90.f,SH*.5f+235.f,180.f,38.f})))inventoryOpen=false;}else if(IsKeyPressed(KEY_I))inventoryOpen=true;else if(IsKeyPressed(KEY_ENTER)||IsKeyPressed(KEY_R))reset();else if(IsKeyPressed(KEY_ESCAPE))applyMenuAction(threadlight::menu::Action::Escape);}
 
    if(settingsEdits.finishDrag(mode==Mode::Settings&&settingsTab==1,
        IsWindowFocused(),IsMouseButtonDown(MOUSE_BUTTON_LEFT),false))saveSettings();
 
-   if(mode!=screenAtFrameStart){stepClock.clear();dashPressPending=collectionContinuePending=false;capturePresentation();}
+   if(mode!=screenAtFrameStart){
+    if((mode==Mode::Lost||mode==Mode::Won)&&!tutorial&&bossFixture<0&&waveFixture<0){
+     const bool won=mode==Mode::Won;const bool better=threadlight::settings::isBetterRun(appSettings,won,wave+1,rewards.score());
+     if(better){appSettings.bestWave=wave+1;appSettings.bestWon=won;appSettings.bestScore=rewards.score();appSettings.bestKills=rewards.counters().killed;settingsEdits.dirty=true;}
+    }
+    if(settingsEdits.dirty&&!m6RenderCheck)saveSettings();
+    stepClock.clear();dashPressPending=collectionContinuePending=false;movementPressPending.clear();capturePresentation();
+   }
    const float alpha=mode==Mode::Play?stepClock.presentationAlpha():1.f;
    const V shownPlayer=threadlight::presentation::blend(previousPlayer,player,alpha);
    const float shownShake=threadlight::presentation::decay(previousShake,shake,alpha);
@@ -1221,6 +1304,22 @@ int main(int argc, char** argv){
    if(open)DrawCircleV(pos,7,C(255,223,154,225));
    else DrawPoly(pos,4,6,45,bark);
   }
+  if(chapter::encounter(wave).boss&&root::alive(boss)){
+   const auto shown=root::interpolate(boss.previousP,boss.p,alpha);const Vector2 pos{shown.x,shown.y};
+   const bool open=root::exposed(boss);
+   const float barWidth=160.f,barX=std::clamp(pos.x-barWidth*.5f,8.f,(float)SW-barWidth-8.f);
+   const float offset=root::vulnerableRadius(boss)+22.f;
+   const float barY=pos.y-offset<80.f?pos.y+offset:pos.y-offset;
+   DrawRectangle((int)barX-2,(int)barY-17,(int)barWidth+4,26,C(5,10,24,220));
+   DrawText(TextFormat("%s / PHASE %d",root::name(boss),boss.phase),(int)barX,(int)barY-14,10,C(239,216,192));
+   DrawRectangle((int)barX,(int)barY,(int)barWidth,5,C(61,45,62));
+   DrawRectangle((int)barX,(int)barY,(int)(barWidth*std::clamp((float)boss.health.hp/boss.health.maxHp,0.f,1.f)),5,open?C(255,218,141):C(225,121,151));
+   const float threshold1=boss.kind==root::Kind::Rootwarden?.55f:boss.kind==root::Kind::Heart?.75f:boss.kind==root::Kind::Dancer?.70f:.65f;
+   const float threshold2=boss.kind==root::Kind::Heart?.50f:boss.kind==root::Kind::Dancer?.35f:.30f;
+   DrawRectangle((int)(barX+barWidth*threshold1)-1,(int)barY,2,5,C(255,239,210));
+   if(boss.kind!=root::Kind::Rootwarden)DrawRectangle((int)(barX+barWidth*threshold2)-1,(int)barY,2,5,C(255,239,210));
+   if(boss.kind==root::Kind::Heart)DrawRectangle((int)(barX+barWidth*.25f)-1,(int)barY,2,5,C(255,239,210));
+  }
   for(const auto& source:foes){auto f=source.present(alpha);
    const float flash=threadlight::visual::hitFlashStrength(f.hitFlash);
    const bool heavy=f.kind==battle::EnemyKind::Brute,skitterBody=f.kind==battle::EnemyKind::Skitter,spitterBody=f.kind==battle::EnemyKind::Spitter,bulwarkBody=f.kind==battle::EnemyKind::Bulwark,sowerBody=f.kind==battle::EnemyKind::Sower;
@@ -1270,6 +1369,7 @@ int main(int argc, char** argv){
    const Color core=dashVisual?C(224,251,255,255):ColorLerp(C(221,255,245,255),C(255,171,181,255),impact*.48f);
    DrawCircleV(cv(shownPlayer),radius+4,rim);
    DrawCircleV(cv(shownPlayer),radius,core);
+   if(dashVisual)DrawCircleLines((int)shownPlayer.x,(int)shownPlayer.y,radius+8,C(204,251,255,245));
    if(cocoon::barrierActive(cocoonState))DrawCircleLines((int)shownPlayer.x,(int)shownPlayer.y,radius+9,C(223,241,188,215));
    if(impact>0){const float ringRadius=threadlight::visual::damageRingRadius(radius,shownDamageFeedback);DrawRing(cv(shownPlayer),ringRadius,ringRadius+1.6f,0,360,48,C(255,118,139,(unsigned char)(100*impact)));}
   }
@@ -1288,21 +1388,19 @@ int main(int argc, char** argv){
    DrawText(TextFormat("VITALITY %.0f / %d",health.hp/100.f,health.maxHp/100),(int)hud.healthX,17,11,C(120,164,178));
    DrawRectangle((int)hud.healthX,38,(int)hud.healthWidth,10,C(34,49,67));
    DrawRectangle((int)hud.healthX,38,(int)(hud.healthWidth*std::clamp((float)health.hp/health.maxHp,0.f,1.f)),10,health.hp>health.maxHp*.35f?C(72,225,190):C(255,91,127));
-   drawText(TextFormat("WAVE %d / %d",wave+1,chapter::kEncounterCount),(int)hud.waveX,22,18,C(217,239,242));
+   drawText(tutorial?"TUTORIAL":TextFormat("WAVE %d / %d",wave+1,chapter::kEncounterCount),(int)hud.waveX,22,18,C(217,239,242));
    drawText(TextFormat("SPARKS %lld / %d",(long long)rewards.remainder(),rewards.nextThreshold()),(int)hud.sparksX,24,15,C(255,213,131));
    drawText(TextFormat("SCORE %06llu",(unsigned long long)rewards.score()),(int)hud.scoreX,24,17,C(177,208,221));
-   drawText(chapter::encounter(wave).boss&&foundation::isCombat(lifecycle.phase())?"DEFEAT THE GUARDIAN":TextFormat("%s %.1fs",foundation::phaseName(lifecycle.phase()),lifecycle.remainingTicks()/120.f),(int)hud.waveX,51,11,C(121,196,197));
+   drawText(tutorial?"PRACTICE":chapter::encounter(wave).boss&&foundation::isCombat(lifecycle.phase())?"DEFEAT THE GUARDIAN":TextFormat("%s %.1fs",foundation::phaseName(lifecycle.phase()),lifecycle.remainingTicks()/120.f),(int)hud.waveX,51,11,C(121,196,197));
    drawText(TextFormat("CREDITS %llu",(unsigned long long)rewards.pendingCredits()),(int)hud.sparksX,51,11,C(177,208,221));
   }
   if(showRunHud&&catalog::ownedCount(signatureCatalog)&&!chapter::encounter(wave).boss)
    DrawText(TextFormat("SIGNATURES %d / 4",catalog::ownedCount(signatureCatalog)),26,60,11,C(228,216,151));
   if(showRunHud&&cocoonReward.owned)DrawText(cocoon::barrierActive(cocoonState)?TextFormat("COCOON %.1f HP / %.1fs",cocoonState.barrierCenti/100.f,cocoonState.remainingTicks/120.f):cocoonState.cooldownTicks?TextFormat("COCOON %.1fs",cocoonState.cooldownTicks/120.f):"COCOON / LOOP READY",(int)hud.healthX,55,10,C(193,224,174));
-  if(showRunHud&&chapter::encounter(wave).boss){
-   const auto b=chapterHud::layout(SW,SH).bossBar;
-   DrawText(root::name(boss),26,60,13,C(226,197,161));
-   DrawRectangle((int)b.x,(int)b.y,(int)b.width,(int)b.height,C(50,39,58));
-   DrawRectangle((int)b.x,(int)b.y,(int)(b.width*(float)boss.health.hp/boss.health.maxHp),(int)b.height,root::exposed(boss)?C(255,218,141):C(225,121,151));
-   DrawText(TextFormat("%s %.0f/%d",!root::alive(boss)?"DEFEATED":root::exposed(boss)?"EXPOSED +1":boss.stage==root::Stage::Transition?"TRANSITION":boss.phase==4?"ACT IV":boss.phase==1?"PHASE I":boss.phase==2?"PHASE II":"PHASE III",boss.health.hp/100.f,boss.health.maxHp/100),(int)(b.x+b.width+12),60,13,C(223,197,182));
+  if(showRunHud&&bossPhaseNotice>0&&chapter::encounter(wave).boss){
+   const char* notice=TextFormat("%s / PHASE %d",root::name(boss),boss.phase);
+   const int width=MeasureText(notice,18);DrawRectangle(SW/2-width/2-12,85,width+24,30,C(5,10,24,225));
+   DrawText(notice,SW/2-width/2,91,18,C(255,218,161));
   }
   if(showRunHud&&upgrades::rank(ranks,upgrades::Id::Needlecatch)>0)
    DrawText(needlecatch.cooldownTicks?TextFormat("NEEDLECATCH %.1fs",needlecatch.cooldownTicks/120.f):"NEEDLECATCH / READY",24,(int)hud.footerY-8,10,C(200,218,168));
@@ -1318,8 +1416,15 @@ int main(int argc, char** argv){
    drawText("SFX IN SETTINGS",(int)hud.settingsHintX,(int)(footerY+20),12,C(149,191,199));
    drawText("P  PAUSE",(int)hud.pauseHintX,(int)(footerY+20),12,C(149,191,199));
   }
+  if(tutorial&&mode==Mode::Play){
+   DrawRectangle(SW/2-260,112,520,91,C(5,10,24,225));
+   const char* instruction=!tutorialMoved?"MOVE WITH WASD OR ARROW KEYS":!tutorialDashed?"MOVE AND PRESS SPACE TO DASH":rewards.counters().killed<10?"WEAVE SILK THROUGH THE HUNTERS":"PRACTICE COMPLETE / ENTER TO START";
+   DrawText(instruction,SW/2-MeasureText(instruction,17)/2,122,17,C(217,250,236));
+   DrawText(tutorialDashed?TextFormat("Hunters defeated: %llu / 10   -   Walk over sparks to collect them",(unsigned long long)rewards.counters().killed):"Your movement leaves a damaging silk trail.",SW/2-240,148,13,C(165,211,207));
+   DrawText("P: pause   |   Hold B for 3 seconds to skip",SW/2-240,173,13,C(255,213,131));
+   DrawRectangle(SW/2+155,191,85,3,C(48,70,78));DrawRectangle(SW/2+155,191,(int)(85*tutorialSkipHold/3.f),3,C(255,213,131));
+  }
   if(showRunHud){
-   if(mode!=Mode::Play)drawText("SPACE DASH",125,(int)(hud.footerY+20),12,C(84,116,130));
    const auto dash=chapterHud::dashView(dashCd,dashCycleDuration,dashTime>0||dashVisualActive,
     playerWasMoving);
    const auto track=chapterHud::layout(SW,SH).dashTrack;
@@ -1327,7 +1432,7 @@ int main(int argc, char** argv){
    const Color dashColor=mode==Mode::Play?activeDashColor:Fade(activeDashColor,.45f);
    DrawRectangle((int)track.x,(int)track.y,(int)track.width,2,C(42,64,80));
    DrawRectangle((int)track.x,(int)track.y,(int)(track.width*dash.fill),2,dashColor);
-   DrawText(dash.state==chapterHud::DashState::Active?"DASH":dash.state==chapterHud::DashState::Recharging?TextFormat("%.1fs",dash.remainingTenths/10.f):dash.state==chapterHud::DashState::ReadyMove?"READY / MOVE":"READY",(int)track.x,(int)track.y-14,12,dashColor);
+   DrawText(dash.state==chapterHud::DashState::Active?"DASH / ACTIVE":dash.state==chapterHud::DashState::Recharging?TextFormat("DASH / %.1fs",dash.remainingTenths/10.f):dash.state==chapterHud::DashState::ReadyMove?"DASH / MOVE":"DASH / READY",(int)track.x,(int)track.y-14,12,dashColor);
   }
   auto drawButton=[&](Rectangle rectangle,const char* label,bool selected,bool hovered,int fontSize=16){
    const bool active=selected||hovered;
@@ -1352,20 +1457,74 @@ int main(int argc, char** argv){
    DrawText(sub,(int)(SW*.5f-subWidth*.5f),(int)bounds.y+112,16,C(162,193,204));
    return bounds;
   };
-  if(mode==Mode::Title){
+  if(mode==Mode::Title&&titleView==0){
    const Rectangle bounds=panel(waveFixture>=0?(waveFixtureWave==21?"M7 / SOWER FIXTURE":"M7 / WAVE 8 FIXTURE"):bossFixture<0?"M7 / 35-WAVE DEVELOPMENT CAMPAIGN":bossFixtureWave==34?"M7 / BRIAR HEART FIXTURE":bossFixtureWave==27?"M7 / HOLLOW WEAVER FIXTURE":bossFixtureWave==13?"M7 / NEEDLE DANCER FIXTURE":bossFixtureWave==20?"M7 / THORN CONDUCTOR FIXTURE":"M7 / ROOTWARDEN FIXTURE","THREADLIGHT",waveFixture>=0?"Isolated encounter fixture; no campaign checkpoint.":bossFixture<0?"Weave through five chapters. Complete the Briar Circuit.":"Isolated boss test; no campaign progress or checkpoint.");
    DrawText("Move to weave a fading thread. Circle the hunters; let silk do the cutting.",(int)bounds.x+52,(int)bounds.y+153,15,C(175,211,213));
    DrawText("WASD / arrows move     SPACE dash     P pauses",(int)bounds.x+52,(int)bounds.y+181,15,C(121,196,197));
-   DrawText(bossFixture<0&&waveFixture<0?"Collect sparks manually. Spend earned credits between encounters.":"Fixture: preset ranks, normal health, attacks and manual rewards.",(int)bounds.x+52,(int)bounds.y+207,15,C(121,196,197));
-   const char* labels[]={"START GAME","SETTINGS","EXIT GAME"};
-   for(int i=0;i<3;i++)drawButton(mainButton(i),labels[i],mainSelection==i,hovered(mainButton(i)));
+   const char* labels[]={"START GAME","ENEMY CODEX","BEST RUN","SETTINGS","EXIT GAME"};
+   for(int i=0;i<5;i++)drawButton(mainButton(i),labels[i],mainSelection==i,hovered(mainButton(i)),15);
    DrawText("UP / DOWN SELECT     ENTER CONFIRMS     ESC OPENS EXIT CONFIRMATION",(int)bounds.x+52,(int)bounds.y+431,12,C(108,167,178));
   }
-  if(mode==Mode::Pause){
+  if(mode==Mode::Title&&titleView==1){
+   DrawRectangle(0,0,SW,SH,C(3,7,18,215));Rectangle box{SW*.5f-420,SH*.5f-260,840,520};
+   DrawRectangleRounded(box,.035f,12,C(11,22,40,250));DrawRectangleRoundedLines(box,.035f,12,C(91,216,197,155));
+   DrawText("ENEMY CODEX",(int)box.x+30,(int)box.y+22,26,C(226,255,247));
+   DrawText("Encounter an enemy to unlock its entry.",(int)box.x+30,(int)box.y+55,13,C(165,201,209));
+   for(int i=0;i<11;++i)drawButton(codexButton(i),threadlight::bestiary::unlocked(appSettings.codexSeen,i)?threadlight::bestiary::entries[i].name:"???",codexSelection==i,hovered(codexButton(i)),12);
+   const bool unlocked=threadlight::bestiary::unlocked(appSettings.codexSeen,codexSelection);
+   const auto& entry=threadlight::bestiary::entries[codexSelection];
+   const int x=(int)box.x+300,y=(int)box.y+92;
+   DrawText(unlocked?entry.name:"UNKNOWN",x,y,21,C(255,218,161));
+   if(unlocked){
+    DrawText("BEHAVIOR",x,y+47,12,C(107,228,206));DrawText(entry.behavior,x,y+68,14,C(211,240,225));
+    DrawText("WATCH FOR",x,y+112,12,C(107,228,206));DrawText(entry.tell,x,y+133,14,C(211,240,225));
+    DrawText("COUNTER",x,y+177,12,C(107,228,206));DrawText(entry.counter,x,y+198,14,C(211,240,225));
+   }else DrawText("Encounter this enemy in a normal run to learn more.",x,y+60,14,C(165,201,209));
+   drawButton(titleBack(),"BACK / ESC",true,hovered(titleBack()),13);
+   DrawText("UP / DOWN SELECT",(int)box.x+30,(int)box.y+485,11,C(108,167,178));
+  }
+  if(mode==Mode::Title&&titleView==2){
+   panel("PERSONAL RECORD","BEST RUN","Ranked by victory, wave reached, then score.");
+   if(appSettings.bestWave){
+    DrawText(appSettings.bestWon?"CAMPAIGN CLEARED":"FURTHEST RUN",SW/2-220,SH/2-30,16,C(255,213,131));
+    DrawText(TextFormat("WAVE %d / %d",appSettings.bestWave,chapter::kEncounterCount),SW/2-220,SH/2+5,21,C(217,250,236));
+    DrawText(TextFormat("SCORE %06llu     KILLS %llu",(unsigned long long)appSettings.bestScore,(unsigned long long)appSettings.bestKills),SW/2-220,SH/2+44,17,C(179,225,216));
+   }else DrawText("Finish a normal run to set your first record.",SW/2-220,SH/2+20,16,C(179,225,216));
+   drawButton(titleBack(),"BACK / ESC",true,hovered(titleBack()),13);
+  }
+  if(mode==Mode::Pause&&!inventoryOpen&&!pauseConfirm){
    panel("THE GARDEN HOLDS ITS BREATH","PAUSED","Your thread is waiting.");
-   const char* labels[]={"RESUME","SETTINGS","RESTART RUN","RETURN TO MAIN MENU"};
-   for(int i=0;i<4;i++)drawButton(pauseButton(i),labels[i],pauseSelection==i,hovered(pauseButton(i)),15);
-   DrawText("P RESUMES     ESC RETURNS TO TITLE",SW/2-142,SH/2+197,12,C(108,167,178));
+   const char* labels[]={"RESUME","SETTINGS","UPGRADES & SIGNATURES","RESTART RUN","RETURN TO MAIN MENU"};
+   for(int i=0;i<5;i++)drawButton(pauseButton(i),labels[i],pauseSelection==i,hovered(pauseButton(i)),15);
+   DrawText("P RESUMES     I INVENTORY     ESC LEAVES",SW/2-160,SH/2+197,12,C(108,167,178));
+  }
+  if((mode==Mode::Pause||mode==Mode::Lost||mode==Mode::Won)&&inventoryOpen){
+   DrawRectangle(0,0,SW,SH,C(3,7,18,215));
+   Rectangle box{SW*.5f-420,SH*.5f-270,840,540};DrawRectangleRounded(box,.035f,12,C(11,22,40,250));DrawRectangleRoundedLines(box,.035f,12,C(91,216,197,155));
+   DrawText("YOUR BUILD",(int)box.x+30,(int)box.y+22,26,C(226,255,247));
+   DrawText("UPGRADES / RANK",(int)box.x+30,(int)box.y+62,13,C(107,228,206));
+   for(int i=0;i<upgrades::kPermanentCount;++i){const auto id=(upgrades::Id)i;const int col=i/6,row=i%6;
+    DrawText(TextFormat("%s  %d / %d",upgrades::name(id),upgrades::rank(ranks,id),upgrades::maximum(id)),(int)box.x+30+col*245,(int)box.y+88+row*23,13,upgrades::rank(ranks,id)?C(211,240,225):C(110,145,155));}
+   DrawText("SIGNATURES",(int)box.x+525,(int)box.y+62,13,C(255,213,131));
+   int row=0;for(size_t i=0;i<catalog::kCount;++i)if(signatureCatalog.owned[i]){const auto id=(catalog::Id)i;const auto lines=catalog::descriptionLines(id);
+    DrawText(catalog::name(id).data(),(int)box.x+525,(int)box.y+88+row*57,15,C(239,224,175));
+    DrawText(lines[0].data(),(int)box.x+525,(int)box.y+108+row*57,11,C(165,201,209));++row;}
+   if(!row)DrawText("None yet",(int)box.x+525,(int)box.y+88,14,C(110,145,155));
+   DrawText(TextFormat("Silk %.2f   Speed %.0f   Dash %.2fs   Max HP %d",stats.silkDamage/100.f,stats.moveSpeed,stats.dashCooldownSeconds,stats.maxHp/100),(int)box.x+30,(int)box.y+258,15,C(172,211,211));
+   DrawText(TextFormat("Silk duration %.1fs   Width %.0f   Damage reduction %d%%",stats.activeSilkSeconds,stats.silkHalfWidth*2,stats.damageReductionPercent),(int)box.x+30,(int)box.y+286,15,C(172,211,211));
+   DrawText(TextFormat("Pickup radius %.0f   Dash speed %.1fx",stats.pickupRadius,stats.dashMultiplier),(int)box.x+30,(int)box.y+314,15,C(172,211,211));
+   if(stats.needleCooldownTicks)DrawText(TextFormat("Needlecatch cooldown %.1fs",stats.needleCooldownTicks/120.f),(int)box.x+30,(int)box.y+342,14,C(172,211,211));
+   if(stats.bloodKillsPerHeal)DrawText(TextFormat("Bloodstitch: heal every %d kills, %.0f HP cap per wave",stats.bloodKillsPerHeal,stats.bloodWaveCap/100.f),(int)box.x+30,(int)box.y+370,14,C(172,211,211));
+   drawButton(Rectangle{SW*.5f-90.f,SH*.5f+235.f,180.f,38.f},"BACK / ESC",true,false,13);
+  }
+  if(mode==Mode::Pause&&pauseConfirm){
+   DrawRectangle(0,0,SW,SH,C(3,7,18,220));Rectangle box{SW*.5f-300,SH*.5f-100,600,205};
+   DrawRectangleRounded(box,.06f,12,C(11,22,40,250));DrawRectangleRoundedLines(box,.06f,12,C(91,216,197,155));
+   const char* prompt=pauseConfirm==1?"Restart the current match?":"Leave the current match?";
+   DrawText(prompt,SW/2-MeasureText(prompt,23)/2,SH/2-65,23,C(226,255,247));
+   DrawText("Current progress will be lost.",SW/2-130,SH/2-25,16,C(165,201,209));
+   drawButton(confirmButton(0),"YES",confirmSelection==0,hovered(confirmButton(0)));
+   drawButton(confirmButton(1),"NO",confirmSelection==1,hovered(confirmButton(1)));
   }
   if(mode==Mode::Settings){
    DrawRectangle(0,0,SW,SH,C(3,7,18,205));
@@ -1450,7 +1609,7 @@ int main(int argc, char** argv){
     DrawText("No useful recovery is available. Discard this unused credit to continue.",(int)ui.panel.x+28,(int)ui.panel.y+210,15,C(172,211,211));
    }
    drawButton(rect(ui.confirm),offers.current.count?"CONFIRM EVOLUTION":"DISCARD CREDIT",true,hovered(rect(ui.confirm)),13);
-   DrawText("1 / 2 / 3 SELECT    LEFT / RIGHT CYCLE    ENTER CONFIRMS",(int)ui.panel.x+28,(int)(ui.panel.y+ui.panel.height-20),11,C(108,167,178));
+   DrawText("A / D OR ARROWS MOVE    S MIDDLE    1 / 2 / 3 SELECT    ENTER CONFIRMS",(int)ui.panel.x+28,(int)(ui.panel.y+ui.panel.height-20),11,C(108,167,178));
   }
   if(mode==Mode::Signature){
    const auto ui=upgradeUI::layout(SW,SH,signatureCatalog.current.count);
@@ -1476,11 +1635,17 @@ int main(int argc, char** argv){
     }else DrawText("UTILITY / NO EXTRA CONTROLS",(int)card.x+16,(int)card.y+203,11,C(229,210,160));
    }
    drawButton(rect(ui.confirm),"CLAIM SIGNATURE",true,hovered(rect(ui.confirm)),13);
-   DrawText("1 / 2 / 3 SELECT    LEFT / RIGHT CYCLE    ENTER CONFIRMS",(int)ui.panel.x+28,(int)(ui.panel.y+ui.panel.height-20),11,C(146,191,198));
+   DrawText("A / D OR ARROWS MOVE    S MIDDLE    1 / 2 / 3 SELECT    ENTER CONFIRMS",(int)ui.panel.x+28,(int)(ui.panel.y+ui.panel.height-20),11,C(146,191,198));
   }
-  if(mode==Mode::Lost||mode==Mode::Won){panel(mode==Mode::Won?"VICTORY / WAVE 35":"THE THREAD GOES QUIET",mode==Mode::Won?"THE BRIAR HEART FALLS":"LOST TO THE BRIAR",mode==Mode::Won?"The Briar Circuit is complete. Your thread endures.":"The hunters remember your path.");DrawText(TextFormat("Score %06llu   Kills %llu   Evolutions %llu",(unsigned long long)rewards.score(),(unsigned long long)rewards.counters().killed,(unsigned long long)rewards.counters().creditsResolved),SW/2-255,SH/2+24,18,C(179,225,216));DrawText("ENTER / R  —  weave again",SW/2-255,SH/2+76,16,C(255,218,135));DrawText("ESC  —  return to title",SW/2-255,SH/2+111,15,C(136,188,192));}
-  if(mode==Mode::Won)DrawText(TextFormat("Unspent credits %llu   Uncollected spark value %llu",(unsigned long long)rewards.pendingCredits(),
-   (unsigned long long)(rewards.counters().sparksCreated-rewards.counters().sparksCollected-rewards.counters().sparksExpired)),SW/2-255,SH/2+150,14,C(137,203,203));
+  if((mode==Mode::Lost||mode==Mode::Won)&&!inventoryOpen){
+   panel(mode==Mode::Won?"VICTORY":"RUN COMPLETE",mode==Mode::Won?"THE BRIAR HEART FALLS":"LOST TO THE BRIAR","Your run at a glance.");
+   DrawText(TextFormat("Wave %d / %d   Score %06llu   Kills %llu",wave+1,chapter::kEncounterCount,(unsigned long long)rewards.score(),(unsigned long long)rewards.counters().killed),SW/2-255,SH/2-36,17,C(179,225,216));
+   DrawText(TextFormat("Evolutions %llu   Signatures %d   Sparks collected %llu",(unsigned long long)rewards.counters().creditsResolved,catalog::ownedCount(signatureCatalog),(unsigned long long)rewards.counters().sparksCollected),SW/2-255,SH/2-5,15,C(179,225,216));
+   DrawText("DAMAGE TAKEN / HP",SW/2-255,SH/2+30,12,C(255,213,131));
+   DrawText(TextFormat("Contact %.1f   Boss %.1f   Shots %.1f   Ground %.1f",runDamageTaken[0]/100.f,runDamageTaken[1]/100.f,runDamageTaken[2]/100.f,runDamageTaken[3]/100.f),SW/2-255,SH/2+51,15,C(172,211,211));
+   DrawText("I  VIEW BUILD     ENTER / R  RETRY",SW/2-255,SH/2+103,16,C(255,218,135));
+   DrawText("ESC  RETURN TO TITLE",SW/2-255,SH/2+135,14,C(136,188,192));
+  }
   if(appSettings.showFps)
    DrawText(TextFormat("FPS %d",(int)std::lround(measuredFps)),8,5,10,Fade(C(174,222,228),.32f));
   sfx.update();
@@ -1507,6 +1672,7 @@ int main(int argc, char** argv){
  }
  settingsEdits.dragging=false;
  if(!m6RenderCheck)saveSettings();
+ updateTimerResolution(false);
  sfx.shutdown();
  if(audioReady)CloseAudioDevice();
  CloseWindow();return 0;

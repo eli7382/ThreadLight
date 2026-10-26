@@ -20,12 +20,12 @@ struct Layout {
 
 inline Layout layout(int width, int height) {
     const float logicalWidth = static_cast<float>(width);
-    const float logicalHeight = static_cast<float>(height);
+    (void)height;
     const float bossWidth = std::min(500.0f, logicalWidth - 400.0f);
 
     return {
         {(logicalWidth - bossWidth) * 0.5f, 68.0f, bossWidth, 4.0f},
-        {222.0f, logicalHeight - 52.0f + 25.0f, 80.0f, 2.0f},
+        {24.0f, 105.0f, 100.0f, 2.0f},
     };
 }
 

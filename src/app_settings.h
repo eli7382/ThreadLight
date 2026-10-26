@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <charconv>
 #include <cstdlib>
+#include <cstdint>
 #include <filesystem>
 #include <fstream>
 #include <string>
@@ -15,7 +16,18 @@ struct AppSettings {
     int frameRateLimit = 60;
     bool showFps = true;
     int sfxVolumePercent = 78;
+    bool tutorialCompleted = false;
+    int codexSeen = 0;
+    int bestWave = 0;
+    std::uint64_t bestScore = 0, bestKills = 0;
+    bool bestWon = false;
 };
+
+inline bool isBetterRun(const AppSettings& settings, bool won, int wave, std::uint64_t score) {
+    if (settings.bestWave == 0) return true;
+    if (won != settings.bestWon) return won;
+    return wave > settings.bestWave || (wave == settings.bestWave && score > settings.bestScore);
+}
 
 // Live edits are cheap; disk writes happen once at an edit boundary. Failed
 // saves remain pending so a later boundary (including shutdown) can retry.
@@ -111,6 +123,20 @@ inline AppSettings load(const std::filesystem::path& path) {
         } else if (key == "sfx_volume_percent") {
             if (parseInteger(value, parsed) && parsed >= 0 && parsed <= 100) settings.sfxVolumePercent = parsed;
             else settings.sfxVolumePercent = kDefaultSfxVolumePercent;
+        } else if (key == "tutorial_completed") {
+            settings.tutorialCompleted = value == "1";
+        } else if (key == "codex_seen") {
+            if (parseInteger(value, parsed) && parsed >= 0 && parsed < (1 << 11)) settings.codexSeen = parsed;
+        } else if (key == "best_wave") {
+            if (parseInteger(value, parsed) && parsed >= 0 && parsed <= 35) settings.bestWave = parsed;
+        } else if (key == "best_won") {
+            settings.bestWon = value == "1";
+        } else if (key == "best_score" || key == "best_kills") {
+            std::uint64_t number = 0;
+            const auto result = std::from_chars(value.data(), value.data() + value.size(), number);
+            if (result.ec == std::errc{} && result.ptr == value.data() + value.size()) {
+                if (key == "best_score") settings.bestScore = number; else settings.bestKills = number;
+            }
         }
     }
     return settings;
@@ -130,7 +156,13 @@ inline bool save(const std::filesystem::path& path, const AppSettings& settings)
                << "frame_rate_limit=" << (validFrameRateLimit(settings.frameRateLimit)
                     ? settings.frameRateLimit : kDefaultFrameRateLimit) << '\n'
                << "show_fps=" << (settings.showFps ? 1 : 0) << '\n'
-               << "sfx_volume_percent=" << std::clamp(settings.sfxVolumePercent, 0, 100) << '\n';
+               << "sfx_volume_percent=" << std::clamp(settings.sfxVolumePercent, 0, 100) << '\n'
+               << "tutorial_completed=" << (settings.tutorialCompleted ? 1 : 0) << '\n'
+               << "codex_seen=" << (settings.codexSeen & 2047) << '\n'
+               << "best_wave=" << std::clamp(settings.bestWave, 0, 35) << '\n'
+               << "best_score=" << settings.bestScore << '\n'
+               << "best_kills=" << settings.bestKills << '\n'
+               << "best_won=" << (settings.bestWon ? 1 : 0) << '\n';
         output.flush();
         if (!output) return false;
     }

@@ -27,6 +27,7 @@ void testDefaultsAndLimits() {
     CHECK(defaults.frameRateLimit == 60);
     CHECK(defaults.showFps);
     CHECK(defaults.sfxVolumePercent == 78);
+    CHECK(!defaults.tutorialCompleted);
     CHECK(validFrameRateLimit(30));
     CHECK(validFrameRateLimit(60));
     CHECK(validFrameRateLimit(120));
@@ -59,12 +60,22 @@ void testPersistenceAndInvalidRecovery() {
     CHECK(missing.showFps);
     CHECK(missing.sfxVolumePercent == 78);
 
-    AppSettings saved{120, false, 35};
+    AppSettings saved{120, false, 35, true};
+    saved.codexSeen=65;saved.bestWave=21;saved.bestScore=12345;saved.bestKills=67;saved.bestWon=false;
     CHECK(save(path, saved));
     const auto loaded = load(path);
     CHECK(loaded.frameRateLimit == 120);
     CHECK(!loaded.showFps);
     CHECK(loaded.sfxVolumePercent == 35);
+    CHECK(loaded.tutorialCompleted);
+    CHECK(loaded.codexSeen==65 && loaded.bestWave==21 && loaded.bestScore==12345 && loaded.bestKills==67 && !loaded.bestWon);
+    CHECK(isBetterRun(loaded,false,22,0));
+    CHECK(!isBetterRun(loaded,false,20,999999));
+    CHECK(isBetterRun(loaded,false,21,12346));
+    CHECK(!isBetterRun(loaded,false,21,12345));
+    CHECK(isBetterRun(loaded,true,35,0));
+    auto victory=loaded;victory.bestWon=true;victory.bestWave=35;
+    CHECK(!isBetterRun(victory,false,35,999999));
 
     const AppSettings updated{30, true, 80};
     CHECK(save(path, updated)); // Replacing an existing settings file is supported.
@@ -72,6 +83,7 @@ void testPersistenceAndInvalidRecovery() {
     CHECK(updatedSettings.frameRateLimit == 30);
     CHECK(updatedSettings.showFps);
     CHECK(updatedSettings.sfxVolumePercent == 80);
+    CHECK(!updatedSettings.tutorialCompleted);
 
     {
         std::ofstream invalid(path, std::ios::binary | std::ios::trunc);

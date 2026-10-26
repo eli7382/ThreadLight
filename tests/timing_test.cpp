@@ -118,11 +118,21 @@ void testHitchesAreBoundedAndFpsSmoothingIsStable() {
     const float oneTwentyFrameDamping=std::pow(threadlight::timing::dampingMultiplier(.96f,60.0f,1.0f/120.0f),120.0f);
     CHECK(std::abs(sixtyFrameDamping-oneTwentyFrameDamping)<0.001f);
 }
+void testMovementPressesSurviveUntilSimulationTick() {
+    threadlight::timing::MovementPressBuffer presses;
+    presses.add(1); presses.add(4);
+    CHECK(presses.consume() == 5);
+    CHECK(presses.consume() == 0);
+    presses.add(2); presses.clear();
+    CHECK(presses.consume() == 0);
+    presses.add(255); CHECK(presses.consume() == 15);
+}
 }
 
 int main() {
     testTimeStepScheduleAcrossConfiguredRates();
     testHitchesAreBoundedAndFpsSmoothingIsStable();
+    testMovementPressesSurviveUntilSimulationTick();
     if (failures != 0) return EXIT_FAILURE;
     std::cout << "Frame-rate policy and timing checks passed.\n";
 }

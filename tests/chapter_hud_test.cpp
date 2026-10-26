@@ -27,15 +27,12 @@ void layoutBounds() {
               near(minimum.bossBar.height, 4.0f), "minimum boss bar geometry");
     check(minimum.bossBar.x >= 0.0f && minimum.bossBar.x + minimum.bossBar.width <= 960.0f,
           "boss bar stays within logical width");
-    check(near(minimum.dashTrack.x, 222.0f) && near(minimum.dashTrack.y, 613.0f) &&
-              near(minimum.dashTrack.width, 80.0f) && near(minimum.dashTrack.height, 2.0f),
-          "dash track follows the footer layout");
-    check(minimum.dashTrack.x + minimum.dashTrack.width < 960.0f * 0.4f,
-          "dash track ends before the hint");
-    check(minimum.dashTrack.y + minimum.dashTrack.height < 640.0f,
-          "dash track stays inside the logical height");
+    check(near(minimum.dashTrack.x, 24.0f) && near(minimum.dashTrack.y, 105.0f) &&
+              near(minimum.dashTrack.width, 100.0f) && near(minimum.dashTrack.height, 2.0f),
+          "dash track sits below the upper HUD");
 
     const Layout wide = layout(1600, 900);
+    check(near(wide.dashTrack.y, minimum.dashTrack.y), "dash track remains at the top at taller resolutions");
     check(near(wide.bossBar.x, 550.0f) && near(wide.bossBar.width, 500.0f),
           "wide boss bar remains centered and capped");
     const Layout narrow = layout(1000, 700);
