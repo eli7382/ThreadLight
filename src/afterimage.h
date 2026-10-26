@@ -7,6 +7,7 @@
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
+#include <limits>
 
 namespace threadlight::afterimage {
 
@@ -24,6 +25,8 @@ struct Bounds {
 struct State {
     std::array<foundation::Point, kPathPointCapacity> path{};
     std::size_t count = 0;
+    Bounds pathBounds{};
+    bool pathBoundsValid = false;
     int remainingTicks = 0;
     bool recording = false;
     std::array<std::uint64_t, kHitTargetCapacity> hitTargetIds{};
@@ -41,6 +44,19 @@ inline bool samePoint(foundation::Point a, foundation::Point b) {
     return a.x == b.x && a.y == b.y;
 }
 
+inline bool calculatePathBounds(const State& state, Bounds& bounds) {
+    if (state.count < 2 || state.count > kPathPointCapacity || !finite(state.path[0])) return false;
+    bounds={state.path[0].x,state.path[0].x,state.path[0].y,state.path[0].y};
+    for(std::size_t i=1;i<state.count;++i){
+        if(!finite(state.path[i]))return false;
+        bounds.left=std::min(bounds.left,state.path[i].x);
+        bounds.right=std::max(bounds.right,state.path[i].x);
+        bounds.top=std::min(bounds.top,state.path[i].y);
+        bounds.bottom=std::max(bounds.bottom,state.path[i].y);
+    }
+    return true;
+}
+
 inline void clearContactClaims(State& state) {
     state.hitTargetIds.fill(0);
     state.hitTargetCount = 0;
@@ -50,6 +66,8 @@ inline void clearContactClaims(State& state) {
 inline void clear(State& state) {
     state.path.fill({});
     state.count = 0;
+    state.pathBounds={};
+    state.pathBoundsValid=false;
     state.remainingTicks = 0;
     state.recording = false;
     clearContactClaims(state);
@@ -93,6 +111,7 @@ inline void finishDash(State& state, bool combat, bool owned) {
         clear(state);
         return;
     }
+    state.pathBoundsValid=calculatePathBounds(state,state.pathBounds);
     state.remainingTicks = kEchoTicks;
     clearContactClaims(state);
 }
@@ -105,6 +124,8 @@ inline void advance(State& state, bool combat) {
     if (state.remainingTicks == 0) {
         state.path.fill({});
         state.count = 0;
+        state.pathBounds={};
+        state.pathBoundsValid=false;
         clearContactClaims(state);
     }
 }
@@ -126,6 +147,20 @@ inline bool claimContact(State& state, std::uint64_t targetId,
 
     const float radius = kHalfWidth + std::max(0.0f, targetRadius);
     const float radiusSquared = radius * radius;
+    if(state.pathBoundsValid&&std::isfinite(radius)&&std::isfinite(radiusSquared)){
+        const float scale=std::max({std::abs(state.pathBounds.left),std::abs(state.pathBounds.right),
+                                    std::abs(state.pathBounds.top),std::abs(state.pathBounds.bottom),
+                                    std::abs(previousTarget.x),std::abs(previousTarget.y),
+                                    std::abs(currentTarget.x),std::abs(currentTarget.y),radius,1.f});
+        if(scale<=1.e18f){
+            const float gapX=std::max({state.pathBounds.left-std::max(previousTarget.x,currentTarget.x),
+                                       std::min(previousTarget.x,currentTarget.x)-state.pathBounds.right,0.f});
+            const float gapY=std::max({state.pathBounds.top-std::max(previousTarget.y,currentTarget.y),
+                                       std::min(previousTarget.y,currentTarget.y)-state.pathBounds.bottom,0.f});
+            const float reach=radius+8.f*std::numeric_limits<float>::epsilon()*scale;
+            if(gapX>reach||gapY>reach)return false;
+        }
+    }
     bool touched = false;
     for (std::size_t i = 1; i < state.count; ++i) {
         if (foundation::segmentsDistanceSquared(previousTarget, currentTarget,
@@ -169,6 +204,7 @@ inline void remap(State& state, Bounds from, Bounds to) {
     for (std::size_t i = 0; i < pointCount; ++i) {
         state.path[i] = remapPoint(state.path[i], from, to);
     }
+    if(state.pathBoundsValid)state.pathBoundsValid=calculatePathBounds(state,state.pathBounds);
 }
 
 } // namespace threadlight::afterimage

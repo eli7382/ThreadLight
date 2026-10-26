@@ -7,6 +7,7 @@
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
+#include <optional>
 #include <span>
 
 namespace threadlight::cocoon {
@@ -233,7 +234,13 @@ inline Formation tick(State& state,
     if (state.cooldownTicks > 0) --state.cooldownTicks;
     if (state.remainingTicks == 0) state.barrierCenti = 0;
 
-    const crossweave::State before = state.detector;
+    // Most owned ticks are blocked from forming by the active barrier or its
+    // cooldown. Keep advancing the detector on those ticks, but avoid copying
+    // its large fixed-capacity history unless formation could be considered.
+    const bool mayForm = !state.detector.claimOverflow && !barrierActive(state) &&
+                         state.cooldownTicks == 0;
+    std::optional<crossweave::State> before;
+    if (mayForm) before.emplace(state.detector);
     state.detector.cooldownTicks = 0;
     state.detector.travelDistance = crossweave::kTravelDistance;
     (void)crossweave::tick(state.detector, previousPlayer, currentPlayer, segments, true, true);
@@ -241,16 +248,15 @@ inline Formation tick(State& state,
     // All IDs crossed on this movement have now been recorded. Evaluate each
     // new claim separately because Crossweave's public result selects only one
     // center when several historical strands are crossed in the same tick.
-    if (before.claimOverflow || state.detector.claimOverflow || barrierActive(state) ||
-        state.cooldownTicks > 0) return {};
+    if (!mayForm || state.detector.claimOverflow) return {};
 
     for (std::size_t i = 0; i < segments.size(); ++i) {
         const crossweave::Segment& segment = segments[i];
-        if (!crossweave::eligible(segment) || crossweave::claimed(before, segment.id) ||
+        if (!crossweave::eligible(segment) || crossweave::claimed(*before, segment.id) ||
             !crossweave::claimed(state.detector, segment.id)) continue;
 
         foundation::Point center{};
-        if (!crossingCenter(before, previousPlayer, currentPlayer, segment, center)) continue;
+        if (!crossingCenter(*before, previousPlayer, currentPlayer, segment, center)) continue;
 
         ClosedPath path;
         if (!closedPathMetrics(center, previousPlayer, segments, i, path) ||

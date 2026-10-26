@@ -154,8 +154,25 @@ void coordinatedSchedules(){
         const auto result=coordinated(fps);CHECK(result.shots==baseline.shots&&result.warnings==baseline.warnings&&result.first==baseline.first);
     }
 }
+void queuedRequestsKeepTheirAgeAndTieOrder(){
+    q::Coordinator coordinator;
+    const std::array<q::Request,3> initial{{{30,q::Kind::Skitter},{10,q::Kind::Skitter},{20,q::Kind::Skitter}}};
+    CHECK(coordinator.choose(initial,2,0,1).count==0);
+    // Reordering ready inputs while stalled must not reorder equal-age IDs.
+    const std::array<q::Request,3> reversed{{initial[2],initial[1],initial[0]}};
+    for(int tick=2;tick<10;++tick)CHECK(coordinator.choose(reversed,2,0,tick).count==0);
+    // Remove 20, then add a younger request whose ID is smaller than the old head.
+    const std::array<q::Request,2> retained{{initial[0],initial[1]}};
+    CHECK(coordinator.choose(retained,2,0,10).count==0);
+    const std::array<q::Request,3> next{{{1,q::Kind::Skitter},initial[0],initial[1]}};
+    const auto grants=coordinator.choose(next,0,0,11);
+    CHECK(grants.count==2&&grants.items[0].id==10&&grants.items[1].id==30);
+    const std::array<q::Request,1> last{{next[0]}};
+    const auto final=coordinator.choose(last,0,0,12);
+    CHECK(final.count==1&&final.items[0].id==1);
+}
 }
 
-int main(){chapterBudgetsAndStats();echoDamageAndSharedOwners();rewardBoundary();coordinatedSchedules();
+int main(){chapterBudgetsAndStats();echoDamageAndSharedOwners();rewardBoundary();coordinatedSchedules();queuedRequestsKeepTheirAgeAndTieOrder();
     if(failures)return 1;
     std::cout<<"M4 integration checks passed\n";return 0;}

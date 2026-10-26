@@ -224,7 +224,8 @@ int main(int argc, char** argv){
  bool dashVisualActive=false,playerWasMoving=false;
  float dashEchoTimer=0,dashEchoFade=0; size_t dashEchoCount=0; std::array<V,6> dashEcho{};
  std::vector<Thread> thread; std::vector<Foe> foes; std::vector<Spark> sparks; std::vector<Particle> particles; std::vector<DeathEffect> deathEffects; std::vector<V> stars;
- thread.reserve(240); foes.reserve(80); sparks.reserve(48); particles.reserve(threadlight::visual::kParticleLimit); deathEffects.reserve(threadlight::visual::kDeathEffectLimit); stars.reserve(110);
+ // One extra slot allows append-before-trim without growing the bounded trail.
+ thread.reserve(521); foes.reserve(80); sparks.reserve(48); particles.reserve(threadlight::visual::kParticleLimit); deathEffects.reserve(threadlight::visual::kDeathEffectLimit); stars.reserve(110);
  for(int i=0;i<110;i++) stars.push_back({GetRandomValue(0,10000)/10000.0f,GetRandomValue(0,10000)/10000.0f});
  threadlight::timing::FixedStepClock stepClock;
  V previousPlayer=player;
@@ -1162,10 +1163,12 @@ int main(int argc, char** argv){
   if(thread.size()>1){
    for(size_t i=1;i<thread.size();i++){
     const V p0=silkPoint(i>1?i-2:i-1),p1=silkPoint(i-1),p2=silkPoint(i),p3=silkPoint(i+1<thread.size()?i+1:i);
+    V a=catmullRom(p0,p1,p2,p3,0.f);
+    const float age0=silkAge(i-1),age1=silkAge(i);
     for(int step=1;step<=3;step++){
      const float t0=(float)(step-1)/3.f,t1=(float)step/3.f;
-     const V a=catmullRom(p0,p1,p2,p3,t0),b=catmullRom(p0,p1,p2,p3,t1);
-     const float age=silkAge(i-1)+(silkAge(i)-silkAge(i-1))*(t0+t1)*.5f;
+     const V b=catmullRom(p0,p1,p2,p3,t1);
+     const float age=age0+(age1-age0)*(t0+t1)*.5f;
      const float shimmer=.5f+.5f*std::sin(time*5.f-age*1.6f);
      const auto silk=threadlight::visual::silkAppearance(age,shimmer,stats.activeSilkSeconds);
      Color halo=ColorLerp(C(0,222,211),C(42,129,165),silk.ageBlend);
@@ -1177,6 +1180,7 @@ int main(int argc, char** argv){
      DrawLineEx(cv(a),cv(b),8.5f+(stats.silkHalfWidth-5.f)*2.f-1.5f*silk.ageBlend,halo);
      DrawLineEx(cv(a),cv(b),4.4f+(stats.silkHalfWidth-5.f)-1.0f*silk.ageBlend,body);
      DrawLineEx(cv(a),cv(b),1.75f-.35f*silk.ageBlend,core);
+     a=b; // Adjacent subdivisions share the exact same evaluated endpoint.
     }
    }
   }

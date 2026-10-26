@@ -222,6 +222,7 @@ void cocoonClocksPauseAndDoNotRefresh() {
     state.barrierCenti = 700; // Simulate prior absorption by shared combat.
     const LoopFixture second = rectangle(1000, 60.0f, 60.0f);
     CHECK(!trigger(state, second).formed);
+    CHECK(cw::claimed(state.detector, 1000)); // Detector still consumes crossings while blocked.
     CHECK(state.barrierCenti == 700);
     CHECK(state.remainingTicks == pausedRemaining - 1);
     CHECK(state.cooldownTicks == pausedCooldown - 1);

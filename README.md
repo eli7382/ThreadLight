@@ -96,6 +96,22 @@ wave when comparing gameplay; use an external GPU profiler to measure GPU time a
 Hidden `--m7-render-check` fixtures may also be combined with `--perf-log` for a
 smoke test, but their screenshots and capture work are not representative gameplay.
 
+The optional CPU benchmark compares the original Afterimage contact scan with the
+current implementation using fixed synthetic paths, identical query outcomes,
+and the median of five alternating-order trials:
+
+```powershell
+cmake -S . -B build-windows-msvc -DTHREADLIGHT_BUILD_BENCHMARKS=ON
+cmake --build build-windows-msvc --config Release --target ThreadlightCollisionBenchmark
+.\build-windows-msvc\Release\ThreadlightCollisionBenchmark.exe
+```
+
+Configure the Windows preset first as described above. Benchmarks default to OFF,
+need no raylib calls, and do not run with the game. Their timings measure CPU
+contact queries, not game FPS or GPU performance. See
+[PERFORMANCE-QUALITY-PASS.md](PERFORMANCE-QUALITY-PASS.md) for results and proposed
+follow-up work.
+
 ## Regression tests
 
 Configure the thirty-five regression executables without the game executable with:

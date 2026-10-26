@@ -38,6 +38,7 @@ void FrameHistogram::add(double milliseconds) {
 
 double FrameHistogram::percentile(double fraction) const {
     if (!count_) return 0;
+    if (!std::isfinite(fraction)) return 0;
     fraction = std::clamp(fraction, 0.0, 1.0);
     const auto target = std::max<std::uint64_t>(1, static_cast<std::uint64_t>(std::ceil(fraction * count_)));
     std::uint64_t seen = 0;

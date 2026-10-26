@@ -5,6 +5,7 @@
 #include <filesystem>
 #include <fstream>
 #include <iostream>
+#include <limits>
 #include <string>
 
 namespace {
@@ -22,6 +23,8 @@ int main(){
     CHECK(histogram.percentile(.5)==15.1);
     CHECK(histogram.percentile(.95)==1500.0);
     CHECK(histogram.maxMs()==1500.0);
+    CHECK(histogram.percentile(std::numeric_limits<double>::quiet_NaN())==0.0);
+    CHECK(histogram.percentile(std::numeric_limits<double>::infinity())==0.0);
 
     const auto path=std::filesystem::current_path()/
         ("ThreadLightPerfTest-"+std::to_string(std::chrono::steady_clock::now().time_since_epoch().count())+".csv");

@@ -5,6 +5,7 @@
 #include <cmath>
 #include <cstdlib>
 #include <iostream>
+#include <limits>
 
 namespace {
 int failures = 0;
@@ -116,12 +117,23 @@ void testHitchesAreBoundedAndFpsSmoothingIsStable() {
     CHECK(clock.advance(threadlight::timing::kFixedStepSeconds * 8) == 8);
     CHECK(std::abs(clock.discardedSeconds() - threadlight::timing::kFixedStepSeconds * .5) < 1.e-9);
     CHECK(clock.advance(-1) == 0 && clock.discardedSeconds() == 0);
+    CHECK(clock.advance(std::numeric_limits<double>::quiet_NaN()) == 0);
+    CHECK(clock.advance(std::numeric_limits<double>::infinity()) == 0);
+    CHECK(clock.remainder() == 0.0 && clock.discardedSeconds() == 0.0);
+    CHECK(clock.advance(threadlight::timing::kFixedStepSeconds) == 1);
     CHECK(threadlight::timing::smoothMeasuredFps(60.0f, 1.0f / 60.0f) == 60.0f);
     const float smoothed = threadlight::timing::smoothMeasuredFps(60.0f, 1.0f / 30.0f);
     CHECK(smoothed > 30.0f);
     CHECK(smoothed < 60.0f);
     CHECK(threadlight::timing::smoothMeasuredFps(smoothed, 0.0f) == smoothed);
+    CHECK(threadlight::timing::smoothMeasuredFps(smoothed,
+          std::numeric_limits<float>::quiet_NaN()) == smoothed);
+    CHECK(threadlight::timing::smoothMeasuredFps(smoothed,
+          std::numeric_limits<float>::infinity()) == smoothed);
     CHECK(threadlight::timing::initialMeasuredFps(0.0f) == 60.0f);
+    CHECK(threadlight::timing::initialMeasuredFps(std::numeric_limits<float>::denorm_min()) == 60.0f);
+    CHECK(threadlight::timing::smoothMeasuredFps(smoothed,
+          std::numeric_limits<float>::denorm_min()) == smoothed);
     CHECK(std::abs(threadlight::timing::initialMeasuredFps(1.0f/144.0f)-144.0f)<.01f);
     CHECK(threadlight::timing::dampingMultiplier(.96f,60.0f,0.0f) == 1.0f);
     const float sixtyFrameDamping=std::pow(threadlight::timing::dampingMultiplier(.96f,60.0f,1.0f/60.0f),60.0f);

@@ -1,6 +1,7 @@
 #include "afterimage.h"
 #include "signature_reward.h"
 
+#include <array>
 #include <cmath>
 #include <cstdint>
 #include <iostream>
@@ -101,6 +102,66 @@ void stableIdsClearAndFailSafeOverflow() {
     CHECK(!ai::claimContact(state, 42, {100.0f, 0.0f}, {100.0f, 0.0f}, 1.0f));
 }
 
+void cachedPathBoundsMatchUncachedContacts() {
+    State cached;
+    recordL(cached);
+    CHECK(cached.pathBoundsValid);
+    CHECK(cached.pathBounds.left==0.f&&cached.pathBounds.right==100.f);
+    CHECK(cached.pathBounds.top==0.f&&cached.pathBounds.bottom==100.f);
+
+    State uncached=cached;
+    uncached.pathBoundsValid=false; // Direct state injection retains the old full-scan behavior.
+    const std::array<std::array<Point,2>,5> sweeps{{
+        {{{250.f,250.f},{251.f,251.f}}},
+        {{{50.f,-30.f},{50.f,30.f}}},
+        {{{100.f,100.f},{100.f,100.f}}},
+        {{{-8.f,0.f},{-8.f,0.f}}},
+        {{{40.f,110.f},{60.f,110.f}}}
+    }};
+    for(std::size_t i=0;i<sweeps.size();++i){
+        const auto id=100u+static_cast<std::uint64_t>(i);
+        const bool a=ai::claimContact(cached,id,sweeps[i][0],sweeps[i][1],0.f);
+        const bool b=ai::claimContact(uncached,id,sweeps[i][0],sweeps[i][1],0.f);
+        CHECK(a==b);
+    }
+    CHECK(!ai::claimContact(cached,200,{250.f,250.f},{251.f,251.f},0.f));
+    CHECK(ai::claimContact(cached,200,{50.f,-30.f},{50.f,30.f},0.f));
+
+    const auto before=cached.pathBounds;
+    ai::remap(cached,{0.f,100.f,0.f,100.f},{100.f,300.f,200.f,400.f});
+    CHECK(cached.pathBoundsValid);
+    CHECK(cached.pathBounds.left==100.f&&cached.pathBounds.right==300.f);
+    CHECK(cached.pathBounds.top==200.f&&cached.pathBounds.bottom==400.f);
+    CHECK(before.left==0.f&&before.bottom==100.f);
+
+    State huge;
+    ai::beginDash(huge,{1.e20f,1.e20f},true,true);
+    ai::appendDash(huge,{1.e20f,1.e20f},{1.e20f+1.e14f,1.e20f},true);
+    ai::finishDash(huge,true,true);
+    CHECK(huge.pathBoundsValid);
+    State hugeUncached=huge;hugeUncached.pathBoundsValid=false;
+    CHECK(ai::claimContact(huge,1,{0.f,0.f},{0.f,0.f},0.f)==
+          ai::claimContact(hugeUncached,1,{0.f,0.f},{0.f,0.f},0.f));
+
+    // Sweep varied paths and radii against the original uncached scan. Reset
+    // claims between queries so hit-history capacity cannot mask a mismatch.
+    std::uint32_t random=7382;
+    auto coordinate=[&](){random=random*1664525u+1013904223u;return float((random>>8)%4000)-2000.f;};
+    for(int path=0;path<40;++path){
+        State a;Point last{coordinate(),coordinate()};
+        ai::beginDash(a,last,true,true);
+        for(int step=1;step<32;++step){const Point next{coordinate(),coordinate()};ai::appendDash(a,last,next,true);last=next;}
+        ai::finishDash(a,true,true);
+        State b=a;b.pathBoundsValid=false;
+        for(int query=0;query<500;++query){
+            const Point from{coordinate(),coordinate()},to{from.x+coordinate()*.03f,from.y+coordinate()*.03f};
+            const float radius=float(query%32);
+            a.hitTargetCount=b.hitTargetCount=0;
+            CHECK(ai::claimContact(a,1,from,to,radius)==ai::claimContact(b,1,from,to,radius));
+        }
+    }
+}
+
 void pathCapacityAndResizeRemap() {
     State recording;
     ai::beginDash(recording, {10.0f, 10.0f}, true, true);
@@ -185,6 +246,7 @@ int main() {
     ownershipCombatAndZeroDistanceGates();
     ttlPauseAndExpiration();
     stableIdsClearAndFailSafeOverflow();
+    cachedPathBoundsMatchUncachedContacts();
     pathCapacityAndResizeRemap();
     integerDamageRounding();
     signatureQueueSurvivalAndOrdinaryCreditGate();

@@ -7,6 +7,7 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 
 include(CTest)
 option(THREADLIGHT_BUILD_GAME "Build the raylib game" ON)
+option(THREADLIGHT_BUILD_BENCHMARKS "Build standalone CPU microbenchmarks" OFF)
 option(THREADLIGHT_USE_PINNED_RAYLIB "Use an explicitly supplied MSVC raylib installation" OFF)
 set(THREADLIGHT_RAYLIB_ROOT "" CACHE PATH "Root of the pinned MSVC raylib installation")
 
@@ -63,6 +64,11 @@ if(THREADLIGHT_BUILD_GAME)
     set_property(TARGET Threadlight PROPERTY MSVC_RUNTIME_LIBRARY "MultiThreaded")
     target_compile_options(Threadlight PRIVATE /utf-8)
   endif()
+endif()
+
+if(THREADLIGHT_BUILD_BENCHMARKS)
+  add_executable(ThreadlightCollisionBenchmark benchmarks/collision_benchmark.cpp)
+  target_include_directories(ThreadlightCollisionBenchmark PRIVATE src)
 endif()
 
 if(BUILD_TESTING)

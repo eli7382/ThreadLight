@@ -22,6 +22,11 @@ private:
 class FixedStepClock {
 public:
     int advance(double frameSeconds) {
+        // A bad clock sample must not poison the accumulator or the tick count.
+        if (!std::isfinite(frameSeconds) || frameSeconds <= 0.0) {
+            discardedSeconds_ = 0.0;
+            return 0;
+        }
         const double boundedFrame = std::clamp(frameSeconds, 0.0,
                                                 kFixedStepSeconds * kMaxStepsPerFrame);
         const double capacity = kFixedStepSeconds * kMaxStepsPerFrame;
@@ -48,14 +53,16 @@ private:
 };
 
 inline float smoothMeasuredFps(float previous, float frameSeconds) {
-    if (frameSeconds <= 0.0f) return previous;
+    if (!std::isfinite(frameSeconds) || frameSeconds <= 0.0f) return previous;
     const float measured = 1.0f / frameSeconds;
+    if (!std::isfinite(measured)) return previous;
     const float blend = 1.0f - std::exp(-frameSeconds * 4.0f);
     return previous + (measured - previous) * blend;
 }
 
 inline float initialMeasuredFps(float frameSeconds) {
-    return std::isfinite(frameSeconds) && frameSeconds > 0.0f ? 1.0f / frameSeconds : 60.0f;
+    const float measured = std::isfinite(frameSeconds) && frameSeconds > 0.0f ? 1.0f / frameSeconds : 60.0f;
+    return std::isfinite(measured) ? measured : 60.0f;
 }
 
 inline float dampingMultiplier(float multiplierAtReferenceFrame,

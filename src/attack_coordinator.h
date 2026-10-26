@@ -32,13 +32,15 @@ public:
             if(present)queue_[kept++]=queue_[i];
         }
         count_=kept;
+        bool added=false;
         for(const auto& request:ready){
             if(!request.id)continue;
             bool found=false;
             for(int i=0;i<count_;++i)if(queue_[i].request.id==request.id){found=true;break;}
-            if(!found&&count_<static_cast<int>(queue_.size()))queue_[count_++]={request,tick};
+            if(!found&&count_<static_cast<int>(queue_.size())){queue_[count_++]={request,tick};added=true;}
         }
-        std::sort(queue_.begin(),queue_.begin()+count_,[](const Waiting& a,const Waiting& b){
+        // Pruning and granting preserve order. Only new arrivals can change it.
+        if(added)std::sort(queue_.begin(),queue_.begin()+count_,[](const Waiting& a,const Waiting& b){
             return a.since<b.since||(a.since==b.since&&a.request.id<b.request.id);
         });
         Grants result;
