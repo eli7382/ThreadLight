@@ -33,6 +33,8 @@ int main() {
         check(inside(value.panel, static_cast<float>(w), static_cast<float>(h)), "panel fits window");
         check(value.panel.width <= 900.0f && value.panel.height <= 480.0f, "panel respects caps");
         check(inside(value.confirm, static_cast<float>(w), static_cast<float>(h)), "confirm fits window");
+        check(value.confirm.y+value.confirm.height+8.f<=value.panel.y+value.panel.height-20.f,
+              "confirmation leaves a clear gap before keyboard instructions");
         for (int i = 0; i < 3; ++i) {
             check(inside(value.cards[i], static_cast<float>(w), static_cast<float>(h)), "card fits window");
             check(contains(value.cards[i], value.cards[i].x + value.cards[i].width / 2.0f,

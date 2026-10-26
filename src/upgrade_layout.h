@@ -25,7 +25,7 @@ inline Layout layout(int logicalWidth, int logicalHeight, int cardCount = 3) {
                      (height - std::min(480.0f, std::max(1.0f, height - 40.0f))) * 0.5f,
                      std::min(900.0f, std::max(1.0f, width - 40.0f)),
                      std::min(480.0f, std::max(1.0f, height - 40.0f))};
-    Layout result{panel, {}, {width * 0.5f - 90.0f, panel.y + panel.height - 58.0f, 180.0f, 40.0f}};
+    Layout result{panel, {}, {width * 0.5f - 90.0f, panel.y + panel.height - 70.0f, 180.0f, 40.0f}};
     const int count = std::clamp(cardCount, 0, 3);
     if (count == 0) return result;
 

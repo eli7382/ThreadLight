@@ -7,6 +7,7 @@
 #include "ranged_combat.h"
 #include "bulwark.h"
 #include "sower.h"
+#include "signature_effects.h"
 #include <algorithm>
 #include <array>
 
@@ -49,6 +50,7 @@ struct Foe {
     std::uint64_t projectileTicket = 0;
     bulwark::State guard{};
     sower::State sowerState{};
+    signature_effects::SlowState slow{};
     void capture(){previousP=p;previousPhase=phase;previousHitFlash=hitFlash;}
     Foe present(float alpha) const {
         auto result=*this;

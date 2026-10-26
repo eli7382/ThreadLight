@@ -332,6 +332,14 @@ public:
         return items_;
     }
 
+    // Physical interception owns projectile removal only; it grants no rewards,
+    // damage, player immunity or replacement shot. Reserved warnings are ineligible.
+    bool intercept(Ticket ticket) {
+        const auto slot=find(ticket);
+        if(slot==kProjectileCapacity||items_[slot].state!=SlotState::Flying)return false;
+        items_[slot]={};return true;
+    }
+
     // Call only after all enemies on a combat update. Relative segment
     // distance sweeps both the projectile and player between their positions.
     Impacts tick(Point previousPlayer, Point player, float playerRadius,

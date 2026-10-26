@@ -151,7 +151,8 @@ void fullCampaignRewardCeiling() {
 
 void exhaustedOfferCanDiscardWhenOnlyMagnetIsIrrelevant() {
     upgrades::Ranks ranks{};
-    for (int i = 0; i < upgrades::kPermanentCount - 1; ++i) {
+    for (int i = 0; i < upgrades::kPermanentCount; ++i) {
+        if(i==upgrades::index(upgrades::Id::Magnet))continue;
         const auto id = static_cast<upgrades::Id>(i);
         ranks.value[static_cast<std::size_t>(i)] = upgrades::maximum(id);
     }
