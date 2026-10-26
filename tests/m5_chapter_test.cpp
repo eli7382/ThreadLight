@@ -56,7 +56,7 @@ int kindIndex(EnemyKind kind) {
 
 int main() {
     using namespace threadlight;
-    CHECK(chapter::kEncounterCount==21);
+    CHECK(chapter::kEncounterCount==35);
     CHECK(chapter::encounter(6).name && chapter::encounter(6).boss);
     CHECK(chapter::encounter(6).name==std::string("THE ROOTWARDEN"));
     for(int i=0;i<static_cast<int>(expected.size());++i) {

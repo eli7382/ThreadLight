@@ -6,6 +6,7 @@
 #include "skitter.h"
 #include "ranged_combat.h"
 #include "bulwark.h"
+#include "sower.h"
 #include <algorithm>
 #include <array>
 
@@ -47,6 +48,7 @@ struct Foe {
     foundation::RewardId rewardId = 0;
     std::uint64_t projectileTicket = 0;
     bulwark::State guard{};
+    sower::State sowerState{};
     void capture(){previousP=p;previousPhase=phase;previousHitFlash=hitFlash;}
     Foe present(float alpha) const {
         auto result=*this;

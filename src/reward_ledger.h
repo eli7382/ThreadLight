@@ -51,6 +51,15 @@ public:
         return true;
     }
 
+    // Final victory records the kill/score once without creating an unusable
+    // pickup. It cannot be confused with rewardless cleanup despawning.
+    bool defeatEnemyWithoutPickup(RewardId id) {
+        auto* enemy=find(id);
+        if(!enemy||enemy->state!=State::Alive)return false;
+        enemy->state=State::Defeated;++counters_.killed;score_+=enemy->score;
+        return true;
+    }
+
     // Called ONLY after the authoritative pickup-contact helper reports contact.
     bool collectPickup(RewardId id) {
         auto* enemy = find(id);
@@ -97,7 +106,7 @@ public:
     const RewardCounters& counters() const { return counters_; }
 
 private:
-    enum class State { Alive, Pickup, Collected, Expired, Despawned };
+    enum class State { Alive, Pickup, Collected, Expired, Despawned, Defeated };
     struct Account { State state; int value; int score; };
     Account* find(RewardId id) { return id && id <= enemies_.size() ? &enemies_[id - 1] : nullptr; }
     std::vector<Account> enemies_;

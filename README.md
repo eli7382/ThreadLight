@@ -2,7 +2,7 @@
 
 A small, self-contained top-down survival game built in C++20 with raylib 5.5. Weave a fading silk wake through the hunters and collect sparks manually.
 
-This branch is the **M5 three-chapter development prototype**, based on accepted M4 `9154b5e5cac544824b0c7f245c2de1dc400dac87`. Waves 1-9 retain their accepted encounter data; the campaign now continues through Needle Dancer on Wave 14, Bulwarks from Wave 15, and Thorn Conductor on Wave 21. Rootwarden grants Afterimage and Dancer grants Crossweave after manual collection and ordinary choices. Wave 21 ends at **Three-Chapter Prototype Complete**. New values remain provisional. See [M5-CHAPTERS-II-III.md](M5-CHAPTERS-II-III.md) for contracts, validation, limitations and acceptance checks. Earlier milestone documents remain historical records.
+This branch is the **M6 35-wave development campaign**, based on accepted M5 `f210e2cb43dce0abb4f6274520bb0d356c4fe735`. Earlier Waves 1-21 retain their accepted encounter data. Chapters IV-V add Sowers, temporary ground hazards, Hollow Weaver on Wave 28, and Briar Heart on Wave 35. Defeating the Heart wins the campaign. Staged signature rewards are Afterimage (7), Crossweave (14), Cocoon (21), and Resonant Loom (28), independently of manually collecting boss cores. All new balance remains provisional. See [M6-CHAPTERS-IV-V.md](M6-CHAPTERS-IV-V.md) for contracts, evidence, limitations and acceptance checks. Earlier milestone documents remain historical records.
 
 ## Play
 
@@ -22,7 +22,7 @@ Effects are synthesized at startup and cover dash, silk hits and kills, spark co
 
 Open **Settings** from the title or pause menu. The Video section selects a 30, 60, 120, or Unlimited frame-rate limit and toggles the measured FPS display. The Audio section provides a mouse-operated SFX slider and Left / Right keyboard adjustment in 5% steps. Volume changes apply immediately. Settings are saved under the current user's `%APPDATA%\ThreadLight\settings.ini`.
 
-M1-M4 are accepted; M5 is a feature-branch candidate for owner acceptance. Historical Phase 2.2 pre-release package notes describe that older test package, not the status of the approved source baseline. The root `Threadlight.exe` is preserved and is not rebuilt by these changes; launch the new executable from its build directory.
+M1-M5 are accepted; M6 is a feature-branch candidate for owner acceptance. Historical Phase 2.2 pre-release package notes describe that older test package, not the status of the approved source baseline. The root `Threadlight.exe` is preserved and is not rebuilt by these changes; launch the new executable from its build directory.
 
 ### Manual listening check
 
@@ -41,7 +41,7 @@ Then run `build\Release\Threadlight.exe`. If raylib is installed outside vcpkg, 
 
 ## Regression tests
 
-Configure the twenty-five regression executables without the game executable with:
+Configure the thirty regression executables without the game executable with:
 
 ```powershell
 cmake -S . -B build-tests -DTHREADLIGHT_BUILD_GAME=OFF
@@ -49,28 +49,33 @@ cmake --build build-tests --config Release
 ctest --test-dir build-tests -C Release --output-on-failure
 ```
 
-The foundation suites cover lifecycle boundaries, manual pickups, credit accounting, and a deterministic helper scenario at multiple render rates. M2 adds focused combat/rank/offer tests, Skitter state and render-schedule tests, and upgrade-card layout/hit testing. M3 adds chapter schedules, Rootwarden state/geometry, dash/boss HUD, and explicitly scripted geometric boss scenarios. M4 adds completed-dash echo/signature accounting, ranged projectile/AI invariants, combined attack coordination and render-rate integration, and explicitly scripted Chapter II combat scenarios. M5 adds chapter budgets, Crossweave/Bulwark boundaries, boss state/geometry/scenarios and combined boss/support coordination with render-rate checks. No simulation result is a human playtest. The legacy logic suite now retains movement/spawn/control checks; its superseded automatic-wave-upgrade assertions have been removed. A passing test run does not establish balance, visual quality, or a human playthrough.
+The foundation suites cover lifecycle boundaries, manual pickups, credit accounting, and a deterministic helper scenario at multiple render rates. M2 adds focused combat/rank/offer tests, Skitter state and render-schedule tests, and upgrade-card layout/hit testing. M3 adds chapter schedules, Rootwarden state/geometry, dash/boss HUD, and explicitly scripted geometric boss scenarios. M4 adds completed-dash echo/signature accounting, ranged projectile/AI invariants, combined attack coordination and render-rate integration, and explicitly scripted Chapter II combat scenarios. M5 adds chapter budgets, Crossweave/Bulwark boundaries, boss state/geometry/scenarios and combined boss/support coordination with render-rate checks. M6 adds chapter budgets, Sower and swept ground-hazard geometry, Cocoon/Resonance, spatial boss invariants and terminal reward/resize integration. No simulation result is a human playtest. The legacy logic suite now retains movement/spawn/control checks; its superseded automatic-wave-upgrade assertions have been removed. A passing test run does not establish balance, visual quality, or a human playthrough.
 
 The preserved root executable was built with MSVC 19.44.35229.0, Windows x64, and raylib 5.5. Raylib's license is included in `RAYLIB-LICENSE.txt`.
 
 
-## Three chapters and isolated development fixtures
+## Full development campaign and isolated fixtures
 
-Launch `build-phase34-m5-msvc-x64\Release\Threadlight.exe` for normal play from Wave 1.
-Rootwarden's manual core collection, ordinary choices and single Afterimage card
-remain. Needle Dancer grants Crossweave using the same safe ordering; its core
-is optional for signature acquisition. No boss healing is added. Thorn Conductor
-ends the prototype with pending credits and uncollected pickup value retained.
+Launch `build-phase34-m6-msvc-x64\Release\Threadlight.exe` for normal play from Wave 1.
+Manual collection, deferred ordinary credits, four staged signature cards and permadeath remain.
+There are no campaign checkpoints, automatic spark banking or boss healing.
 
 For isolated acceptance testing only:
 
 ```powershell
-.\build-phase34-m5-msvc-x64\Release\Threadlight.exe --m5-telemetry --m5-seed 7382 --m5-dancer-fixture mixed
-.\build-phase34-m5-msvc-x64\Release\Threadlight.exe --m5-telemetry --m5-seed 7382 --m5-conductor-fixture defense
+.\build-phase34-m6-msvc-x64\Release\Threadlight.exe --m6-telemetry --m6-seed 7382 --m6-sower-fixture mixed
+.\build-phase34-m6-msvc-x64\Release\Threadlight.exe --m6-telemetry --m6-seed 7382 --m6-hollow-fixture mobility
+.\build-phase34-m6-msvc-x64\Release\Threadlight.exe --m6-telemetry --m6-seed 7382 --m6-heart-fixture mixed
 ```
 
-Fixture names: `zero`, `offense`, `defense`, `mobility`, `mixed`. Dancer fixtures
-have Afterimage and 0 or 6 ordinary ranks; Conductor fixtures have both signatures
-and 0 or 10 ranks. These are visibly labeled **DEV FIXTURE**, use normal health and
-damage, and are not campaign checkpoints. Existing M3 boss and M4 Wave 8 fixtures
-remain available. Run without fixture options to test progression and permadeath.
+Fixture names: `zero`, `offense`, `defense`, `mobility`, `mixed`. New Sower/Hollow
+fixtures have 0 or 12 ordinary ranks and three signatures; Heart fixtures have
+0 or 16 ranks and four signatures. These are visibly labeled **DEV FIXTURE**,
+use normal health and damage, and are not campaign checkpoints. Existing M3-M5
+fixtures remain available with their earlier rank budgets. Run without fixture
+options to test normal progression and permadeath.
+
+The development-only `--m6-render-check` option requires a Hollow/Heart fixture.
+It creates a hidden, silent window, captures committed warning/active renders to
+`m6-warning.png` and `m6-active.png` in the working directory, then exits. Use a
+new output directory. It does not save settings or simulate a human playthrough.

@@ -9,10 +9,21 @@ namespace threadlight::combat {
 // Health/damage are integer hundredths. Rendering never writes these records.
 constexpr int kSilkHitIntervalTicks = 33; // Existing nominal 0.27 s at 120 Hz.
 constexpr int kPlayerImmunityTicks = 94; // Existing nominal 0.78 s at 120 Hz.
-enum class EnemyKind { Hunter, Brute, Skitter, Spitter, Bulwark };
+enum class EnemyKind { Hunter, Brute, Skitter, Spitter, Bulwark, Sower };
 
 struct EnemyDefinition { int hp, contactDamage, sparkValue, killScore; float radius, speed; };
 inline EnemyDefinition definition(EnemyKind kind, int chapter = 1) {
+    if(chapter>=4){
+        const bool final=chapter>=5;
+        switch(kind){
+        case EnemyKind::Hunter:return {final?350:300,final?1400:1300,1,10,14.f,final?135.f:125.f};
+        case EnemyKind::Brute:return {final?900:750,final?2400:2200,2,35,20.f,final?80.f:78.f};
+        case EnemyKind::Skitter:return {final?350:300,final?1800:1700,1,15,11.f,final?145.f:140.f};
+        case EnemyKind::Spitter:return {final?600:500,final?1500:1400,2,30,15.f,final?88.f:84.f};
+        case EnemyKind::Bulwark:return {final?1000:850,final?2400:2200,3,45,23.f,final?64.f:58.f};
+        case EnemyKind::Sower:return {final?600:500,final?1700:1500,2,30,16.f,final?76.f:64.f};
+        }
+    }
     if(chapter>=3){
         switch(kind){
         case EnemyKind::Hunter:return {250,1200,1,10,14.f,115.f};
@@ -20,6 +31,7 @@ inline EnemyDefinition definition(EnemyKind kind, int chapter = 1) {
         case EnemyKind::Skitter:return {250,1500,1,15,11.f,135.f};
         case EnemyKind::Spitter:return {400,1300,2,30,15.f,78.f};
         case EnemyKind::Bulwark:return {700,2000,3,45,23.f,52.f};
+        case EnemyKind::Sower:return {500,1500,2,30,16.f,64.f};
         }
     }
     if(chapter>=2){
@@ -29,6 +41,7 @@ inline EnemyDefinition definition(EnemyKind kind, int chapter = 1) {
         case EnemyKind::Skitter:return {200,1300,1,15,11.f,125.f};
         case EnemyKind::Spitter:return {300,1200,2,30,15.f,72.f};
         case EnemyKind::Bulwark:return {700,2000,3,45,23.f,52.f};
+        case EnemyKind::Sower:return {500,1500,2,30,16.f,64.f};
         }
     }
     switch (kind) {
@@ -37,6 +50,7 @@ inline EnemyDefinition definition(EnemyKind kind, int chapter = 1) {
     case EnemyKind::Skitter: return {150, 1200, 1, 15, 11.f, 115.f};
     case EnemyKind::Spitter: return {300,1200,2,30,15.f,72.f};
     case EnemyKind::Bulwark: return {700,2000,3,45,23.f,52.f};
+    case EnemyKind::Sower: return {500,1500,2,30,16.f,64.f};
     }
     return {100, 1000, 1, 10, 14.f, 95.f};
 }
@@ -97,8 +111,10 @@ struct IncomingHit {
         }
     }
 };
-inline int applyIncoming(PlayerHealth& player, IncomingHit hit, bool dashProtected) {
+inline int applyIncoming(PlayerHealth& player, IncomingHit hit, bool dashProtected, int* barrierCenti=nullptr) {
     if (!player.alive() || dashProtected || player.immunityTicks > 0 || hit.damage <= 0 || !hit.sourceId) return 0;
+    if(barrierCenti){const int absorbed=std::min(std::max(0,*barrierCenti),hit.damage);*barrierCenti-=absorbed;hit.damage-=absorbed;}
+    if(hit.damage<=0)return 0; // Absorption grants no additional immunity.
     const int taken = std::min(player.hp, hit.damage);
     player.hp -= taken;
     player.immunityTicks = kPlayerImmunityTicks;

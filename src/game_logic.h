@@ -6,7 +6,7 @@
 
 namespace threadlight {
 
-// Three-chapter prototype; the remaining campaign is deliberately unavailable.
+// Development campaign: all 35 encounters are available.
 constexpr int kWaveCount = chapter::kEncounterCount;
 constexpr float kDashDurationSeconds = 0.19f;
 constexpr float kDashCooldownSeconds = 1.85f;
