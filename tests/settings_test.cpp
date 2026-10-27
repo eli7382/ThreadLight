@@ -26,6 +26,7 @@ void testDefaultsAndLimits() {
     const AppSettings defaults;
     CHECK(defaults.frameRateLimit == 60);
     CHECK(defaults.showFps);
+    CHECK(!defaults.vsync);
     CHECK(defaults.sfxVolumePercent == 78);
     CHECK(!defaults.tutorialCompleted);
     CHECK(validFrameRateLimit(30));
@@ -61,14 +62,17 @@ void testPersistenceAndInvalidRecovery() {
     const auto missing = load(path);
     CHECK(missing.frameRateLimit == 60);
     CHECK(missing.showFps);
+    CHECK(!missing.vsync);
     CHECK(missing.sfxVolumePercent == 78);
 
     AppSettings saved{120, false, 35, true};
     saved.codexSeen=65;saved.bestWave=21;saved.bestScore=12345;saved.bestKills=67;saved.bestWon=false;
+    saved.vsync=true;
     CHECK(save(path, saved));
     const auto loaded = load(path);
     CHECK(loaded.frameRateLimit == 120);
     CHECK(!loaded.showFps);
+    CHECK(loaded.vsync);
     CHECK(loaded.sfxVolumePercent == 35);
     CHECK(loaded.tutorialCompleted);
     CHECK(loaded.codexSeen==65 && loaded.bestWave==21 && loaded.bestScore==12345 && loaded.bestKills==67 && !loaded.bestWon);
@@ -87,6 +91,21 @@ void testPersistenceAndInvalidRecovery() {
     CHECK(save(path,highRate));
     CHECK(load(path).frameRateLimit==0); // Unlimited remains a distinct saved choice.
 
+    auto vsyncOff=saved;
+    vsyncOff.vsync=false;
+    CHECK(save(path,vsyncOff));
+    const auto vsyncOffLoaded=load(path);
+    CHECK(!vsyncOffLoaded.vsync);
+    CHECK(vsyncOffLoaded.frameRateLimit==saved.frameRateLimit);
+    CHECK(vsyncOffLoaded.showFps==saved.showFps);
+    CHECK(vsyncOffLoaded.sfxVolumePercent==saved.sfxVolumePercent);
+    CHECK(vsyncOffLoaded.tutorialCompleted==saved.tutorialCompleted);
+    CHECK(vsyncOffLoaded.codexSeen==saved.codexSeen);
+    CHECK(vsyncOffLoaded.bestWave==saved.bestWave);
+    CHECK(vsyncOffLoaded.bestScore==saved.bestScore);
+    CHECK(vsyncOffLoaded.bestKills==saved.bestKills);
+    CHECK(vsyncOffLoaded.bestWon==saved.bestWon);
+
     const AppSettings updated{30, true, 80};
     CHECK(save(path, updated)); // Replacing an existing settings file is supported.
     const auto updatedSettings = load(path);
@@ -94,15 +113,30 @@ void testPersistenceAndInvalidRecovery() {
     CHECK(updatedSettings.showFps);
     CHECK(updatedSettings.sfxVolumePercent == 80);
     CHECK(!updatedSettings.tutorialCompleted);
+    {
+        std::ofstream legacy(path, std::ios::binary | std::ios::trunc);
+        legacy << "frame_rate_limit=120\nshow_fps=0\nsfx_volume_percent=40\n";
+    }
+    const auto legacySettings=load(path);
+    CHECK(legacySettings.frameRateLimit==120);
+    CHECK(!legacySettings.showFps);
+    CHECK(legacySettings.sfxVolumePercent==40);
+    CHECK(!legacySettings.vsync); // Older files have no vsync key.
 
     {
         std::ofstream invalid(path, std::ios::binary | std::ios::trunc);
-        invalid << "frame_rate_limit=144\nshow_fps=maybe\nsfx_volume_percent=900\n";
+        invalid << "frame_rate_limit=144\nshow_fps=maybe\nvsync=2\nsfx_volume_percent=900\n";
     }
     const auto recovered = load(path);
     CHECK(recovered.frameRateLimit == 60);
     CHECK(recovered.showFps);
+    CHECK(!recovered.vsync);
     CHECK(recovered.sfxVolumePercent == 78);
+    {
+        std::ofstream invalidVsync(path, std::ios::binary | std::ios::trunc);
+        invalidVsync << "vsync=maybe\n";
+    }
+    CHECK(!load(path).vsync);
 
     {
         std::ofstream oversized(path, std::ios::binary | std::ios::trunc);
@@ -111,6 +145,7 @@ void testPersistenceAndInvalidRecovery() {
     const auto oversizedRecovery = load(path);
     CHECK(oversizedRecovery.frameRateLimit == 60);
     CHECK(oversizedRecovery.showFps);
+    CHECK(!oversizedRecovery.vsync);
     CHECK(oversizedRecovery.sfxVolumePercent == 78);
 
     std::error_code error;

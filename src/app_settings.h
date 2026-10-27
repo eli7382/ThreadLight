@@ -22,6 +22,7 @@ struct AppSettings {
     int bestWave = 0;
     std::uint64_t bestScore = 0, bestKills = 0;
     bool bestWon = false;
+    bool vsync = false;
 };
 
 inline bool isBetterRun(const AppSettings& settings, bool won, int wave, std::uint64_t score) {
@@ -123,6 +124,9 @@ inline AppSettings load(const std::filesystem::path& path) {
         } else if (key == "show_fps") {
             if (parseInteger(value, parsed) && (parsed == 0 || parsed == 1)) settings.showFps = parsed == 1;
             else settings.showFps = true;
+        } else if (key == "vsync") {
+            if (parseInteger(value, parsed) && (parsed == 0 || parsed == 1)) settings.vsync = parsed == 1;
+            else settings.vsync = false;
         } else if (key == "sfx_volume_percent") {
             if (parseInteger(value, parsed) && parsed >= 0 && parsed <= 100) settings.sfxVolumePercent = parsed;
             else settings.sfxVolumePercent = kDefaultSfxVolumePercent;
@@ -159,6 +163,7 @@ inline bool save(const std::filesystem::path& path, const AppSettings& settings)
                << "frame_rate_limit=" << (validFrameRateLimit(settings.frameRateLimit)
                     ? settings.frameRateLimit : kDefaultFrameRateLimit) << '\n'
                << "show_fps=" << (settings.showFps ? 1 : 0) << '\n'
+               << "vsync=" << (settings.vsync ? 1 : 0) << '\n'
                << "sfx_volume_percent=" << std::clamp(settings.sfxVolumePercent, 0, 100) << '\n'
                << "tutorial_completed=" << (settings.tutorialCompleted ? 1 : 0) << '\n'
                << "codex_seen=" << (settings.codexSeen & 2047) << '\n'

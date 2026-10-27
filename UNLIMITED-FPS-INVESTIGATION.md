@@ -74,10 +74,12 @@ movement, dash or simulation-rate change was made.
 - Luna High reviewed timing/input and researched GPU synchronization, then added
   the pure pacing helper/tests and independently reviewed integration.
 
-## Proposed deeper experiment — approval required
+## Historical research proposal — excluded from this integration
 
-Implement an **opt-in bounded GPU-command-queue prototype**, separately from the
-normal renderer. Preserve true Unlimited: do not set a hidden fixed FPS limit.
+This proposal was later prototyped on `codex/gpu-queue-prototype-20261027` and
+researched on `codex/presentation-pacing-20261027`. Those branches remain intact;
+the experimental implementation, dependencies and tests are excluded from
+`develop`. The following records the original research design:
 
 1. Flush raylib's deferred geometry before inserting a frame-completion fence.
 2. Keep a ring of at most two outstanding frame fences. Wait for the oldest
@@ -111,6 +113,6 @@ percentiles, display refresh information and presentation timing. An unsynchroni
 VSync option is a possible experiment, but it changes presentation behavior and
 must not masquerade as Unlimited. No VSync behavior was changed in this patch.
 
-The owner's original instructions require evidence, costs and risks before
-substantial renderer changes and approval before implementation. The GPU queue
-prototype above is consequently proposed, not implemented or claimed as a fix.
+The approved VSync controls and independent diagnostics are documented in
+[PRESENTATION-PACING.md](PRESENTATION-PACING.md). Neither those controls nor the
+excluded experiment establish a fix for true Unlimited responsiveness.

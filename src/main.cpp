@@ -74,6 +74,9 @@ int main(int argc, char** argv){
  const auto bootTime=PerfClock::now();
  bool m1Telemetry=false;
  bool m6RenderCheck=false;
+ bool pacingCheck=false;
+ bool settingsRenderCheck=false;
+ int pacingRate=60,pacingVsync=-1;
  int bossFixture=-1; // Explicit development-only CLI fixture; never a campaign checkpoint.
  int waveFixture=-1;
  int waveFixtureWave=7;
@@ -85,6 +88,18 @@ int main(int argc, char** argv){
  for(int i=1;i<argc;i++){
   const std::string_view arg=argv[i];
    if(arg=="--perf-log"&&i+1<argc){if(!perfLogPath.empty())return 2;perfLogPath=argv[++i];if(perfLogPath.empty())return 2;}
+   else if(arg=="--settings-render-check"){
+    if(++fixtureOptions>1)return 2;
+    settingsRenderCheck=true;m6RenderCheck=true;utilityFixture=true;waveFixture=4;waveFixtureWave=7;
+   }else if(arg=="--pacing-check"&&i+1<argc){
+    if(++fixtureOptions>1)return 2;
+    const std::string_view text=argv[++i];const auto parsed=std::from_chars(text.data(),text.data()+text.size(),pacingRate);
+    if(parsed.ec!=std::errc{}||parsed.ptr!=text.data()+text.size()||(pacingRate!=30&&pacingRate!=60&&pacingRate!=120&&pacingRate!=240))return 2;
+    pacingCheck=true;utilityFixture=true;waveFixture=4;waveFixtureWave=7;
+   }else if(arg=="--pacing-vsync"&&i+1<argc){
+    if(pacingVsync!=-1)return 2;
+    const std::string_view value=argv[++i];if(value=="on")pacingVsync=1;else if(value=="off")pacingVsync=0;else return 2;
+   }
    else if(arg=="--m6-render-check"||arg=="--m7-render-check")m6RenderCheck=true;
   else if(arg=="--m7-min-window")minimumQaWindow=true;
   else if(arg=="--m7-utility-fixture"){
@@ -119,6 +134,7 @@ int main(int argc, char** argv){
  if(bossFixture>=0&&waveFixture>=0)return 2;
  if(m6RenderCheck&&rewardFixture==0&&!utilityFixture&&(bossFixture<0||bossFixtureWave<27))return 2;
  if(minimumQaWindow&&!m6RenderCheck)return 2;
+ if((pacingVsync!=-1&&!pacingCheck)||(pacingCheck&&m6RenderCheck))return 2;
  std::unique_ptr<threadlight::performance::Recorder> perf;
  if(!perfLogPath.empty()){
   perf=std::make_unique<threadlight::performance::Recorder>();
@@ -132,12 +148,16 @@ int main(int argc, char** argv){
  if(minimumQaWindow)SetWindowSize(windowCoordinates.nativeWidth(960),windowCoordinates.nativeHeight(640));
  int SW=windowCoordinates.width(GetRenderWidth()),SH=windowCoordinates.height(GetRenderHeight());
  auto playArea=threadlight::layout::playBounds(SW,SH);
- SetExitKey(KEY_NULL); SetTargetFPS(60); if(!m6RenderCheck)InitAudioDevice();
- const bool audioReady=!m6RenderCheck&&IsAudioDeviceReady();
+ SetExitKey(KEY_NULL); SetTargetFPS(pacingCheck?pacingRate:60); if(!m6RenderCheck&&!pacingCheck)InitAudioDevice();
+ const bool audioReady=!m6RenderCheck&&!pacingCheck&&IsAudioDeviceReady();
  threadlight::GameAudio sfx;
  if(!sfx.initialize(audioReady))TraceLog(LOG_WARNING,"Audio device unavailable; event sounds are disabled.");
  const auto settingsPath=threadlight::settings::userSettingsPath();
  auto appSettings=threadlight::settings::load(settingsPath);
+ if(pacingCheck){appSettings.frameRateLimit=pacingRate;if(pacingVsync!=-1)appSettings.vsync=pacingVsync==1;}
+ auto applyVsync=[&](){if(appSettings.vsync)SetWindowState(FLAG_VSYNC_HINT);else ClearWindowState(FLAG_VSYNC_HINT);};
+ applyVsync();
+ TraceLog(LOG_INFO,"PRESENTATION vsync_requested=%d display_hz=%d pacing_check=%d requested_fps=%d",appSettings.vsync,GetMonitorRefreshRate(GetCurrentMonitor()),pacingCheck,appSettings.frameRateLimit);
  bool highResolutionTimer=false;
  auto updateTimerResolution=[&](bool capped){
 #if defined(_WIN32)
@@ -149,7 +169,7 @@ int main(int argc, char** argv){
  };
  updateTimerResolution(!m6RenderCheck);
  sfx.setMasterVolume(appSettings.sfxVolumePercent/100.0f);
- int appliedFrameRateLimit=60; // InitWindow starts on the title screen.
+ int appliedFrameRateLimit=pacingCheck?pacingRate:60;
  using threadlight::Mode;
  Mode mode=Mode::Title,settingsReturn=Mode::Title; bool exitRequested=false; int mainSelection=0,pauseSelection=0,exitSelection=threadlight::menu::kDefaultExitSelection,settingsTab=0,settingsFocus=0;
  bool tutorial=false,tutorialMoved=false,tutorialDashed=false,inventoryOpen=false;
@@ -247,6 +267,7 @@ int main(int argc, char** argv){
  float measuredFps=60.0f,lastFrameSeconds=0.0f;
  upgradeUI::OfferTextCache offerTextCache;
  auto saveSettings=[&](){
+  if(pacingCheck)return; // A diagnostic run never writes the owner's profile.
   sfx.setMasterVolume(appSettings.sfxVolumePercent/100.0f);
   if(!settingsEdits.flush([&](){return threadlight::settings::save(settingsPath,appSettings);}))
    TraceLog(LOG_WARNING,"Could not save ThreadLight settings to the user config directory.");
@@ -443,6 +464,7 @@ int main(int argc, char** argv){
   auto applyMenuAction=[&](threadlight::menu::Action action){threadlight::menu::apply(mode,settingsReturn,exitRequested,exitSelection,action);};
   auto changeFrameLimit=[&](int value){if(!threadlight::settings::validFrameRateLimit(value)||value==appSettings.frameRateLimit)return;appSettings.frameRateLimit=value;settingsEdits.dirty=true;saveSettings();};
   auto changeShowFps=[&](){appSettings.showFps=!appSettings.showFps;if(appSettings.showFps)measuredFps=threadlight::timing::initialMeasuredFps(lastFrameSeconds);settingsEdits.dirty=true;saveSettings();};
+  auto changeVsync=[&](){appSettings.vsync=!appSettings.vsync;applyVsync();settingsEdits.dirty=true;saveSettings();};
   auto changeSfxVolume=[&](int value,bool persist=true){value=std::clamp(value,0,100);if(value==appSettings.sfxVolumePercent)return;appSettings.sfxVolumePercent=value;settingsEdits.dirty=true;sfx.setMasterVolume(value/100.0f);if(persist)saveSettings();};
   auto contains=[](Rectangle rectangle,Vector2 point){return CheckCollisionPointRec(point,rectangle);};
   auto buttonRect=[&](int index,int count,float centerY,float width=300.f,float height=46.f,float gap=54.f){return Rectangle{(SW-width)*.5f,centerY+(index-(count-1)*.5f)*gap-height*.5f,width,height};};
@@ -472,9 +494,13 @@ int main(int argc, char** argv){
    auto lastMemorySample=PerfClock::time_point{};
    threadlight::performance::MemorySample memorySample{};
    std::uint64_t perfFrameNumber=0;
-  if(m6RenderCheck)reset();
+  if(m6RenderCheck||pacingCheck)reset();
+  if(settingsRenderCheck)mode=Mode::Settings;
+  const auto pacingStart=PerfClock::now();
   while(!WindowShouldClose()&&!exitRequested){
+    if(pacingCheck&&PerfClock::now()-pacingStart>=std::chrono::seconds(5))break;
     const auto frameStart=perf?PerfClock::now():PerfClock::time_point{};
+    const double frameQpcMs=perf?threadlight::performance::queryClockMilliseconds():0;
     double simulationMs=0,discardedMs=0;int frameSteps=0;
    const Mode screenAtFrameStart=mode;
    const double frameSeconds=std::max(0.0,static_cast<double>(GetFrameTime()));
@@ -551,6 +577,7 @@ int main(int argc, char** argv){
    std::array<Rectangle,frameRateChoiceCount> fpsChips{};
    for(int i=0;i<frameRateChoiceCount;i++)fpsChips[i]={settingsLeft+292.f+i*(fpsChipWidth+8.f),settingsTop+143.f,fpsChipWidth,38.f};
    const Rectangle showToggle{settingsLeft+settingsWidth-182.f,settingsTop+224.f,132.f,42.f};
+   const Rectangle vsyncToggle{settingsLeft+settingsWidth-182.f,settingsTop+306.f,132.f,42.f};
    const Rectangle frameRow{settingsLeft+42.f,settingsTop+132.f,settingsWidth-84.f,64.f};
    const Rectangle volumeSlider{settingsLeft+48.f,settingsTop+207.f,settingsWidth-96.f,18.f};
    const Rectangle volumeRow{settingsLeft+42.f,settingsTop+144.f,settingsWidth-84.f,100.f};
@@ -577,7 +604,7 @@ int main(int argc, char** argv){
        IsWindowFocused(),IsMouseButtonDown(MOUSE_BUTTON_LEFT),menuKey))saveSettings();
 
    const bool focused=IsWindowFocused(),minimized=IsWindowMinimized();
-   if(threadlight::menu::shouldAutoPause(screenAtFrameStart,focused,minimized,m6RenderCheck)){
+   if(threadlight::menu::shouldAutoPause(screenAtFrameStart,focused,minimized,m6RenderCheck||pacingCheck)){
     applyMenuAction(threadlight::menu::Action::Pause);
    }else if(screenAtFrameStart==Mode::Pause&&!m6RenderCheck&&(!focused||minimized)){
     // Wait for focus and an intentional resume; do not consume stale input.
@@ -640,10 +667,11 @@ int main(int argc, char** argv){
     else {
      if(hovered(videoTab)&&IsMouseButtonPressed(MOUSE_BUTTON_LEFT)){settingsTab=0;settingsFocus=0;}
      else if(hovered(audioTab)&&IsMouseButtonPressed(MOUSE_BUTTON_LEFT)){settingsTab=1;settingsFocus=0;}
-     else if(hovered(settingsBack)){settingsFocus=settingsTab==0?2:1;if(IsMouseButtonPressed(MOUSE_BUTTON_LEFT))applyMenuAction(threadlight::menu::Action::Back);}
+     else if(hovered(settingsBack)){settingsFocus=settingsTab==0?3:1;if(IsMouseButtonPressed(MOUSE_BUTTON_LEFT))applyMenuAction(threadlight::menu::Action::Back);}
      else if(settingsTab==0){
       for(int i=0;i<frameRateChoiceCount;i++)if(hovered(fpsChips[i])){settingsFocus=0;if(IsMouseButtonPressed(MOUSE_BUTTON_LEFT))changeFrameLimit(threadlight::settings::kFrameRateLimits[i]);}
       if(hovered(showToggle)){settingsFocus=1;if(IsMouseButtonPressed(MOUSE_BUTTON_LEFT))changeShowFps();}
+      if(hovered(vsyncToggle)){settingsFocus=2;if(IsMouseButtonPressed(MOUSE_BUTTON_LEFT))changeVsync();}
      }else if(settingsTab==1&&hovered(volumeRow))settingsFocus=0;
      if(settingsTab==1&&hovered(volumeSlider)&&IsWindowFocused()&&IsMouseButtonPressed(MOUSE_BUTTON_LEFT)){
       settingsFocus=0;
@@ -657,11 +685,13 @@ int main(int argc, char** argv){
       const int direction=IsKeyPressed(KEY_RIGHT)?1:-1;
       if(settingsTab==0&&settingsFocus==0)changeFrameLimit(threadlight::settings::nextFrameRateLimit(appSettings.frameRateLimit,direction));
       else if(settingsTab==0&&settingsFocus==1)changeShowFps();
+      else if(settingsTab==0&&settingsFocus==2)changeVsync();
       else if(settingsTab==1&&settingsFocus==0)changeSfxVolume(threadlight::settings::adjustSfxVolume(appSettings.sfxVolumePercent,direction));
      }else if(IsKeyPressed(KEY_ENTER)||IsKeyPressed(KEY_SPACE)){
       if(settingsTab==0&&settingsFocus==0)changeFrameLimit(threadlight::settings::nextFrameRateLimit(appSettings.frameRateLimit,1));
       else if(settingsTab==0&&settingsFocus==1)changeShowFps();
-      else if((settingsTab==0&&settingsFocus==2)||(settingsTab==1&&settingsFocus==1))applyMenuAction(threadlight::menu::Action::Back);
+      else if(settingsTab==0&&settingsFocus==2)changeVsync();
+      else if((settingsTab==0&&settingsFocus==3)||(settingsTab==1&&settingsFocus==1))applyMenuAction(threadlight::menu::Action::Back);
       else if(settingsTab==1&&settingsFocus==0)changeSfxVolume(threadlight::settings::adjustSfxVolume(appSettings.sfxVolumePercent,1));
      }
     }
@@ -677,7 +707,7 @@ int main(int argc, char** argv){
     if(tutorial){tutorialSkipHold=IsWindowFocused()&&IsKeyDown(KEY_B)?std::min(3.f,tutorialSkipHold+(float)frameSeconds):0.f;}
     if(tutorial&&(tutorialSkipHold>=3.f||(rewards.counters().killed>=10&&IsKeyPressed(KEY_ENTER)))){
      finishTutorial();
-    }else if(IsKeyPressed(KEY_P)){
+    }else if(!pacingCheck&&IsKeyPressed(KEY_P)){
      applyMenuAction(threadlight::menu::Action::Pause);
      stepClock.clear();dashPressPending=collectionContinuePending=false;
     }else{
@@ -707,8 +737,9 @@ int main(int argc, char** argv){
       battle::tick(health);dashCd=std::max(0.f,dashCd-dt);pulse=std::max(0.f,pulse-dt);damageFeedback=std::max(0.f,damageFeedback-dt);shake=std::max(0.f,shake-dt);dashVisualActive=dashTime>0;dashEchoTimer=std::max(0.f,dashEchoTimer-dt);
       const unsigned pressedDirections=movementPressPending.consume();
       V mv{(float)(IsKeyDown(KEY_D)||IsKeyDown(KEY_RIGHT)||(pressedDirections&2))-(float)(IsKeyDown(KEY_A)||IsKeyDown(KEY_LEFT)||(pressedDirections&1)),(float)(IsKeyDown(KEY_S)||IsKeyDown(KEY_DOWN)||(pressedDirections&8))-(float)(IsKeyDown(KEY_W)||IsKeyDown(KEY_UP)||(pressedDirections&4))}; if(len(mv)>0)mv=norm(mv);playerWasMoving=len(mv)>0;
+      if(pacingCheck){const float angle=static_cast<float>(simulationTick)*dt*1.5f;mv={std::cos(angle),std::sin(angle)};playerWasMoving=true;}
       if(tutorial&&playerWasMoving)tutorialMoved=true;
-      const bool dashPressed=dashPressPending;dashPressPending=false;
+      const bool dashPressed=pacingCheck?simulationTick%180==60:dashPressPending;dashPressPending=false;
       if(dashPressed&&dashCd<=0&&len(mv)>0){afterimage::beginDash(offensiveEcho,{player.x,player.y},combat,signatureReward.owned);dashTime=threadlight::kDashDurationSeconds;dashCd=stats.dashCooldownSeconds;dashCycleDuration=dashCd;dashEcho.fill(player);dashEchoCount=0;dashEchoFade=.22f;dashEchoTimer=0;dashVisualActive=true;burst(player,C(132,244,255),10,150);sfx.play(threadlight::audio::Event::Dash);}
       if(tutorial&&dashTime>0&&!tutorialDashed){tutorialDashed=true;tutorialSpawnStart=phaseElapsedAtStart;}
       bossPhaseNotice=std::max(0.f,bossPhaseNotice-dt);
@@ -1597,10 +1628,13 @@ int main(int argc, char** argv){
      const bool configured=appSettings.frameRateLimit==threadlight::settings::kFrameRateLimits[i];
      drawButton(fpsChips[i],rateLabels[i],configured,hovered(fpsChips[i]),13);
     }
-    DrawText("Gameplay limit. Menus use at most 60 FPS; unfocused windows use 30 FPS.",(int)settingsLeft+48,(int)settingsTop+195,13,C(111,164,176));
+    DrawText("Gameplay limit. Menus use at most 60 FPS; unfocused windows use 30 FPS.",(int)settingsLeft+48,(int)settingsTop+204,13,C(111,164,176));
     DrawText("SHOW FPS",(int)settingsLeft+48,(int)settingsTop+236,16,settingsFocus==1?C(205,243,237):C(145,183,191));
     DrawText("Measured output rate",(int)settingsLeft+48,(int)settingsTop+259,12,C(111,164,176));
     drawButton(showToggle,appSettings.showFps?"ON":"OFF",settingsFocus==1,hovered(showToggle),14);
+    DrawText("VSYNC",(int)settingsLeft+48,(int)settingsTop+318,16,settingsFocus==2?C(205,243,237):C(145,183,191));
+    DrawText("Match display refresh; may limit output even with Unlimited.",(int)settingsLeft+48,(int)settingsTop+341,12,C(111,164,176));
+    drawButton(vsyncToggle,appSettings.vsync?"ON":"OFF",settingsFocus==2,hovered(vsyncToggle),14);
    }else{
     DrawRectangleRoundedLines(volumeRow,.08f,8,settingsFocus==0?C(76,201,197,115):C(47,89,105,75));
     DrawText("SOUND EFFECTS VOLUME",(int)settingsLeft+48,(int)settingsTop+160,16,settingsFocus==0?C(205,243,237):C(145,183,191));
@@ -1613,7 +1647,7 @@ int main(int argc, char** argv){
     DrawCircleLines((int)(volumeSlider.x+volumeSlider.width*volumeFraction),(int)trackY,11.f,C(73,230,207));
     DrawText("Drag to set volume. Arrow keys change it in 5% steps; changes apply immediately.",(int)settingsLeft+48,(int)settingsTop+245,13,C(111,164,176));
    }
-   drawButton(settingsBack,"BACK",(settingsTab==0&&settingsFocus==2)||(settingsTab==1&&settingsFocus==1),hovered(settingsBack));
+   drawButton(settingsBack,"BACK",(settingsTab==0&&settingsFocus==3)||(settingsTab==1&&settingsFocus==1),hovered(settingsBack));
    DrawText("TAB SWITCHES SECTIONS     ESC RETURNS",(int)settingsLeft+48,(int)settingsTop+488,11,C(108,167,178));
   }
   if(mode==Mode::ExitConfirm){
@@ -1707,6 +1741,7 @@ int main(int argc, char** argv){
     if(frame.data){ExportImage(frame,path);UnloadImage(frame);}
    };
    if(mode==Mode::Signature){capture("m7-signature.png");exitRequested=true;}
+   if(settingsRenderCheck){capture("settings-vsync.png");exitRequested=true;}
    if(utilityFixture&&simulationTick>=240){capture("m7-utilities.png");exitRequested=true;}
    if(!capturedWarning&&(boss.stage==root::Stage::RootWarning||boss.stage==root::Stage::StepWarning)){
     capture("m6-warning.png");capturedWarning=true;
@@ -1716,7 +1751,7 @@ int main(int argc, char** argv){
    }
    if((capturedWarning&&capturedActive)||renderCheckFrames>=1200)exitRequested=true;
   }
-  const int effectiveFrameRateLimit=threadlight::timing::effectiveFrameRateLimit(
+  const int effectiveFrameRateLimit=pacingCheck?pacingRate:threadlight::timing::effectiveFrameRateLimit(
    appSettings.frameRateLimit,mode==Mode::Play,IsWindowFocused(),IsWindowMinimized(),m6RenderCheck);
   if(effectiveFrameRateLimit!=appliedFrameRateLimit){
    updateTimerResolution(!m6RenderCheck&&effectiveFrameRateLimit!=0);
@@ -1741,6 +1776,8 @@ int main(int argc, char** argv){
    sample.enemies=foes.size();sample.silk=thread.empty()?0:thread.size()-1;sample.activeSilk=thread.size()-first;
    sample.sparks=sparks.size();sample.particles=particles.size();sample.projectiles=projectiles.flyingCount()+boss.bullets.flyingCount();
    sample.groundHazards=ground.liveCount();sample.bossHazards=boss.fields.liveCount();sample.memory=memorySample;
+   sample.configuredFps=appSettings.frameRateLimit;sample.effectiveFps=effectiveFrameRateLimit;
+   sample.vsyncRequested=appSettings.vsync;sample.monitorHz=GetMonitorRefreshRate(GetCurrentMonitor());sample.focused=focused;sample.frameQpcMs=frameQpcMs;
    if(!perf->record(sample)){TraceLog(LOG_WARNING,"Performance log write failed; stopping diagnostics.");perf.reset();}
   }
  }

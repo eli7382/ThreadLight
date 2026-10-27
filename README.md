@@ -31,7 +31,13 @@ Open **Settings** from the title or pause menu. The Video section selects a 30, 
 Unlimited has produced severe game and desktop responsiveness problems on the
 tested Windows/Intel configuration. The background/menu pacing mitigation does
 not establish a fix for uncapped foreground play. See
-[the investigation and proposed deeper fix](UNLIMITED-FPS-INVESTIGATION.md).
+[the investigation and remaining limitations](UNLIMITED-FPS-INVESTIGATION.md).
+
+**Settings → Video → VSync** is a separate, saved, opt-in control. It requests
+display-synchronized presentation and can constrain output to the display refresh
+rate even when a higher software FPS limit or Unlimited is selected. Existing
+profiles default to VSync off. See [PRESENTATION-PACING.md](PRESENTATION-PACING.md)
+for the measured Windows presentation investigation and its limitations.
 
 M1-M6 are accepted; M7 is a feature-branch candidate for owner acceptance. Historical Phase 2.2 pre-release package notes describe that older test package, not the status of the approved source baseline. The root `Threadlight.exe` is preserved and is not rebuilt by these changes; launch the new executable from its build directory.
 
@@ -119,7 +125,7 @@ follow-up work.
 
 ## Regression tests
 
-Configure the thirty-five regression executables without the game executable with:
+Configure the game-independent regression executables without the game executable with:
 
 ```powershell
 cmake -S . -B build-tests -DTHREADLIGHT_BUILD_GAME=OFF
@@ -134,7 +140,7 @@ The preserved root executable was built with MSVC 19.44.35229.0, Windows x64, an
 
 ## Campaign and isolated development fixtures
 
-Launch `build-phase34-m7-msvc-x64\Release\Threadlight.exe` for normal play from Wave 1.
+Launch `build-windows-msvc\Release\Threadlight.exe` for normal play from Wave 1.
 Manual collection, deferred ordinary credits, four signature choices and permadeath remain.
 There are no campaign checkpoints, automatic spark banking or boss healing.
 
@@ -146,11 +152,11 @@ Signature kills, timeout removal and full-health kill groups do not bank healing
 For isolated acceptance testing only:
 
 ```powershell
-.\build-phase34-m7-msvc-x64\Release\Threadlight.exe --m7-utility-fixture --m7-telemetry
-.\build-phase34-m7-msvc-x64\Release\Threadlight.exe --m7-reward-fixture 1
-.\build-phase34-m7-msvc-x64\Release\Threadlight.exe --m7-reward-fixture 4
-.\build-phase34-m7-msvc-x64\Release\Threadlight.exe --m6-hollow-fixture mobility --m7-telemetry
-.\build-phase34-m7-msvc-x64\Release\Threadlight.exe --m6-heart-fixture mixed --m7-telemetry
+.\build-windows-msvc\Release\Threadlight.exe --m7-utility-fixture --m7-telemetry
+.\build-windows-msvc\Release\Threadlight.exe --m7-reward-fixture 1
+.\build-windows-msvc\Release\Threadlight.exe --m7-reward-fixture 4
+.\build-windows-msvc\Release\Threadlight.exe --m6-hollow-fixture mobility --m7-telemetry
+.\build-windows-msvc\Release\Threadlight.exe --m6-heart-fixture mixed --m7-telemetry
 ```
 
 The utility fixture starts Wave8 at 55/100 HP with NeedlecatchIII,

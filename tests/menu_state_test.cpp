@@ -95,9 +95,11 @@ void testKeyboardFocusWrapsWithinEachMenu() {
     CHECK(moveSelection(2, 1, 3) == 0);
     CHECK(moveSelection(0, -1, 4) == 3);
     CHECK(moveSelection(3, 1, 4) == 0);
-    CHECK(settingsFocusCount(0) == 3);
+    CHECK(settingsFocusCount(0) == 4);
     CHECK(settingsFocusCount(1) == 2);
-    CHECK(moveSelection(0, -1, settingsFocusCount(0)) == 2);
+    CHECK(moveSelection(0, -1, settingsFocusCount(0)) == 3);
+    CHECK(moveSelection(1, 1, settingsFocusCount(0)) == 2); // VSync follows Show FPS.
+    CHECK(moveSelection(2, 1, settingsFocusCount(0)) == 3); // Back follows VSync.
     CHECK(moveSelection(1, 1, settingsFocusCount(1)) == 0);
 
     int tab = 0, focus = 2;

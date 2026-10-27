@@ -1,5 +1,9 @@
 # Performance and correctness pass — 27 October 2026
 
+Historical verification report for `bfc41ee`; the approved improvements were
+subsequently selected for integration into `develop`. Baseline and branch-state
+statements below describe that original pass, not the later integration status.
+
 Baseline: fetched `origin/develop` at `2fbdbf4f37da89489b648ce6c3d97f87efe8bd79`.
 Feature branch: `codex/performance-quality-pass-20261027`, in its own worktree.
 Existing checkouts, builds, `main`, and `develop` were left unchanged.
