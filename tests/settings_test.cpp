@@ -31,10 +31,13 @@ void testDefaultsAndLimits() {
     CHECK(validFrameRateLimit(30));
     CHECK(validFrameRateLimit(60));
     CHECK(validFrameRateLimit(120));
+    CHECK(validFrameRateLimit(240));
     CHECK(validFrameRateLimit(0));
     CHECK(!validFrameRateLimit(144));
     CHECK(nextFrameRateLimit(60, 1) == 120);
-    CHECK(nextFrameRateLimit(120, 1) == 0);
+    CHECK(nextFrameRateLimit(120, 1) == 240);
+    CHECK(nextFrameRateLimit(240, 1) == 0);
+    CHECK(nextFrameRateLimit(0, -1) == 240);
     CHECK(nextFrameRateLimit(0, 1) == 30);
     CHECK(nextFrameRateLimit(30, -1) == 0);
     CHECK(adjustSfxVolume(78, 1) == 83);
@@ -76,6 +79,13 @@ void testPersistenceAndInvalidRecovery() {
     CHECK(isBetterRun(loaded,true,35,0));
     auto victory=loaded;victory.bestWon=true;victory.bestWave=35;
     CHECK(!isBetterRun(victory,false,35,999999));
+
+    auto highRate=saved;highRate.frameRateLimit=240;
+    CHECK(save(path,highRate));
+    CHECK(load(path).frameRateLimit==240);
+    highRate.frameRateLimit=0;
+    CHECK(save(path,highRate));
+    CHECK(load(path).frameRateLimit==0); // Unlimited remains a distinct saved choice.
 
     const AppSettings updated{30, true, 80};
     CHECK(save(path, updated)); // Replacing an existing settings file is supported.

@@ -147,9 +147,9 @@ int main(int argc, char** argv){
   (void)capped;
 #endif
  };
- updateTimerResolution(!m6RenderCheck&&appSettings.frameRateLimit!=0);
+ updateTimerResolution(!m6RenderCheck);
  sfx.setMasterVolume(appSettings.sfxVolumePercent/100.0f);
- SetTargetFPS(m6RenderCheck?60:appSettings.frameRateLimit);
+ int appliedFrameRateLimit=60; // InitWindow starts on the title screen.
  using threadlight::Mode;
  Mode mode=Mode::Title,settingsReturn=Mode::Title; bool exitRequested=false; int mainSelection=0,pauseSelection=0,exitSelection=threadlight::menu::kDefaultExitSelection,settingsTab=0,settingsFocus=0;
  bool tutorial=false,tutorialMoved=false,tutorialDashed=false,inventoryOpen=false;
@@ -247,7 +247,6 @@ int main(int argc, char** argv){
  float measuredFps=60.0f,lastFrameSeconds=0.0f;
  upgradeUI::OfferTextCache offerTextCache;
  auto saveSettings=[&](){
-  SetTargetFPS(appSettings.frameRateLimit);
   sfx.setMasterVolume(appSettings.sfxVolumePercent/100.0f);
   if(!settingsEdits.flush([&](){return threadlight::settings::save(settingsPath,appSettings);}))
    TraceLog(LOG_WARNING,"Could not save ThreadLight settings to the user config directory.");
@@ -442,7 +441,7 @@ int main(int argc, char** argv){
  };
  auto drawText=[&](const char* s,int x,int y,int size,Color c){DrawText(s,x,y,size,c);};
   auto applyMenuAction=[&](threadlight::menu::Action action){threadlight::menu::apply(mode,settingsReturn,exitRequested,exitSelection,action);};
-  auto changeFrameLimit=[&](int value){if(!threadlight::settings::validFrameRateLimit(value)||value==appSettings.frameRateLimit)return;appSettings.frameRateLimit=value;updateTimerResolution(value!=0);settingsEdits.dirty=true;saveSettings();};
+  auto changeFrameLimit=[&](int value){if(!threadlight::settings::validFrameRateLimit(value)||value==appSettings.frameRateLimit)return;appSettings.frameRateLimit=value;settingsEdits.dirty=true;saveSettings();};
   auto changeShowFps=[&](){appSettings.showFps=!appSettings.showFps;if(appSettings.showFps)measuredFps=threadlight::timing::initialMeasuredFps(lastFrameSeconds);settingsEdits.dirty=true;saveSettings();};
   auto changeSfxVolume=[&](int value,bool persist=true){value=std::clamp(value,0,100);if(value==appSettings.sfxVolumePercent)return;appSettings.sfxVolumePercent=value;settingsEdits.dirty=true;sfx.setMasterVolume(value/100.0f);if(persist)saveSettings();};
   auto contains=[](Rectangle rectangle,Vector2 point){return CheckCollisionPointRec(point,rectangle);};
@@ -547,9 +546,10 @@ int main(int argc, char** argv){
    const float settingsLeft=(SW-settingsWidth)*.5f,settingsTop=SH*.5f-256.f;
    const Rectangle videoTab{settingsLeft+48.f,settingsTop+76.f,165.f,42.f};
    const Rectangle audioTab{settingsLeft+230.f,settingsTop+76.f,165.f,42.f};
-   const float fpsChipWidth=(settingsWidth-364.f)/4.f;
-   Rectangle fpsChips[4]{};
-   for(int i=0;i<4;i++)fpsChips[i]={settingsLeft+292.f+i*(fpsChipWidth+8.f),settingsTop+143.f,fpsChipWidth,38.f};
+   constexpr int frameRateChoiceCount=static_cast<int>(threadlight::settings::kFrameRateLimits.size());
+   const float fpsChipWidth=(settingsWidth-340.f-8.f*(frameRateChoiceCount-1))/frameRateChoiceCount;
+   std::array<Rectangle,frameRateChoiceCount> fpsChips{};
+   for(int i=0;i<frameRateChoiceCount;i++)fpsChips[i]={settingsLeft+292.f+i*(fpsChipWidth+8.f),settingsTop+143.f,fpsChipWidth,38.f};
    const Rectangle showToggle{settingsLeft+settingsWidth-182.f,settingsTop+224.f,132.f,42.f};
    const Rectangle frameRow{settingsLeft+42.f,settingsTop+132.f,settingsWidth-84.f,64.f};
    const Rectangle volumeSlider{settingsLeft+48.f,settingsTop+207.f,settingsWidth-96.f,18.f};
@@ -642,7 +642,7 @@ int main(int argc, char** argv){
      else if(hovered(audioTab)&&IsMouseButtonPressed(MOUSE_BUTTON_LEFT)){settingsTab=1;settingsFocus=0;}
      else if(hovered(settingsBack)){settingsFocus=settingsTab==0?2:1;if(IsMouseButtonPressed(MOUSE_BUTTON_LEFT))applyMenuAction(threadlight::menu::Action::Back);}
      else if(settingsTab==0){
-      for(int i=0;i<4;i++)if(hovered(fpsChips[i])){settingsFocus=0;if(IsMouseButtonPressed(MOUSE_BUTTON_LEFT)){constexpr int rates[]={30,60,120,0};changeFrameLimit(rates[i]);}}
+      for(int i=0;i<frameRateChoiceCount;i++)if(hovered(fpsChips[i])){settingsFocus=0;if(IsMouseButtonPressed(MOUSE_BUTTON_LEFT))changeFrameLimit(threadlight::settings::kFrameRateLimits[i]);}
       if(hovered(showToggle)){settingsFocus=1;if(IsMouseButtonPressed(MOUSE_BUTTON_LEFT))changeShowFps();}
      }else if(settingsTab==1&&hovered(volumeRow))settingsFocus=0;
      if(settingsTab==1&&hovered(volumeSlider)&&IsWindowFocused()&&IsMouseButtonPressed(MOUSE_BUTTON_LEFT)){
@@ -1592,13 +1592,12 @@ int main(int argc, char** argv){
    if(settingsTab==0){
     DrawRectangleRoundedLines(frameRow,.08f,8,settingsFocus==0?C(76,201,197,115):C(47,89,105,75));
     DrawText("FRAME RATE LIMIT",(int)settingsLeft+48,(int)settingsTop+153,16,settingsFocus==0?C(205,243,237):C(145,183,191));
-    constexpr int frameRates[]={30,60,120,0};
-    const char* rateLabels[]={"30 FPS","60 FPS","120 FPS","UNLIMITED"};
-    for(int i=0;i<4;i++){
-     const bool configured=appSettings.frameRateLimit==frameRates[i];
+    const char* rateLabels[]={"30 FPS","60 FPS","120 FPS","240 FPS","UNLIMITED"};
+    for(int i=0;i<frameRateChoiceCount;i++){
+     const bool configured=appSettings.frameRateLimit==threadlight::settings::kFrameRateLimits[i];
      drawButton(fpsChips[i],rateLabels[i],configured,hovered(fpsChips[i]),13);
     }
-    DrawText("Unlimited removes the game limiter; display or driver caps may still apply.",(int)settingsLeft+48,(int)settingsTop+195,13,C(111,164,176));
+    DrawText("Gameplay limit. Menus use at most 60 FPS; unfocused windows use 30 FPS.",(int)settingsLeft+48,(int)settingsTop+195,13,C(111,164,176));
     DrawText("SHOW FPS",(int)settingsLeft+48,(int)settingsTop+236,16,settingsFocus==1?C(205,243,237):C(145,183,191));
     DrawText("Measured output rate",(int)settingsLeft+48,(int)settingsTop+259,12,C(111,164,176));
     drawButton(showToggle,appSettings.showFps?"ON":"OFF",settingsFocus==1,hovered(showToggle),14);
@@ -1716,6 +1715,12 @@ int main(int argc, char** argv){
     capture("m6-active.png");capturedActive=true;
    }
    if((capturedWarning&&capturedActive)||renderCheckFrames>=1200)exitRequested=true;
+  }
+  const int effectiveFrameRateLimit=threadlight::timing::effectiveFrameRateLimit(
+   appSettings.frameRateLimit,mode==Mode::Play,IsWindowFocused(),IsWindowMinimized(),m6RenderCheck);
+  if(effectiveFrameRateLimit!=appliedFrameRateLimit){
+   updateTimerResolution(!m6RenderCheck&&effectiveFrameRateLimit!=0);
+   SetTargetFPS(effectiveFrameRateLimit);appliedFrameRateLimit=effectiveFrameRateLimit;
   }
   const auto presentStart=perf?PerfClock::now():PerfClock::time_point{};
   EndDrawing();

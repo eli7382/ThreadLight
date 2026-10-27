@@ -1,6 +1,7 @@
 #pragma once
 
 #include <algorithm>
+#include <array>
 #include <charconv>
 #include <cstdlib>
 #include <cstdint>
@@ -69,18 +70,20 @@ inline std::filesystem::path userSettingsPath() {
 #endif
 }
 
+inline constexpr std::array<int,5> kFrameRateLimits{30,60,120,240,0};
+
 inline bool validFrameRateLimit(int value) {
-    return value == 30 || value == 60 || value == 120 || value == 0;
+    return std::find(kFrameRateLimits.begin(),kFrameRateLimits.end(),value)!=kFrameRateLimits.end();
 }
 
 inline int nextFrameRateLimit(int current, int direction) {
-    constexpr int choices[] = {30, 60, 120, 0};
+    constexpr int count=static_cast<int>(kFrameRateLimits.size());
     int index = 1;
-    for (int i = 0; i < 4; ++i) {
-        if (choices[i] == current) index = i;
+    for (int i = 0; i < count; ++i) {
+        if (kFrameRateLimits[i] == current) index = i;
     }
-    index = (index + (direction < 0 ? 3 : 1)) % 4;
-    return choices[index];
+    index = (index + (direction < 0 ? count-1 : 1)) % count;
+    return kFrameRateLimits[index];
 }
 
 inline int adjustSfxVolume(int current, int direction) {

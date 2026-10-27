@@ -26,7 +26,12 @@ The main menu's enemy codex unlocks entries as enemies are encountered in normal
 
 Effects are synthesized at startup and cover dash, silk hits and kills, spark collection, player damage, evolution, victory, and defeat. Each cue uses a short shaped envelope, layered tones, and slight pitch variation. The mixer keeps at most eight effects active; important feedback can replace a lower-priority sound, and simultaneous voices are attenuated to leave mix headroom. There is no background music.
 
-Open **Settings** from the title or pause menu. The Video section selects a 30, 60, 120, or Unlimited frame-rate limit and toggles the measured FPS display. The Audio section provides a mouse-operated SFX slider and Left / Right keyboard adjustment in 5% steps. Volume changes apply immediately. Settings are saved under the current user's `%APPDATA%\ThreadLight\settings.ini`.
+Open **Settings** from the title or pause menu. The Video section selects a 30, 60, 120, 240, or Unlimited gameplay frame-rate limit and toggles the measured FPS display. Unlimited remains uncapped during focused gameplay. Menus render at at most 60 FPS, honoring a selected 30 FPS limit, and unfocused/minimized windows use 30 FPS. The Audio section provides a mouse-operated SFX slider and Left / Right keyboard adjustment in 5% steps. Volume changes apply immediately. Settings are saved under the current user's `%APPDATA%\ThreadLight\settings.ini`.
+
+Unlimited has produced severe game and desktop responsiveness problems on the
+tested Windows/Intel configuration. The background/menu pacing mitigation does
+not establish a fix for uncapped foreground play. See
+[the investigation and proposed deeper fix](UNLIMITED-FPS-INVESTIGATION.md).
 
 M1-M6 are accepted; M7 is a feature-branch candidate for owner acceptance. Historical Phase 2.2 pre-release package notes describe that older test package, not the status of the approved source baseline. The root `Threadlight.exe` is preserved and is not rebuilt by these changes; launch the new executable from its build directory.
 

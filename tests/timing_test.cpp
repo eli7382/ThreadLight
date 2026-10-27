@@ -149,12 +149,40 @@ void testMovementPressesSurviveUntilSimulationTick() {
     CHECK(presses.consume() == 0);
     presses.add(255); CHECK(presses.consume() == 15);
 }
+
+void testEffectiveFrameRateLimit() {
+    using threadlight::timing::effectiveFrameRateLimit;
+
+    // Foreground gameplay preserves the user's selected cap, including zero.
+    CHECK(effectiveFrameRateLimit(30, true, true, false) == 30);
+    CHECK(effectiveFrameRateLimit(60, true, true, false) == 60);
+    CHECK(effectiveFrameRateLimit(120, true, true, false) == 120);
+    CHECK(effectiveFrameRateLimit(0, true, true, false) == 0);
+    CHECK(effectiveFrameRateLimit(240, true, true, false) == 240);
+
+    // Focused menus are limited to 60, while honoring lower finite requests.
+    CHECK(effectiveFrameRateLimit(30, false, true, false) == 30);
+    CHECK(effectiveFrameRateLimit(60, false, true, false) == 60);
+    CHECK(effectiveFrameRateLimit(120, false, true, false) == 60);
+    CHECK(effectiveFrameRateLimit(0, false, true, false) == 60);
+    CHECK(effectiveFrameRateLimit(240, false, true, false) == 60);
+
+    // An unfocused or minimized window uses the low background rate.
+    CHECK(effectiveFrameRateLimit(30, true, false, false) == 30);
+    CHECK(effectiveFrameRateLimit(0, true, true, true) == 30);
+    CHECK(effectiveFrameRateLimit(240, false, false, false) == 30);
+
+    // Hidden fixtures keep their deterministic 60 FPS render schedule.
+    CHECK(effectiveFrameRateLimit(0, true, true, false, true) == 60);
+    CHECK(effectiveFrameRateLimit(240, false, false, true, true) == 60);
+}
 }
 
 int main() {
     testTimeStepScheduleAcrossConfiguredRates();
     testHitchesAreBoundedAndFpsSmoothingIsStable();
     testMovementPressesSurviveUntilSimulationTick();
+    testEffectiveFrameRateLimit();
     if (failures != 0) return EXIT_FAILURE;
     std::cout << "Frame-rate policy and timing checks passed.\n";
 }

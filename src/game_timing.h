@@ -9,6 +9,16 @@ namespace threadlight::timing {
 constexpr double kFixedStepSeconds = 1.0 / foundation::kTicksPerSecond;
 constexpr int kMaxStepsPerFrame = 8;
 
+// Bound rendering while the game is in a menu or running in the background,
+// while leaving the requested foreground gameplay limit intact.
+inline int effectiveFrameRateLimit(int requested, bool playing, bool focused,
+                                   bool minimized, bool hiddenFixture = false) {
+    if (hiddenFixture) return 60;
+    if (!focused || minimized) return 30;
+    if (playing) return requested;
+    return requested == 0 ? 60 : std::min(requested, 60);
+}
+
 // Retain brief direction presses until a simulation step consumes them.
 class MovementPressBuffer {
 public:
