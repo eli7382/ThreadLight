@@ -42,7 +42,7 @@ if(THREADLIGHT_BUILD_GAME)
       endif()
     endforeach()
   endif()
-  add_executable(Threadlight src/main.cpp src/performance_metrics.cpp)
+  add_executable(Threadlight src/main.cpp src/performance_metrics.cpp src/gpu_queue_gl.cpp)
   # Prefer the actual library path when available. Some pkg-config based
   # raylib config packages expose Unix -L/-l flags as one imported link item,
   # which MSVC cannot interpret.
@@ -55,7 +55,7 @@ if(THREADLIGHT_BUILD_GAME)
     target_link_libraries(Threadlight PRIVATE raylib)
   endif()
   if(WIN32)
-    target_link_libraries(Threadlight PRIVATE winmm psapi)
+    target_link_libraries(Threadlight PRIVATE winmm psapi opengl32)
   endif()
   if(MSVC)
     # The pinned static raylib package is built with the static CRT (/MT).
@@ -72,6 +72,15 @@ if(THREADLIGHT_BUILD_BENCHMARKS)
 endif()
 
 if(BUILD_TESTING)
+  add_executable(ThreadlightGpuQueueTests tests/gpu_queue_test.cpp)
+  target_include_directories(ThreadlightGpuQueueTests PRIVATE src)
+  add_test(NAME ThreadlightGpuQueueTests COMMAND ThreadlightGpuQueueTests)
+  add_executable(ThreadlightGpuBackendTests tests/gpu_queue_gl_test.cpp src/gpu_queue_gl.cpp)
+  target_include_directories(ThreadlightGpuBackendTests PRIVATE src)
+  if(WIN32)
+    target_link_libraries(ThreadlightGpuBackendTests PRIVATE opengl32)
+  endif()
+  add_test(NAME ThreadlightGpuBackendTests COMMAND ThreadlightGpuBackendTests)
   if(THREADLIGHT_BUILD_GAME)
     # Mock raylib's audio boundary to check borrowed waveform ownership without
     # requiring an audio device or modifying the existing sound data.

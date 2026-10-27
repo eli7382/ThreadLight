@@ -26,6 +26,9 @@ struct Frame {
     std::size_t enemies = 0, silk = 0, activeSilk = 0, sparks = 0, particles = 0;
     std::size_t projectiles = 0, groundHazards = 0, bossHazards = 0;
     MemorySample memory{};
+    bool gpuQueueActive = false;
+    std::size_t gpuQueueDepth = 0;
+    double gpuWaitMs = 0;
 };
 
 // Bounded histogram: 0.1 ms buckets through 1000 ms, plus an overflow bucket.

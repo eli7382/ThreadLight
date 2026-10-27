@@ -2,6 +2,10 @@
 
 Follow-up to optimization commit `bfc41ee`, 27 October 2026.
 
+The owner subsequently approved an isolated opt-in prototype. See
+[its implementation and capped validation](GPU-QUEUE-PROTOTYPE.md); the proposal
+below records the earlier investigation and approval boundary.
+
 ## Observed problem and recovery
 
 The owner reported extremely slow responses throughout the game with Unlimited,

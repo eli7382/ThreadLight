@@ -29,6 +29,7 @@
 #include "bestiary.h"
 #include "silk_collision.h"
 #include "performance_metrics.h"
+#include "gpu_queue_gl.h"
 #include <algorithm>
 #include <array>
 #include <cmath>
@@ -74,6 +75,7 @@ int main(int argc, char** argv){
  const auto bootTime=PerfClock::now();
  bool m1Telemetry=false;
  bool m6RenderCheck=false;
+ bool gpuQueueRequested=false,gpuQueueFailed=false;
  int bossFixture=-1; // Explicit development-only CLI fixture; never a campaign checkpoint.
  int waveFixture=-1;
  int waveFixtureWave=7;
@@ -85,6 +87,7 @@ int main(int argc, char** argv){
  for(int i=1;i<argc;i++){
   const std::string_view arg=argv[i];
    if(arg=="--perf-log"&&i+1<argc){if(!perfLogPath.empty())return 2;perfLogPath=argv[++i];if(perfLogPath.empty())return 2;}
+   else if(arg=="--gpu-queue"){if(gpuQueueRequested)return 2;gpuQueueRequested=true;}
    else if(arg=="--m6-render-check"||arg=="--m7-render-check")m6RenderCheck=true;
   else if(arg=="--m7-min-window")minimumQaWindow=true;
   else if(arg=="--m7-utility-fixture"){
@@ -126,6 +129,13 @@ int main(int argc, char** argv){
  }
  SetConfigFlags(FLAG_WINDOW_HIGHDPI|FLAG_WINDOW_RESIZABLE|FLAG_MSAA_4X_HINT|(m6RenderCheck?FLAG_WINDOW_HIDDEN:0));
  InitWindow(threadlight::layout::kInitialScreenWidth,threadlight::layout::kInitialScreenHeight,"THREADLIGHT | A small game of living silk");
+ threadlight::gpu::OpenGlBackend gpuBackend;
+ threadlight::gpu::Queue gpuQueue(gpuBackend);
+ if(gpuQueueRequested&&!gpuBackend.initialize()){
+  std::fprintf(stderr,"GPU queue prototype unavailable: Windows GL sync functions and a current context are required.\n");
+  CloseWindow();return 4;
+ }
+ double totalGpuWaitMs=0,maxGpuWaitMs=0;
  const auto windowCoordinates=threadlight::layout::WindowCoordinates::atStartup(
      GetScreenWidth(),GetScreenHeight(),GetRenderWidth(),GetRenderHeight());
  SetWindowMinSize(windowCoordinates.nativeWidth(960),windowCoordinates.nativeHeight(640));
@@ -475,6 +485,16 @@ int main(int argc, char** argv){
   if(m6RenderCheck)reset();
   while(!WindowShouldClose()&&!exitRequested){
     const auto frameStart=perf?PerfClock::now():PerfClock::time_point{};
+    double gpuWaitMs=0;
+    if(gpuQueueRequested){
+     const bool active=mode==Mode::Play&&(IsWindowFocused()||m6RenderCheck)&&!IsWindowMinimized();
+     if(gpuQueue.set_enabled(active)==threadlight::gpu::Result::error){gpuQueueFailed=true;break;}
+     const auto waitStart=PerfClock::now();
+     const auto result=gpuQueue.begin_frame();
+     gpuWaitMs=std::chrono::duration<double,std::milli>(PerfClock::now()-waitStart).count();
+     totalGpuWaitMs+=gpuWaitMs;maxGpuWaitMs=std::max(maxGpuWaitMs,gpuWaitMs);
+     if(result==threadlight::gpu::Result::error){gpuQueueFailed=true;break;}
+    }
     double simulationMs=0,discardedMs=0;int frameSteps=0;
    const Mode screenAtFrameStart=mode;
    const double frameSeconds=std::max(0.0,static_cast<double>(GetFrameTime()));
@@ -1724,6 +1744,10 @@ int main(int argc, char** argv){
   }
   const auto presentStart=perf?PerfClock::now():PerfClock::time_point{};
   EndDrawing();
+  const auto presentEnd=perf?PerfClock::now():PerfClock::time_point{};
+  // EndDrawing has submitted raylib's deferred batch, swapped, and polled input.
+  // A fence covers prior GL commands; it does not certify display presentation.
+  if(gpuQueueRequested&&gpuQueue.end_frame()==threadlight::gpu::Result::error)gpuQueueFailed=true;
   if(perf){
    const auto frameEnd=PerfClock::now();
    auto ms=[](auto duration){return std::chrono::duration<double,std::milli>(duration).count();};
@@ -1735,14 +1759,24 @@ int main(int argc, char** argv){
    sample.number=++perfFrameNumber;sample.elapsedSeconds=std::chrono::duration<double>(frameStart-bootTime).count();
    sample.intervalMs=previousPerfFrame==PerfClock::time_point{}?0:ms(frameStart-previousPerfFrame);previousPerfFrame=frameStart;
    sample.raylibFrameMs=frameSeconds*1000;sample.updateMs=ms(drawStart-frameStart);sample.simulationMs=simulationMs;
-   sample.drawMs=ms(presentStart-drawStart);sample.presentMs=ms(frameEnd-presentStart);
+   sample.drawMs=ms(presentStart-drawStart);sample.presentMs=ms(presentEnd-presentStart);
    sample.discardedMs=discardedMs;sample.steps=frameSteps;sample.mode=modeName(screenAtFrameStart);
    sample.phase=foundation::phaseName(lifecycle.phase());sample.wave=wave+1;sample.width=GetRenderWidth();sample.height=GetRenderHeight();
    sample.enemies=foes.size();sample.silk=thread.empty()?0:thread.size()-1;sample.activeSilk=thread.size()-first;
    sample.sparks=sparks.size();sample.particles=particles.size();sample.projectiles=projectiles.flyingCount()+boss.bullets.flyingCount();
    sample.groundHazards=ground.liveCount();sample.bossHazards=boss.fields.liveCount();sample.memory=memorySample;
+   sample.gpuQueueActive=gpuQueue.enabled();sample.gpuQueueDepth=gpuQueue.depth();sample.gpuWaitMs=gpuWaitMs;
    if(!perf->record(sample)){TraceLog(LOG_WARNING,"Performance log write failed; stopping diagnostics.");perf.reset();}
   }
+  if(gpuQueueFailed)break;
+ }
+ gpuQueue.shutdown(); // Fences must be deleted before the GL context closes.
+ if(gpuQueueRequested){
+  const auto& counters=gpuQueue.counters();
+  TraceLog(LOG_INFO,"GPUQUEUE submitted=%llu waits=%llu max_depth=%llu timeouts=%llu errors=%llu wait_total_ms=%.3f wait_max_ms=%.3f",
+   (unsigned long long)counters.submitted,(unsigned long long)counters.waits,(unsigned long long)counters.max_depth,
+   (unsigned long long)counters.timeouts,(unsigned long long)counters.errors,totalGpuWaitMs,maxGpuWaitMs);
+  if(gpuQueueFailed)std::fprintf(stderr,"GPU queue prototype stopped after a fence failure or 5 ms wait timeout; it did not fall back to unbounded rendering.\n");
  }
  settingsEdits.dragging=false;
  if(!m6RenderCheck)saveSettings();
@@ -1755,5 +1789,5 @@ int main(int argc, char** argv){
  }
  sfx.shutdown();
  if(audioReady)CloseAudioDevice();
- CloseWindow();return 0;
+ CloseWindow();return gpuQueueFailed?5:0;
 }

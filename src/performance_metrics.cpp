@@ -54,7 +54,7 @@ bool Recorder::open(const std::filesystem::path& path) {
     if (path.empty() || std::filesystem::exists(path, error) || error) return false;
     output_.open(path, std::ios::out | std::ios::binary);
     if (!output_) return false;
-    output_ << "frame,elapsed_s,interval_ms,raylib_frame_ms,update_wall_ms,simulation_wall_ms,draw_submit_wall_ms,present_wait_wall_ms,steps,discarded_ms,mode_at_start,phase_after_update,wave_after_update,framebuffer_w,framebuffer_h,enemies,silk_segments,active_silk_segments,sparks,particles,projectiles,ground_hazards,boss_hazards,working_set_bytes,private_bytes\n";
+    output_ << "frame,elapsed_s,interval_ms,raylib_frame_ms,update_wall_ms,simulation_wall_ms,draw_submit_wall_ms,present_wait_wall_ms,steps,discarded_ms,mode_at_start,phase_after_update,wave_after_update,framebuffer_w,framebuffer_h,enemies,silk_segments,active_silk_segments,sparks,particles,projectiles,ground_hazards,boss_hazards,working_set_bytes,private_bytes,gpu_queue_active,gpu_queue_depth,gpu_queue_wait_wall_ms\n";
     output_ << std::fixed << std::setprecision(4);
     return healthy_ = static_cast<bool>(output_);
 }
@@ -71,7 +71,7 @@ bool Recorder::record(const Frame& f) {
             << f.sparks << ',' << f.particles << ',' << f.projectiles << ',' << f.groundHazards << ',' << f.bossHazards << ',';
     if (f.memory.available) output_ << f.memory.workingSetBytes << ',' << f.memory.privateBytes;
     else output_ << ',';
-    output_ << '\n';
+    output_ << ',' << f.gpuQueueActive << ',' << f.gpuQueueDepth << ',' << f.gpuWaitMs << '\n';
     if (f.number % 120 == 0) output_.flush();
     return healthy_ = static_cast<bool>(output_);
 }

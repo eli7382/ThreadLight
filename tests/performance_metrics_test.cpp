@@ -34,6 +34,7 @@ int main(){
     Frame sample;sample.number=1;sample.intervalMs=16.667;sample.discardedMs=4.5;
     sample.mode="play";sample.phase="spawning";sample.wave=2;sample.enemies=4;
     sample.memory={123,456,true};
+    sample.gpuQueueActive=true;sample.gpuQueueDepth=2;sample.gpuWaitMs=.125;
     CHECK(recorder.record(sample));
     recorder.finish();CHECK(recorder.healthy());
     CHECK(recorder.intervals().count()==1);
@@ -41,10 +42,10 @@ int main(){
     Recorder second;CHECK(!second.open(path)); // Existing files are never truncated.
     std::ifstream input(path);std::string header,row;
     std::getline(input,header);std::getline(input,row);input.close();
-    CHECK(std::count(header.begin(),header.end(),',')==24);
-    CHECK(std::count(row.begin(),row.end(),',')==24);
+    CHECK(std::count(header.begin(),header.end(),',')==27);
+    CHECK(std::count(row.begin(),row.end(),',')==27);
     CHECK(row.find(",play,spawning,2,")!=std::string::npos);
-    CHECK(row.ends_with(",123,456"));
+    CHECK(row.ends_with(",123,456,1,2,0.1250"));
     std::error_code error;std::filesystem::remove(path,error);CHECK(!error);
     if(failures)return EXIT_FAILURE;
     std::cout<<"Performance histogram and CSV checks passed.\n";

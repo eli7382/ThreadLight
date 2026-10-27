@@ -33,6 +33,11 @@ tested Windows/Intel configuration. The background/menu pacing mitigation does
 not establish a fix for uncapped foreground play. See
 [the investigation and proposed deeper fix](UNLIMITED-FPS-INVESTIGATION.md).
 
+This branch also contains an opt-in Windows GPU-queue prototype, enabled only
+with `--gpu-queue`. Its implementation, capped validation, and limitations are
+documented in [GPU-QUEUE-PROTOTYPE.md](GPU-QUEUE-PROTOTYPE.md). A normal launch
+keeps the prototype disabled.
+
 M1-M6 are accepted; M7 is a feature-branch candidate for owner acceptance. Historical Phase 2.2 pre-release package notes describe that older test package, not the status of the approved source baseline. The root `Threadlight.exe` is preserved and is not rebuilt by these changes; launch the new executable from its build directory.
 
 ### Manual listening check
@@ -119,7 +124,7 @@ follow-up work.
 
 ## Regression tests
 
-Configure the thirty-five regression executables without the game executable with:
+Configure the game-independent regression executables without the game executable with:
 
 ```powershell
 cmake -S . -B build-tests -DTHREADLIGHT_BUILD_GAME=OFF
