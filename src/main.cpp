@@ -432,8 +432,9 @@ int main(int argc, char** argv){
  };
  auto releaseSupports=[&](int count){
   if(boss.kind!=root::Kind::Rootwarden){supportQueued+=count;return;}
-  const auto supportKind=root::supportKind(boss,wave);
-  for(int i=0;i<count;++i)addFoe(supportKind,chapter::kPi*.25f+chapter::kPi*(boss.supportsReleased+i)*.5f);
+  root::visitSupportBatch(boss,count,[&](battle::EnemyKind supportKind,int offset,int){
+   addFoe(supportKind,chapter::kPi*.25f+chapter::kPi*(boss.supportsReleased+offset)*.5f);
+  });
   if(count)traceBoss("supports");
  };
  auto budHit=[&](int index,int damage,bool ordinary){

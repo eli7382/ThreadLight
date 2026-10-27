@@ -51,6 +51,16 @@ inline combat::EnemyKind supportKind(const State& s,int ordinal){
     if(s.kind==Kind::Heart)return ordinal>=6?combat::EnemyKind::Spitter:ordinal>=4?combat::EnemyKind::Skitter:combat::EnemyKind::Hunter;
     return s.kind==Kind::Dancer?combat::EnemyKind::Skitter:s.kind==Kind::Conductor&&ordinal>=4?combat::EnemyKind::Spitter:combat::EnemyKind::Hunter;
 }
+template <typename Visitor>
+inline void visitSupportBatch(const State& s,int count,Visitor visitor){
+    const int released=std::max(0,s.supportsReleased);
+    const int batch=std::clamp(count,0,released);
+    const int firstOrdinal=released-batch;
+    for(int offset=0;offset<batch;++offset){
+        const int ordinal=firstOrdinal+offset;
+        visitor(supportKind(s,ordinal),offset,ordinal);
+    }
+}
 inline int supportCapacity(const State& s){return spatial(s)?3:s.kind==Kind::Dancer?2:6;}
 inline int supportSlots(const State& s){
     if(s.kind==Kind::Rootwarden)return 0;

@@ -1,4 +1,4 @@
-#include "../src/rootwarden.h"
+#include "../src/chapter_boss.h"
 
 #include <array>
 #include <cmath>
@@ -19,6 +19,7 @@ void check(bool condition, const char* expression, int line) {
 #define CHECK(expression) check(static_cast<bool>(expression), #expression, __LINE__)
 
 namespace rw = threadlight::rootwarden;
+namespace boss = threadlight::chapter_boss;
 using rw::Arena;
 using rw::Events;
 using rw::Point;
@@ -111,8 +112,6 @@ void exactStageTimingAndSupportEvents() {
 void phaseThresholdExposureAndFiniteSupports() {
     State state;
     rw::start(state, {640.0f, 400.0f}, kArena);
-    CHECK(rw::supportKind(state, 6) == threadlight::combat::EnemyKind::Hunter);
-    CHECK(rw::supportKind(state, 5) == threadlight::combat::EnemyKind::Hunter);
     CHECK(rw::incomingDamage(state, state.p, state.p, 0.0f) == rw::kDamage);
 
     const rw::DamageResult atThreshold = rw::applySilk(state, 3150);
@@ -129,9 +128,6 @@ void phaseThresholdExposureAndFiniteSupports() {
     CHECK(crossing.damage == 1);
     CHECK(state.health.hp == 3849);
     CHECK(state.phase == 2);
-    CHECK(rw::supportKind(state, 6) == threadlight::combat::EnemyKind::Skitter);
-    CHECK(rw::supportKind(state, 5) == threadlight::combat::EnemyKind::Hunter);
-    CHECK(rw::supportKind(state, 7) == threadlight::combat::EnemyKind::Hunter);
     CHECK(state.stage == Stage::Transition && state.remaining == rw::kTransitionTicks);
     CHECK(crossing.events.phaseChanged);
     CHECK(crossing.events.supports == 2);
@@ -195,6 +191,53 @@ void phaseThresholdExposureAndFiniteSupports() {
     CHECK(rw::supports(bounded, 100) == rw::kSupportBudget);
     CHECK(rw::supports(bounded, 1) == 0);
     CHECK(bounded.supportsReleased == rw::kSupportBudget);
+}
+
+void supportBatchSelectionUsesReleasedOrdinalsInEitherEventOrder() {
+    using EnemyKind = threadlight::combat::EnemyKind;
+    const auto checkOrder = [](bool phaseTransitionFirst) {
+        boss::State state{};
+        state.kind = boss::Kind::Rootwarden;
+        std::array<EnemyKind, rw::kSupportBudget> emitted{};
+        std::array<int, rw::kSupportBudget> ordinals{};
+        int emittedCount = 0;
+        const auto release = [&](int count) {
+            boss::visitSupportBatch(state, count,
+                [&](EnemyKind kind, int, int ordinal) {
+                    CHECK(ordinal >= 0 && ordinal < rw::kSupportBudget);
+                    if (ordinal >= 0 && ordinal < rw::kSupportBudget) {
+                        emitted[static_cast<std::size_t>(ordinal)] = kind;
+                        ordinals[static_cast<std::size_t>(ordinal)] = ordinal;
+                    }
+                    ++emittedCount;
+                });
+        };
+        const auto firstCycle = [&] { release(rw::supports(state, 2)); };
+        const auto phaseTransition = [&] {
+            state.phase = 2;
+            release(rw::supports(state, 2));
+        };
+
+        if (phaseTransitionFirst) {
+            phaseTransition();
+            firstCycle();
+        } else {
+            firstCycle();
+            phaseTransition();
+        }
+
+        CHECK(emittedCount == rw::kSupportBudget);
+        CHECK(state.supportsReleased == rw::kSupportBudget);
+        for (int ordinal = 0; ordinal < rw::kSupportBudget; ++ordinal)
+            CHECK(ordinals[static_cast<std::size_t>(ordinal)] == ordinal);
+        CHECK(emitted[0] == EnemyKind::Hunter);
+        CHECK(emitted[1] == EnemyKind::Hunter);
+        CHECK(emitted[2] == EnemyKind::Skitter);
+        CHECK(emitted[3] == EnemyKind::Skitter);
+    };
+
+    checkOrder(false);
+    checkOrder(true);
 }
 
 void committedGeometryAndResizeRemap() {
@@ -400,6 +443,7 @@ void fixedTickReplayIsRenderRateIndependent() {
 int main() {
     exactStageTimingAndSupportEvents();
     phaseThresholdExposureAndFiniteSupports();
+    supportBatchSelectionUsesReleasedOrdinalsInEitherEventOrder();
     committedGeometryAndResizeRemap();
     cancelAndDeathAreTerminal();
     fixedTickReplayIsRenderRateIndependent();

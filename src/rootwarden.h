@@ -64,9 +64,6 @@ inline void start(State& s,Point position,Arena arena){
     s=State{};s.p=s.previousP=clamp(position,arena,kVulnerableRadius);enter(s,Stage::Stalk,kStalkTicks);
 }
 inline void cancel(State& s){s.branchCount=0;enter(s,Stage::Defeated,0);}
-inline combat::EnemyKind supportKind(const State& s,int waveIndex){
-    return waveIndex==6&&s.phase>=2?combat::EnemyKind::Skitter:combat::EnemyKind::Hunter;
-}
 inline int supports(State& s,int count){
     const int grant=std::min(count,kSupportBudget-s.supportsReleased);s.supportsReleased+=grant;return grant;
 }
