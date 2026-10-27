@@ -170,7 +170,7 @@ inline TickEvents tick(State& state, Point& position, Point& velocity,
                       Point player, Point playerMotion, Bounds arena,
                       area_hazards::Pool& pool, Corridor protectedCorridor = {},
                       float externalOccupiedArea = 0.0f, bool canCommit = true,
-                      bool active = true) {
+                      bool active = true, float movementMultiplier = 1.0f) {
     TickEvents events;
     if (!active || !state.ownerId) return events;
     arena = detail::ordered(arena);
@@ -209,12 +209,12 @@ inline TickEvents tick(State& state, Point& position, Point& velocity,
             events.commitDenied = true;
             state.remaining = 1;
             detail::moveTowardStandOff(position, velocity, player,
-                                       state.config.seekSpeed, arena);
+                                       state.config.seekSpeed * std::clamp(movementMultiplier, 0.0f, 4.0f), arena);
             return events;
         }
 
         detail::moveTowardStandOff(position, velocity, player,
-                                   state.config.seekSpeed, arena);
+                                   state.config.seekSpeed * std::clamp(movementMultiplier, 0.0f, 4.0f), arena);
         if (state.remaining > 1) --state.remaining;
         else state.remaining = 1;
         return events;

@@ -211,16 +211,16 @@ void hollowWarningGeometryAndFullActiveLifetime() {
     CHECK(state.stage == boss::Stage::Stalk && state.remaining == 1);
     const StepResult warning = tickBossAndFields(state, player, player);
     CHECK(warning.events.warning && state.stage == boss::Stage::RootWarning);
-    CHECK(state.spatialPattern == boss::Pattern::Fold && state.remaining == 120);
+    CHECK(state.spatialPattern == boss::Pattern::Fold && state.remaining == 60);
     CHECK(state.fields.count(field::SlotState::Warning) == 2);
     for (const auto& patch : state.fields.items()) {
         if (patch.state != field::SlotState::Warning) continue;
         CHECK(patch.spec.ownerId == state.hazardOwner);
-        CHECK(patch.warningRemaining == 120 && patch.fresh == false);
-        CHECK(patch.spec.warningTicks == 120 && patch.spec.activeTicks == 360);
+        CHECK(patch.warningRemaining == 60 && patch.fresh == false);
+        CHECK(patch.spec.warningTicks == 60 && patch.spec.activeTicks == 360);
     }
 
-    for (int i = 0; i < 119; ++i) {
+    for (int i = 0; i < 59; ++i) {
         const StepResult step = tickBossAndFields(state, player, player);
         CHECK(step.fieldHit.damage == 0);
     }
@@ -252,17 +252,17 @@ void heartPulseMinimumAreaWarningAndActiveLifetime() {
     for (int i = 0; i < 89; ++i) (void)tickBossAndFields(state, player, player, minimum);
     const StepResult warning = tickBossAndFields(state, player, player, minimum);
     CHECK(warning.events.warning && state.spatialPattern == boss::Pattern::Pulse);
-    CHECK(state.stage == boss::Stage::RootWarning && state.remaining == 114);
+    CHECK(state.stage == boss::Stage::RootWarning && state.remaining == 57);
     CHECK(state.fields.count(field::SlotState::Warning) == 1);
     const auto& patch = state.fields.items()[0];
     CHECK(patch.spec.shape == field::Shape::Annulus);
     CHECK(patch.spec.radiusStart == 50.0f && patch.spec.radiusEnd == 300.0f);
-    CHECK(patch.spec.warningTicks == 114 && patch.spec.activeTicks == 120 &&
+    CHECK(patch.spec.warningTicks == 57 && patch.spec.activeTicks == 120 &&
           patch.spec.damage == 2800 && patch.spec.gapHalfAngleRadians == 0.8f);
     CHECK(state.fields.areaOccupied({minimum.left, minimum.right, minimum.top, minimum.bottom}) <
           (minimum.right - minimum.left) * (minimum.bottom - minimum.top) * field::kMaxOccupiedFraction);
 
-    for (int i = 0; i < 113; ++i) {
+    for (int i = 0; i < 56; ++i) {
         const StepResult step = tickBossAndFields(state, player, player, minimum);
         CHECK(step.fieldHit.damage == 0);
     }
@@ -295,32 +295,32 @@ void finalHeartSequenceAndPrefinalForkPasses() {
                                              {kCenter.x + 250.0f, kCenter.y});
     CHECK(laneStart.events.warning && final.spatialPattern == boss::Pattern::Lane);
     CHECK(final.sequenceBeat == 0 && final.stage == boss::Stage::RootWarning &&
-          final.remaining == 114 && final.fields.count(field::SlotState::Warning) == 2);
+          final.remaining == 57 && final.fields.count(field::SlotState::Warning) == 2);
 
-    tickN(final, 114, {kCenter.x + 250.0f, kCenter.y});
+    tickN(final, 57, {kCenter.x + 250.0f, kCenter.y});
     CHECK(final.stage == boss::Stage::RootActive && final.activePatternTicks == 90);
     finishFieldPattern(final, 90, {kCenter.x + 250.0f, kCenter.y});
     CHECK(final.spatialPattern == boss::Pattern::Lunge && final.sequenceBeat == 1);
-    CHECK(final.stage == boss::Stage::StepWarning && final.remaining == 102 &&
+    CHECK(final.stage == boss::Stage::StepWarning && final.remaining == 51 &&
           final.strikeTicks == 42 && final.fields.liveCount() == 0);
     const Point lockedEnd = final.stepEnd;
-    tickN(final, 102, {kCenter.x, kCenter.y + 220.0f});
+    tickN(final, 51, {kCenter.x, kCenter.y + 220.0f});
     CHECK(final.stage == boss::Stage::StepActive && final.remaining == 42);
     for (int i = 0; i < 42; ++i)
         (void)tickBossAndFields(final, {kCenter.x, kCenter.y - 200.0f},
                                 {kCenter.x, kCenter.y - 200.0f});
     CHECK(final.spatialPattern == boss::Pattern::Pulse && final.sequenceBeat == 2);
-    CHECK(final.stage == boss::Stage::RootWarning && final.remaining == 114 &&
+    CHECK(final.stage == boss::Stage::RootWarning && final.remaining == 57 &&
           final.fields.count(field::SlotState::Warning) == 1);
     CHECK(near(final.stepEnd.x, lockedEnd.x) && near(final.stepEnd.y, lockedEnd.y));
 
-    tickN(final, 114, {kCenter.x, kCenter.y - 200.0f});
+    tickN(final, 57, {kCenter.x, kCenter.y - 200.0f});
     CHECK(final.stage == boss::Stage::RootActive && final.activePatternTicks == 120);
     finishFieldPattern(final, 120, {kCenter.x, kCenter.y - 200.0f});
     CHECK(final.spatialPattern == boss::Pattern::Fork && final.sequenceBeat == 3);
-    CHECK(final.stage == boss::Stage::RootWarning && final.remaining == 114 &&
+    CHECK(final.stage == boss::Stage::RootWarning && final.remaining == 57 &&
           final.fields.count(field::SlotState::Warning) == 2);
-    tickN(final, 114, {kCenter.x, kCenter.y - 200.0f});
+    tickN(final, 57, {kCenter.x, kCenter.y - 200.0f});
     CHECK(final.stage == boss::Stage::RootActive && final.activePatternTicks == 90);
     finishFieldPattern(final, 90, {kCenter.x, kCenter.y - 200.0f});
     CHECK(final.stage == boss::Stage::Recover && final.remaining == 360);
@@ -333,12 +333,12 @@ void finalHeartSequenceAndPrefinalForkPasses() {
     const auto firstFork = tickBossAndFields(prefinal, {kCenter.x + 250.0f, kCenter.y},
                                              {kCenter.x + 250.0f, kCenter.y});
     CHECK(firstFork.events.warning && prefinal.spatialPattern == boss::Pattern::Fork &&
-          prefinal.spatialPass == 0 && prefinal.remaining == 114);
-    tickN(prefinal, 114, {kCenter.x + 250.0f, kCenter.y});
+          prefinal.spatialPass == 0 && prefinal.remaining == 57);
+    tickN(prefinal, 57, {kCenter.x + 250.0f, kCenter.y});
     finishFieldPattern(prefinal, 90, {kCenter.x + 250.0f, kCenter.y});
     CHECK(prefinal.spatialPattern == boss::Pattern::Fork && prefinal.spatialPass == 1 &&
-          prefinal.stage == boss::Stage::RootWarning && prefinal.remaining == 114);
-    tickN(prefinal, 114, {kCenter.x + 250.0f, kCenter.y});
+          prefinal.stage == boss::Stage::RootWarning && prefinal.remaining == 57);
+    tickN(prefinal, 57, {kCenter.x + 250.0f, kCenter.y});
     finishFieldPattern(prefinal, 90, {kCenter.x + 250.0f, kCenter.y});
     CHECK(prefinal.stage == boss::Stage::Recover && prefinal.remaining == 240 &&
           prefinal.fields.occupiedSlotCount() == 0);
@@ -357,7 +357,7 @@ void hollowSpokesFallbackKeepsWideOpposedGapCorridor() {
     const auto warning = tickBossAndFields(state, player, player, kArena, externalArea);
     CHECK(warning.events.warning);
     CHECK(state.spatialPattern == boss::Pattern::Ring);
-    CHECK(state.stage == boss::Stage::RootWarning && state.remaining == 120);
+    CHECK(state.stage == boss::Stage::RootWarning && state.remaining == 60);
     CHECK(state.corridor.enabled && near(state.corridor.halfWidth, 68.0f));
     CHECK(distance(state.corridor.a, state.corridor.b) >= 920.0f);
     CHECK(state.fields.count(field::SlotState::Warning) == 1);
@@ -368,7 +368,7 @@ void hollowSpokesFallbackKeepsWideOpposedGapCorridor() {
     const float arenaArea = (kArena.right - kArena.left) * (kArena.bottom - kArena.top);
     CHECK(state.fields.areaOccupied({kArena.left, kArena.right, kArena.top, kArena.bottom}) +
           externalArea < arenaArea * field::kMaxOccupiedFraction);
-    for (int i = 0; i < 120; ++i)
+    for (int i = 0; i < 60; ++i)
         (void)tickBossAndFields(state, player, player, kArena, externalArea);
     CHECK(state.stage == boss::Stage::RootActive);
     const auto safeCrossing = state.fields.tick({0.0f, kCenter.y}, {kArena.right, kCenter.y}, 12.0f);
@@ -406,10 +406,10 @@ void heartLungeRemapKeepsAimAndSixHundredSpeedCap() {
     const auto warning = tickBossAndFields(state, {kCenter.x + 400.0f, kCenter.y},
                                            {kCenter.x + 400.0f, kCenter.y});
     CHECK(warning.events.warning && state.spatialPattern == boss::Pattern::Lunge);
-    CHECK(state.stage == boss::Stage::StepWarning && state.remaining == 102 &&
+    CHECK(state.stage == boss::Stage::StepWarning && state.remaining == 51 &&
           state.strikeTicks == 42);
     const Point originalStart = state.stepStart, originalEnd = state.stepEnd;
-    tickN(state, 102, {kCenter.x, kCenter.y + 350.0f});
+    tickN(state, 51, {kCenter.x, kCenter.y + 350.0f});
     CHECK(state.stage == boss::Stage::StepActive && state.remaining == 42);
     for (int i = 0; i < 12; ++i)
         (void)tickBossAndFields(state, {kCenter.x, kCenter.y - 300.0f},

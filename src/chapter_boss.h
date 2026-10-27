@@ -103,7 +103,7 @@ inline void prepareLine(State& s,Point player,Arena arena){
     s.strikeTicks=34;
     s.stepStart=s.p;
     s.stepEnd=rayEnd(s.p,unit(sub(player,s.p)),std::min(170.f,length(sub(player,s.p))+32.f),arena,vulnerableRadius(s));
-    enter(s,Stage::StepWarning,96);++s.warnings;
+    enter(s,Stage::StepWarning,48);++s.warnings;
 }
 inline bool prepareScore(State& s,Point player,Arena arena){
     const int pattern=s.phase==3&&s.metrics.cycles%2==1?3:static_cast<int>(s.metrics.cycles%3);
@@ -135,7 +135,7 @@ inline bool prepareScore(State& s,Point player,Arena arena){
             const auto d=unit(sub(player,bud.p));shot(bud.p,std::atan2(d.y,d.x),i);
         }
     }
-    enter(s,Stage::RootWarning,108);++s.warnings;return true;
+    enter(s,Stage::RootWarning,54);++s.warnings;return true;
 }
 inline void fire(State& s,int index){
     auto& shot=s.shots[index];
@@ -155,10 +155,10 @@ inline bool prepareSpatial(State& s,Point player,Arena arena,float externalArea,
     s.relocateEnd=rayEnd(s.p,axis,s.kind==Kind::Hollow?135.f:0.f,arena,vulnerableRadius(s));
     if(pattern==Pattern::Lunge){
         s.strikeTicks=42;s.stepStart=s.p;s.stepEnd=rayEnd(s.p,axis,std::min(210.f,length(sub(player,s.p))+48),arena,vulnerableRadius(s));
-        enter(s,Stage::StepWarning,102);++s.warnings;return true;
+        enter(s,Stage::StepWarning,51);++s.warnings;return true;
     }
     std::array<field::PatchSpec,4> specs{};int count=0;
-    const int warning=s.kind==Kind::Hollow?120:114;
+    const int warning=s.kind==Kind::Hollow?60:57;
     const int duration=s.kind==Kind::Hollow?360:pattern==Pattern::Pulse?120:90;
     auto capsule=[&](Point a,Point b,float width){
         auto& spec=specs[count++];spec.shape=field::Shape::Capsule;spec.ownerId=s.hazardOwner;
@@ -300,7 +300,7 @@ inline int incomingDamage(const State& s,Point previous,Point player,float radiu
     if((s.counterstepping||s.counterThisTick)&&!s.strikeThisTick)return 0;
     // A short escape grace prevents a harmless flourish ending on the player
     // from becoming an immediate contact hit on the following warning tick.
-    if(s.kind==Kind::Dancer&&s.chain>0&&s.stage==Stage::StepWarning&&s.remaining>72)return 0;
+    if(s.kind==Kind::Dancer&&s.chain>0&&s.stage==Stage::StepWarning&&s.remaining>36)return 0;
     if(combat::bodyContact(previous,player,radius,s.previousP,s.p,contactRadius(s)))
         return s.kind==Kind::Dancer?(s.strikeThisTick?2200:2000):2200;
     return 0;

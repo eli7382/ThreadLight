@@ -27,7 +27,7 @@ struct Expected {
     int seconds;
     bool boss;
     int chapter;
-    std::array<int, 5> count; // hunter, brute, skitter, spitter, bulwark
+    std::array<int, 5> count; // hunter, brute, skitter, spitter, briar caller
     int sparks;
     int score;
 };
@@ -37,7 +37,7 @@ constexpr std::array<Expected, 12> expected{{
     {"RETURN ROUTE",28,false,2,{18,4,4,4,0},38,500},
     {"COMMITMENT TEST",32,false,2,{10,6,8,8,0},46,670},
     {"THE NEEDLE DANCER",0,true,2,{0,0,0,0,0},0,0},
-    {"OPENING PLATES",28,false,3,{16,4,6,4,2},44,600},
+    {"FIRST CALL",28,false,3,{16,4,6,4,2},44,600},
     {"FIRING RELAY",30,false,3,{8,2,6,12,2},48,690},
     {"MOVING ANCHORS",30,false,3,{8,9,4,2,6},52,785},
     {"LOOSE WEFT",32,false,3,{6,2,18,4,2},42,610},
@@ -46,7 +46,7 @@ constexpr std::array<Expected, 12> expected{{
     {"THE THORN CONDUCTOR",0,true,3,{0,0,0,0,0},0,0}
 }};
 constexpr std::array<EnemyKind,5> kinds{{EnemyKind::Hunter,EnemyKind::Brute,
-    EnemyKind::Skitter,EnemyKind::Spitter,EnemyKind::Bulwark}};
+    EnemyKind::Skitter,EnemyKind::Spitter,EnemyKind::BriarCaller}};
 int kindIndex(EnemyKind kind) {
     for(int i=0;i<static_cast<int>(kinds.size());++i)if(kinds[i]==kind)return i;
     CHECK(false && "unexpected scheduled enemy kind");
@@ -99,9 +99,9 @@ int main() {
         else CHECK(a.count>0 && latest>=0);
     }
 
-    const auto bulwark=combat::definition(EnemyKind::Bulwark,3);
-    CHECK(bulwark.hp==700 && bulwark.radius==23.f && bulwark.speed==52.f);
-    CHECK(bulwark.contactDamage==2000 && bulwark.sparkValue==3 && bulwark.killScore==45);
+    const auto caller=combat::definition(EnemyKind::BriarCaller,3);
+    CHECK(caller.hp==500 && caller.radius==16.f && caller.speed==68.f);
+    CHECK(caller.contactDamage==1100 && caller.sparkValue==3 && caller.killScore==45);
 
     // Each encounter has a distinct ordered timing/composition identity.
     for(int i=0;i<12;++i)for(int j=i+1;j<12;++j) {

@@ -51,6 +51,24 @@ public:
         return true;
     }
 
+    // Combine two living actors into one reward owner. The surviving ID keeps
+    // its identity while the absorbed ID closes as a despawn, so terminal
+    // accounting still resolves every original spawn exactly once.
+    bool mergeAliveEnemies(RewardId keeperId, RewardId absorbedId,
+                           int sparkValue, int killScore) {
+        if (!keeperId || !absorbedId || keeperId == absorbedId ||
+            sparkValue <= 0 || killScore < 0) return false;
+        auto* keeper = find(keeperId);
+        auto* absorbed = find(absorbedId);
+        if (!keeper || !absorbed || keeper->state != State::Alive ||
+            absorbed->state != State::Alive) return false;
+        keeper->value = sparkValue;
+        keeper->score = killScore;
+        absorbed->state = State::Despawned;
+        ++counters_.despawned;
+        return true;
+    }
+
     // Final victory records the kill/score once without creating an unusable
     // pickup. It cannot be confused with rewardless cleanup despawning.
     bool defeatEnemyWithoutPickup(RewardId id) {

@@ -147,17 +147,17 @@ void dancerPhaseThresholdsAndFiniteSupports() {
 void dancerWarningResizeAndActiveLungeRetiming() {
     boss::State state; battle::PlayerHealth playerHealth{}; boss::start(state, {300, 400}, kArena, boss::Kind::Dancer);
     tickBossN(state, playerHealth, 90, {1100.0f, 400.0f});
-    CHECK(state.stage == boss::Stage::StepWarning && state.remaining == 96 && state.warnings == 1);
+    CHECK(state.stage == boss::Stage::StepWarning && state.remaining == 48 && state.warnings == 1);
     const Point lockedStart = state.stepStart, lockedEnd = state.stepEnd;
-    tickBossN(state, playerHealth, 20, {1100.0f, 400.0f}); CHECK(state.remaining == 76);
+    tickBossN(state, playerHealth, 20, {1100.0f, 400.0f}); CHECK(state.remaining == 28);
     const Arena wide{0.0f, 2560.0f, 0.0f, 1600.0f};
     const Point expectedWideStart = remapPoint(lockedStart, kArena, wide);
     const Point expectedWideEnd = remapPoint(lockedEnd, kArena, wide);
     boss::remap(state, kArena, wide);
-    CHECK(state.stage == boss::Stage::StepWarning && state.remaining == 76 && nearPoint(state.stepStart, expectedWideStart) && nearPoint(state.stepEnd, expectedWideEnd));
+    CHECK(state.stage == boss::Stage::StepWarning && state.remaining == 28 && nearPoint(state.stepStart, expectedWideStart) && nearPoint(state.stepEnd, expectedWideEnd));
     const int warningStrikeTicks = std::max(34, static_cast<int>(std::ceil(distance(expectedWideStart, expectedWideEnd) / 5.0f)));
     CHECK(state.strikeTicks == warningStrikeTicks && state.strikeTicks >= 34);
-    tickBossN(state, playerHealth, 76, {2200.0f, 1300.0f}, wide);
+    tickBossN(state, playerHealth, 28, {2200.0f, 1300.0f}, wide);
     CHECK(state.stage == boss::Stage::StepActive && state.remaining == state.strikeTicks && nearPoint(state.stepEnd, expectedWideEnd));
     tickBossN(state, playerHealth, 10, {200.0f, 200.0f}, wide);
     const float progressBeforeResize = 1.0f - state.remaining / static_cast<float>(state.strikeTicks);
@@ -181,9 +181,9 @@ void dancerChainHasFreshWarningsCounterstepsAndRecovery() {
         prepareDancerPhase(state, playerHealth, phase);
         int expectedWarningCount = 1;
         for (int strike = 0; strike < phase; ++strike) {
-            CHECK(state.stage == boss::Stage::StepWarning && state.remaining == (strike == 0 ? 96 : 72));
+            CHECK(state.stage == boss::Stage::StepWarning && state.remaining == 48);
             CHECK(state.warnings == static_cast<std::uint64_t>(expectedWarningCount));
-            tickBossN(state, playerHealth, strike == 0 ? 96 : 72, {1000.0f, 400.0f});
+            tickBossN(state, playerHealth, 48, {1000.0f, 400.0f});
             CHECK(state.stage == boss::Stage::StepActive && state.remaining == 34);
             tickBossN(state, playerHealth, 34, {1000.0f, 400.0f});
             if (strike + 1 < phase) {
@@ -194,15 +194,15 @@ void dancerChainHasFreshWarningsCounterstepsAndRecovery() {
                     tickBoss(state, playerHealth, {1000.0f, 400.0f});
                     CHECK(distance(oldPosition, state.p) <= 1.001f && boss::incomingDamage(state, oldPosition, oldPosition, 100.0f) == 0);
                 }
-                CHECK(!state.counterstepping && state.stage == boss::Stage::StepWarning && state.chain == strike + 1 && state.remaining == 96);
+                CHECK(!state.counterstepping && state.stage == boss::Stage::StepWarning && state.chain == strike + 1 && state.remaining == 48);
                 ++expectedWarningCount;
                 CHECK(state.warnings == static_cast<std::uint64_t>(expectedWarningCount));
                 CHECK(boss::incomingDamage(state, state.p, state.p, 100.0f) == 0);
-                for (int tick = 0; tick < 24; ++tick) {
+                for (int tick = 0; tick < 12; ++tick) {
                     tickBoss(state, playerHealth, {1000.0f, 400.0f});
-                    CHECK(boss::incomingDamage(state, state.p, state.p, 100.0f) == (tick < 23 ? 0 : 2000));
+                    CHECK(boss::incomingDamage(state, state.p, state.p, 100.0f) == (tick < 11 ? 0 : 2000));
                 }
-                CHECK(state.remaining == 72);
+                CHECK(state.remaining == 36);
             } else {
                 CHECK(state.stage == boss::Stage::Recover && state.chain == phase && state.remaining == (phase == 3 ? 240 : 168));
             }
@@ -211,7 +211,7 @@ void dancerChainHasFreshWarningsCounterstepsAndRecovery() {
 }
 void dancerDeathCancelsCommittedStrike() {
     boss::State state; battle::PlayerHealth playerHealth{}; boss::start(state, {300, 400}, kArena, boss::Kind::Dancer);
-    tickBossN(state, playerHealth, 90); tickBossN(state, playerHealth, 96); tickBossN(state, playerHealth, 4);
+    tickBossN(state, playerHealth, 90); tickBossN(state, playerHealth, 48); tickBossN(state, playerHealth, 4);
     CHECK(state.stage == boss::Stage::StepActive && state.strikeThisTick);
     const auto defeated = boss::applySignature(state, state.health.hp);
     CHECK(defeated.events.defeated && !boss::alive(state) && state.stage == boss::Stage::Defeated);
@@ -225,14 +225,14 @@ void prepareConductorCycle(boss::State& state, battle::PlayerHealth& playerHealt
     boss::start(state, {640.0f, 400.0f}, kArena, boss::Kind::Conductor);
     state.metrics.cycles = static_cast<std::uint64_t>(cycles); // Select an existing deterministic cycle pattern.
     tickBossN(state, playerHealth, 90, {1100.0f, 400.0f});
-    CHECK(state.stage == boss::Stage::RootWarning && state.remaining == 108);
+    CHECK(state.stage == boss::Stage::RootWarning && state.remaining == 54);
 }
 void conductorWarningFanAndReachableRingGap() {
     boss::State fan; battle::PlayerHealth fanHealth{};
     prepareConductorCycle(fan, fanHealth, 0);
     CHECK(fan.pattern == 0 && fan.warnings == 1 && fan.shotCount == 6 && fan.budCount == 0);
     CHECK(fan.bullets.reservedCount() == 6 && fan.bullets.flyingCount() == 0);
-    tickBossN(fan, fanHealth, 107, {1100.0f, 400.0f});
+    tickBossN(fan, fanHealth, 53, {1100.0f, 400.0f});
     CHECK(fan.stage == boss::Stage::RootWarning && fan.remaining == 1);
     tickBoss(fan, fanHealth, {1100.0f, 400.0f});
     CHECK(fan.stage == boss::Stage::RootActive && fan.remaining == 60);
@@ -250,7 +250,7 @@ void conductorWarningFanAndReachableRingGap() {
         const Point direction = gap.shots[static_cast<std::size_t>(i)].direction;
         CHECK(direction.x * aim.x + direction.y * aim.y <= 0.501f);
     }
-    tickBossN(gap, gapHealth, 108, {1100.0f, 400.0f});
+    tickBossN(gap, gapHealth, 54, {1100.0f, 400.0f});
     CHECK(gap.stage == boss::Stage::RootActive && gap.remaining == 60);
     CHECK(gap.shotsFired == 7 && gap.bullets.flyingCount() == 7);
 }
@@ -260,7 +260,7 @@ void conductorSequentialRewardlessBudsCancelOnlyUnfiredShot() {
     CHECK(state.pattern == 1 && state.shotCount == 3 && state.budCount == 3);
     CHECK(state.bullets.reservedCount() == 3);
     const auto cutCount = state.budsCut;
-    tickBossN(state, playerHealth, 108, {1100.0f, 400.0f});
+    tickBossN(state, playerHealth, 54, {1100.0f, 400.0f});
     CHECK(state.stage == boss::Stage::RootActive && state.remaining == 42 && state.shotCursor == 1 && state.shotsFired == 1);
     const auto firstBudShot = state.shots[0].ticket;
     const auto* fired = findProjectile(state.bullets, firstBudShot);
@@ -290,7 +290,7 @@ void conductorFinalPatternHasEightyFourTickBudDelay() {
     tickBossN(state, playerHealth, 108, {1100.0f, 400.0f}); tickBossN(state, playerHealth, 90, {1100.0f, 400.0f});
     CHECK(state.pattern == 3 && state.stage == boss::Stage::RootWarning);
     CHECK(state.shotCount == 7 && state.budCount == 1 && state.bullets.reservedCount() == 7);
-    tickBossN(state, playerHealth, 108, {1100.0f, 400.0f});
+    tickBossN(state, playerHealth, 54, {1100.0f, 400.0f});
     CHECK(state.stage == boss::Stage::RootActive && state.remaining == 84);
     CHECK(state.shotsFired == 6 && state.shotCursor == 6 && state.bullets.reservedCount() == 1);
     tickBossN(state, playerHealth, 83, {1100.0f, 400.0f});
@@ -327,7 +327,7 @@ void conductorPoolCapacityAndThreatCancellation() {
     CHECK(phaseCancel.bullets.reservedCount() == 0 && phaseCancel.bullets.flyingCount() == 0);
     boss::State deathCancel; battle::PlayerHealth deathHealth{};
     prepareConductorCycle(deathCancel, deathHealth, 0);
-    tickBossN(deathCancel, deathHealth, 108, {1100.0f, 400.0f});
+    tickBossN(deathCancel, deathHealth, 54, {1100.0f, 400.0f});
     CHECK(deathCancel.bullets.flyingCount() == 6);
     const auto defeat = boss::applySignature(deathCancel, deathCancel.health.hp);
     CHECK(defeat.events.defeated && deathCancel.stage == boss::Stage::Defeated);

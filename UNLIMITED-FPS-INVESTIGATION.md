@@ -47,12 +47,13 @@ Unlimited-specific input-polling disable as the cause.
 - Added a separate **240 FPS** choice, including keyboard cycling, mouse chips,
   validation and persistence. **Unlimited still stores zero**, and focused gameplay
   passes zero to raylib; it is not silently converted to a fixed cap.
-- Focused menus use at most 60 FPS, respecting a selected 30 FPS cap. Unfocused
-  and minimized windows use 30 FPS. Hidden regression fixtures retain 60 FPS.
+- Focused menus use a fixed 30 FPS cap. Unfocused and minimized windows also use
+  30 FPS. Hidden regression fixtures retain 60 FPS.
 - Centralized effective pacing immediately before presentation. The target changes
   only when necessary, and Windows timer resolution follows the effective cap.
   Saving audio/settings no longer reapplies a raw FPS preference over this policy.
-- Startup stays at 60 FPS while on the title screen, even when Unlimited is saved.
+- Normal startup begins at 30 FPS on the title screen, including when Unlimited
+  is saved. Focused gameplay then applies the selected gameplay limit.
 
 This prevents unnecessary menu/background load. It does **not** establish that
 Unlimited foreground gameplay is now safe or responsive. No gameplay, balance,

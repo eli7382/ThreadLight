@@ -105,7 +105,7 @@ void processEconomyEnemy(Economy& result,std::uint32_t seed,int wave,int ordinal
     const auto id=result.ledger.registerEnemy(sparkValue,killScore);
     CHECK(id!=0&&id==result.ledger.counters().spawned);
     int killChance=quality.killPercent+runQualityPercent;
-    if(!core&&(kind==combat::EnemyKind::Brute||kind==combat::EnemyKind::Bulwark))killChance-=3;
+    if(!core&&(kind==combat::EnemyKind::Brute||kind==combat::EnemyKind::BriarCaller))killChance-=3;
     const int collectionChance=std::min(99,quality.collectPercent+runQualityPercent+
         (magnetSensitivity&&wave>=9?8:0));
     if(!core&&!succeeds(eventRoll(seed,wave,ordinal,0x31415927u),killChance)) {
@@ -299,7 +299,7 @@ int runFullModel() {
     CHECK(chapter::kEncounterCount==35);
     CHECK(theoreticalCampaignSparks()==kTheoreticalSparkMaximum);
     std::cout<<"MODEL ONLY: economy probabilities, policy choices and fixed-deficit recovery are explicit assumptions, not measured gameplay or skill estimates.\n";
-    std::cout<<"Economy: 2000 paired seeds per low/medium/high quality and base/+8 Magnet sensitivity arm. Kill/collect bases are 60/65, 78/80, 92/93 percent; shared run quality is uniform integer -6..+6 points. Brute/Bulwark kill chance -3 points. Failed kills despawn; failed manual pickups expire. Sower/support patterns use production data. First four boss cores are 10 sparks with the normal collect roll. No pickup lifetime, survival combat, signature effects, hidden rewards or autobank.\n";
+    std::cout<<"Economy: 2000 paired seeds per low/medium/high quality and base/+8 Magnet sensitivity arm. Kill/collect bases are 60/65, 78/80, 92/93 percent; shared run quality is uniform integer -6..+6 points. Brute/Briar Caller kill chance -3 points. Caller fusion is not simulated in this assumed economy model. Failed kills despawn; failed manual pickups expire. Sower/support patterns use production data. First four boss cores are 10 sparks with the normal collect roll. No pickup lifetime, survival combat, signature effects, hidden rewards or autobank.\n";
     std::cout<<"Offer budget model is independent of those earned-credit distributions: each requested 16/22/26-credit fixture deposits only the RewardLedger threshold needed for one more credit. Offers use beforeBoss=false. Injured stress sets HP=maxHP-3500 before every offer (a repeated fixed deficit, not cumulative damage), so Restitch availability follows the production recovery-missed rule; choose it when present, then policy priorities. No signature choices are included here.\n";
     std::cout<<"Theoretical collectible ceiling="<<kTheoreticalSparkMaximum<<" sparks; maximum ordinary credits="<<kMaximumCredits<<".\n";
 

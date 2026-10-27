@@ -19,7 +19,7 @@ inline Encounter encounter(int index) {
         {"SLOW CARAVAN",26,false,2},{"BURST WINDOWS",30,false,2},
         {"RETURN ROUTE",28,false,2},{"COMMITMENT TEST",32,false,2},
         {"THE NEEDLE DANCER",0,true,2},
-        {"OPENING PLATES",28,false,3},{"FIRING RELAY",30,false,3},
+        {"FIRST CALL",28,false,3},{"FIRING RELAY",30,false,3},
         {"MOVING ANCHORS",30,false,3},{"LOOSE WEFT",32,false,3},
         {"GATHERING TIDE",30,false,3},{"CALL AND RESPONSE",34,false,3},
         {"THE THORN CONDUCTOR",0,true,3},
@@ -124,12 +124,12 @@ inline Schedule schedule(int wave, std::uint32_t seed) {
         for(int i=0;i<10;++i)add(1980+i*132,K::Hunter,i%2?kPi:0.f);
         for(int i=0;i<6;++i)add(2520+i*144,K::Brute,i%2?kPi*.5f:-kPi*.5f);
         break;
-    case 14: // Opening Plates: plated anchors mark the first chapter-three lanes.
+    case 14: // First Call: paired Briar Callers enter the chapter-three schedule.
         for(int i=0;i<16;++i)add(i*192,K::Hunter,i%2?kPi:0.f);
         for(int i=0;i<4;++i)add(240+i*840,K::Brute,i%2?kPi*.5f:-kPi*.5f);
         for(int i=0;i<6;++i)add(480+i*420,K::Skitter,i%2?kPi:0.f);
         for(int i=0;i<4;++i)add(360+i*840,K::Spitter,i%2?kPi*.5f:-kPi*.5f);
-        for(int i=0;i<2;++i)add(960+i*1200,K::Bulwark,i?kPi:0.f);
+        for(int i=0;i<2;++i)add(960+i*1200,K::BriarCaller,i?kPi:0.f);
         break;
     case 15: // Firing Relay: ranged positions pass the firing lane across sectors.
         for(int i=0;i<8;++i)add(i*360,K::Hunter,i%2?kPi:0.f);
@@ -137,14 +137,14 @@ inline Schedule schedule(int wave, std::uint32_t seed) {
         for(int i=0;i<6;++i)add(240+i*540,K::Skitter,i%2?kPi*.5f:-kPi*.5f);
         for(int relay=0;relay<3;++relay)for(int i=0;i<4;++i)
             add(240+relay*900+i*120,K::Spitter,relay*kPi*2.f/3.f+(i%2?.12f:-.12f));
-        for(int i=0;i<2;++i)add(1080+i*1320,K::Bulwark,i?kPi*.5f:-kPi*.5f);
+        for(int i=0;i<2;++i)add(1080+i*1320,K::BriarCaller,i?kPi*.5f:-kPi*.5f);
         break;
     case 16: // Moving Anchors: slow plates advance between separated brute beats.
         for(int i=0;i<8;++i)add(i*360,K::Hunter,i%2?kPi:0.f);
         for(int i=0;i<9;++i)add(180+i*360,K::Brute,i%2?kPi*.5f:-kPi*.5f);
         for(int i=0;i<4;++i)add(600+i*720,K::Skitter,i%2?kPi:0.f);
         for(int i=0;i<2;++i)add(840+i*1440,K::Spitter,i?kPi*.5f:-kPi*.5f);
-        for(int i=0;i<6;++i)add(360+i*480,K::Bulwark,i%2?kPi:0.f);
+        for(int i=0;i<6;++i)add(360+i*480,K::BriarCaller,i%2?kPi:0.f);
         break;
     case 17: // Loose Weft: a long skitter weave leaves gaps between its crossings.
         for(int i=0;i<6;++i)add(i*480,K::Hunter,i%2?kPi:0.f);
@@ -152,14 +152,14 @@ inline Schedule schedule(int wave, std::uint32_t seed) {
         for(int packet=0;packet<3;++packet)for(int i=0;i<6;++i)
             add(180+packet*660+i*72,K::Skitter,i%2?kPi*.5f:-kPi*.5f);
         for(int i=0;i<4;++i)add(600+i*720,K::Spitter,i%2?kPi*.5f:-kPi*.5f);
-        for(int i=0;i<2;++i)add(1080+i*1320,K::Bulwark,i?kPi:0.f);
+        for(int i=0;i<2;++i)add(1080+i*1320,K::BriarCaller,i?kPi:0.f);
         break;
     case 18: // Gathering Tide: pursuit lanes thicken, then settle into a final gap.
         for(int i=0;i<21;++i)add(i*96,K::Hunter,i%2?kPi:0.f);
         for(int i=0;i<6;++i)add(300+i*540,K::Brute,i%2?kPi*.5f:-kPi*.5f);
         for(int i=0;i<6;++i)add(600+i*480,K::Skitter,i%2?kPi:0.f);
         for(int i=0;i<2;++i)add(960+i*1320,K::Spitter,i?kPi*.5f:-kPi*.5f);
-        for(int i=0;i<2;++i)add(1440+i*1080,K::Bulwark,i?kPi:0.f);
+        for(int i=0;i<2;++i)add(1440+i*1080,K::BriarCaller,i?kPi:0.f);
         break;
     case 19: // Call and Response: spaced heavy calls answer paired moving/ranged lines.
         for(int act=0;act<3;++act) {
@@ -168,12 +168,12 @@ inline Schedule schedule(int wave, std::uint32_t seed) {
             const float flank=act%2?-kPi*.5f:kPi*.5f;
             const int hunters=act==0?4:3;
             const int skitters=act<2?3:2;
-            const int bulwarks=act<2?2:1;
+            const int callers=act<2?2:1;
             for(int i=0;i<hunters;++i)add(base+i*150,K::Hunter,direction);
             add(base+180,K::Brute,flank);add(base+780,K::Brute,-flank);
             for(int i=0;i<skitters;++i)add(base+360+i*180,K::Skitter,direction+kPi);
             add(base+600,K::Spitter,flank);add(base+960,K::Spitter,-flank);
-            for(int i=0;i<bulwarks;++i)add(base+900+i*180,K::Bulwark,direction);
+            for(int i=0;i<callers;++i)add(base+900+i*180,K::BriarCaller,direction);
         }
         break;
     case 21: // First Thorns: paced sowers and moving threats introduce the new lane.
@@ -181,7 +181,7 @@ inline Schedule schedule(int wave, std::uint32_t seed) {
         for(int i=0;i<4;++i)add(360+i*720,K::Brute,i%2?kPi*.5f:-kPi*.5f);
         for(int i=0;i<6;++i)add(600+i*420,K::Skitter,i%2?kPi:0.f);
         for(int i=0;i<4;++i)add(480+i*840,K::Spitter,i%2?kPi*.5f:-kPi*.5f);
-        for(int i=0;i<2;++i)add(840+i*1440,K::Bulwark,i?kPi:0.f);
+        for(int i=0;i<2;++i)add(840+i*1440,K::BriarCaller,i?kPi:0.f);
         for(int i=0;i<3;++i)add(120+i*1200,K::Sower,i%2?kPi*.5f:-kPi*.5f);
         break;
     case 22: // Expiring Paths: spread sowers so every early route can clear.
@@ -189,7 +189,7 @@ inline Schedule schedule(int wave, std::uint32_t seed) {
         for(int i=0;i<2;++i)add(720+i*1800,K::Brute,i?kPi:0.f);
         for(int i=0;i<6;++i)add(240+i*420,K::Skitter,i%2?kPi*.5f:-kPi*.5f);
         for(int i=0;i<2;++i)add(960+i*1680,K::Spitter,i?kPi*.5f:-kPi*.5f);
-        for(int i=0;i<2;++i)add(1320+i*1200,K::Bulwark,i?kPi:0.f);
+        for(int i=0;i<2;++i)add(1320+i*1200,K::BriarCaller,i?kPi:0.f);
         for(int i=0;i<8;++i)add(i*480,K::Sower,i%2?kPi*.5f:-kPi*.5f);
         break;
     case 23: // Patient Cut: a measured brute train advances through wide gaps.
@@ -197,7 +197,7 @@ inline Schedule schedule(int wave, std::uint32_t seed) {
         for(int i=0;i<10;++i)add(240+i*240,K::Brute,i%2?kPi*.5f:-kPi*.5f);
         for(int i=0;i<4;++i)add(600+i*720,K::Skitter,i%2?kPi:0.f);
         for(int i=0;i<2;++i)add(960+i*1440,K::Spitter,i?kPi*.5f:-kPi*.5f);
-        for(int i=0;i<6;++i)add(480+i*480,K::Bulwark,i%2?kPi:0.f);
+        for(int i=0;i<6;++i)add(480+i*480,K::BriarCaller,i%2?kPi:0.f);
         for(int i=0;i<2;++i)add(720+i*1440,K::Sower,i?kPi*.5f:-kPi*.5f);
         break;
     case 24: // Crossfire Garden: three ranged relays answer from separated sectors.
@@ -206,7 +206,7 @@ inline Schedule schedule(int wave, std::uint32_t seed) {
         for(int i=0;i<6;++i)add(240+i*480,K::Skitter,i%2?kPi*.5f:-kPi*.5f);
         for(int relay=0;relay<3;++relay)for(int i=0;i<3;++i)
             add(180+relay*900+i*120,K::Spitter,relay*kPi*2.f/3.f+(i%2?.14f:-.14f));
-        for(int i=0;i<2;++i)add(960+i*1320,K::Bulwark,i?kPi*.5f:-kPi*.5f);
+        for(int i=0;i<2;++i)add(960+i*1320,K::BriarCaller,i?kPi*.5f:-kPi*.5f);
         for(int i=0;i<4;++i)add(360+i*720,K::Sower,i%2?kPi*.5f:-kPi*.5f);
         break;
     case 25: // Open Sprint: short pursuer bursts leave the center lane moving.
@@ -215,7 +215,7 @@ inline Schedule schedule(int wave, std::uint32_t seed) {
         for(int packet=0;packet<4;++packet)for(int i=0;i<4;++i)
             add(240+packet*540+i*72,K::Skitter,(packet%2?kPi:0.f)+(i%2?.12f:-.12f));
         for(int i=0;i<2;++i)add(600+i*1200,K::Spitter,i?kPi*.5f:-kPi*.5f);
-        for(int i=0;i<2;++i)add(960+i*1200,K::Bulwark,i?kPi:0.f);
+        for(int i=0;i<2;++i)add(960+i*1200,K::BriarCaller,i?kPi:0.f);
         for(int i=0;i<2;++i)add(720+i*1200,K::Sower,i?kPi*.5f:-kPi*.5f);
         break;
     case 26: // Changing Gaps: three acts reverse the safe approach lanes.
@@ -228,11 +228,11 @@ inline Schedule schedule(int wave, std::uint32_t seed) {
             for(int i=0;i<2;++i)add(base+180+i*600,K::Brute,flank);
             for(int i=0;i<skitters;++i)add(base+360+i*180,K::Skitter,-direction);
             for(int i=0;i<2;++i)add(base+510+i*360,K::Spitter,flank);
-            if(act<2)add(base+960,K::Bulwark,direction);
+            if(act<2)add(base+960,K::BriarCaller,direction);
             for(int i=0;i<sowers;++i)add(base+720+i*360,K::Sower,-flank);
         }
-        // The third act closes with a delayed Bulwark reinforcement.
-        add(3480,K::Bulwark,kPi);
+        // The third act closes with a delayed Briar Caller reinforcement.
+        add(3480,K::BriarCaller,kPi);
         break;
     case 28: // New Pattern: a diagonal pulse replaces the former chapter rhythm.
         for(int i=0;i<20;++i)add(i*132,K::Hunter,(i%2?kPi:0.f)+kPi*.25f);
@@ -247,7 +247,7 @@ inline Schedule schedule(int wave, std::uint32_t seed) {
         for(int i=0;i<12;++i)add(240+i*240,K::Brute,i%2?kPi*.5f:-kPi*.5f);
         for(int i=0;i<4;++i)add(600+i*600,K::Skitter,i%2?kPi:0.f);
         for(int i=0;i<2;++i)add(960+i*1320,K::Spitter,i?kPi*.5f:-kPi*.5f);
-        for(int i=0;i<6;++i)add(360+i*480,K::Bulwark,i%2?kPi:0.f);
+        for(int i=0;i<6;++i)add(360+i*480,K::BriarCaller,i%2?kPi:0.f);
         for(int i=0;i<2;++i)add(1320+i*1200,K::Sower,i?kPi*.5f:-kPi*.5f);
         break;
     case 30: // Rotating Fire: five ranged stations hand off their firing sector.
@@ -256,7 +256,7 @@ inline Schedule schedule(int wave, std::uint32_t seed) {
         for(int i=0;i<8;++i)add(300+i*360,K::Skitter,i%2?kPi*.5f:-kPi*.5f);
         for(int sector=0;sector<5;++sector)for(int i=0;i<2;++i)
             add(240+sector*600+i*144,K::Spitter,sector*kPi*2.f/5.f+(i?-.12f:.12f));
-        for(int i=0;i<2;++i)add(960+i*1440,K::Bulwark,i?kPi*.5f:-kPi*.5f);
+        for(int i=0;i<2;++i)add(960+i*1440,K::BriarCaller,i?kPi*.5f:-kPi*.5f);
         for(int i=0;i<4;++i)add(480+i*840,K::Sower,i%2?kPi:0.f);
         break;
     case 31: // Needle Rush: four skitter packets arrive without ranged fire.
@@ -267,7 +267,7 @@ inline Schedule schedule(int wave, std::uint32_t seed) {
             for(int i=0;i<packetSize;++i)
                 add(120+packet*720+i*72,K::Skitter,packet%2?kPi*.5f:-kPi*.5f);
         }
-        for(int i=0;i<2;++i)add(960+i*1440,K::Bulwark,i?kPi:0.f);
+        for(int i=0;i<2;++i)add(960+i*1440,K::BriarCaller,i?kPi:0.f);
         for(int i=0;i<2;++i)add(600+i*1560,K::Sower,i?kPi*.5f:-kPi*.5f);
         break;
     case 32: // Reversal: each later act approaches from the opposite side.
@@ -282,7 +282,7 @@ inline Schedule schedule(int wave, std::uint32_t seed) {
             if(act==0)add(base+780,K::Spitter,flank);
             else if(act==1)add(base+780,K::Spitter,flank);
             else {add(base+660,K::Spitter,flank);add(base+900,K::Spitter,-flank);}
-            if(act<2)add(base+960,K::Bulwark,direction);
+            if(act<2)add(base+960,K::BriarCaller,direction);
             if(act!=1)add(base+840,K::Sower,-flank);
         }
         break;
@@ -296,11 +296,11 @@ inline Schedule schedule(int wave, std::uint32_t seed) {
             for(int i=0;i<brutes;++i)add(base+180+i*180,K::Brute,flank);
             for(int i=0;i<skitters;++i)add(base+420+i*180,K::Skitter,-direction);
             for(int i=0;i<2;++i)add(base+360+i*600,K::Spitter,flank);
-            if(act<2)add(base+960,K::Bulwark,direction);
+            if(act<2)add(base+960,K::BriarCaller,direction);
             for(int i=0;i<sowers;++i)add(base+720+i*360,K::Sower,-flank);
         }
-        // The final act closes with a delayed Bulwark reinforcement.
-        add(3480,K::Bulwark,kPi);
+        // The final act closes with a delayed Briar Caller reinforcement.
+        add(3480,K::BriarCaller,kPi);
         break;
     default: break; // Boss supports are encounter events, never scheduled farming.
     }

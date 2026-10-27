@@ -13,7 +13,7 @@ using Point=foundation::Point;
 struct Arena { float left,right,top,bottom; };
 struct Branch { Point a,b; };
 enum class Stage { Stalk,RootWarning,RootActive,StepWarning,StepActive,Recover,Transition,Defeated };
-constexpr int kWarningTicks=108,kReachTicks=42,kStepTicks=108,kRecoveryTicks=192,kTransitionTicks=108,kStalkTicks=90;
+constexpr int kWarningTicks=54,kReachTicks=42,kStepTicks=108,kRecoveryTicks=192,kTransitionTicks=108,kStalkTicks=90;
 constexpr int kMaxHp=7000,kDamage=1800,kExposureBonus=100,kCoreValue=10,kSupportBudget=4;
 constexpr float kVulnerableRadius=54.f,kContactRadius=26.f,kRootHalfWidth=20.f;
 struct Metrics {

@@ -12,8 +12,8 @@ presentation; drivers may override the request, and output can be limited to the
 display refresh even with Unlimited selected. With VSync OFF, focused Unlimited
 still passes zero to raylib without a hidden finite cap.
 
-Menus use at most 60 FPS (respecting a selected 30 FPS limit), and unfocused or
-minimized windows use 30 FPS. The deterministic simulation remains at 120 Hz.
+Menus use a fixed 30 FPS cap, and unfocused or minimized windows use 30 FPS.
+The deterministic simulation remains at 120 Hz.
 The existing settings file and record fields are preserved by the settings codec.
 
 ## Optional diagnostic tools

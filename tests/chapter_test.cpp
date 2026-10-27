@@ -47,7 +47,7 @@ int kindIndex(EnemyKind kind) {
     case EnemyKind::Brute: return 1;
     case EnemyKind::Skitter: return 2;
     case EnemyKind::Spitter: return 3;
-    case EnemyKind::Bulwark: return 4;
+    case EnemyKind::BriarCaller: return 4;
     case EnemyKind::Sower: return 5;
     }
     return -1;

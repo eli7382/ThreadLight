@@ -1,10 +1,8 @@
-#include "bulwark.h"
 #include "crossweave.h"
 
 #include <array>
 #include <cstdint>
 #include <iostream>
-#include <limits>
 #include <span>
 
 namespace {
@@ -21,7 +19,6 @@ void check(bool condition, const char* expression, int line) {
 
 using threadlight::foundation::Point;
 namespace cw = threadlight::crossweave;
-namespace bw = threadlight::bulwark;
 
 cw::Segment vertical(std::uint64_t id, int age, float x = 0.0f,
                      float y0 = -10.0f, float y1 = 10.0f) {
@@ -262,45 +259,6 @@ void crossweaveDamageRounding() {
     CHECK(cw::damage(-1) == 0);
 }
 
-void bulwarkPhaseBoundariesAndPause() {
-    bw::State state;
-    CHECK(state.guarded && state.remainingTicks == bw::kGuardTicks);
-    for (int i = 0; i < bw::kGuardTicks - 1; ++i) bw::tick(state, true);
-    CHECK(state.guarded && state.remainingTicks == 1);
-    bw::tick(state, true);
-    CHECK(!state.guarded && state.remainingTicks == bw::kExposureTicks);
-
-    const bw::State paused = state;
-    for (int i = 0; i < 100; ++i) bw::tick(state, false);
-    CHECK(state.guarded == paused.guarded && state.remainingTicks == paused.remainingTicks);
-
-    for (int i = 0; i < bw::kExposureTicks - 1; ++i) bw::tick(state, true);
-    CHECK(!state.guarded && state.remainingTicks == 1);
-    bw::tick(state, true);
-    CHECK(state.guarded && state.remainingTicks == bw::kGuardTicks);
-
-    bw::clear(state);
-    CHECK(state.guarded && state.remainingTicks == bw::kGuardTicks);
-}
-
-void bulwarkDamageSingleRoundingAndSaturation() {
-    bw::State guarded;
-    CHECK(bw::damage(100, guarded) == 60);
-    CHECK(bw::damage(5, guarded) == 3);
-    CHECK(bw::damage(1, guarded, 3, 4) == 0); // 0.45, not rounded between factors.
-    CHECK(bw::damage(270, guarded, 3, 4) == 122);
-    CHECK(bw::damage(1, guarded, 0, 4) == 0);
-    CHECK(bw::damage(1, guarded, 3, 0) == 0);
-
-    bw::State exposed;
-    exposed.guarded = false;
-    exposed.remainingTicks = bw::kExposureTicks;
-    CHECK(bw::damage(100, exposed) == 125);
-    CHECK(bw::damage(2, exposed) == 3); // 2.5 rounds upward.
-    CHECK(bw::damage(std::numeric_limits<int>::max(), exposed,
-                     std::numeric_limits<int>::max(), 1) == std::numeric_limits<int>::max());
-}
-
 } // namespace
 
 int main() {
@@ -313,13 +271,10 @@ int main() {
     cooldownBoundaryPauseAndClaimPruning();
     boundedHistoryClaimCapacity();
     crossweaveDamageRounding();
-    bulwarkPhaseBoundariesAndPause();
-    bulwarkDamageSingleRoundingAndSaturation();
-
     if (failures != 0) {
         std::cerr << failures << " test(s) failed\n";
         return 1;
     }
-    std::cout << "All Crossweave and Bulwark tests passed\n";
+    std::cout << "All Crossweave tests passed\n";
     return 0;
 }

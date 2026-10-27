@@ -9,7 +9,7 @@ namespace threadlight::combat {
 // Health/damage are integer hundredths. Rendering never writes these records.
 constexpr int kSilkHitIntervalTicks = 33; // Existing nominal 0.27 s at 120 Hz.
 constexpr int kPlayerImmunityTicks = 94; // Existing nominal 0.78 s at 120 Hz.
-enum class EnemyKind { Hunter, Brute, Skitter, Spitter, Bulwark, Sower };
+enum class EnemyKind { Hunter, Brute, Skitter, Spitter, BriarCaller, Sower };
 
 struct EnemyDefinition { int hp, contactDamage, sparkValue, killScore; float radius, speed; };
 inline EnemyDefinition definition(EnemyKind kind, int chapter = 1) {
@@ -20,7 +20,7 @@ inline EnemyDefinition definition(EnemyKind kind, int chapter = 1) {
         case EnemyKind::Brute:return {final?900:750,final?2400:2200,2,35,20.f,final?80.f:78.f};
         case EnemyKind::Skitter:return {final?350:300,final?1800:1700,1,15,11.f,final?145.f:140.f};
         case EnemyKind::Spitter:return {final?600:500,final?1500:1400,2,30,15.f,final?88.f:84.f};
-        case EnemyKind::Bulwark:return {final?1000:850,final?2400:2200,3,45,23.f,final?64.f:58.f};
+        case EnemyKind::BriarCaller:return {final?700:600,final?1300:1200,3,45,16.f,final?78.f:72.f};
         case EnemyKind::Sower:return {final?600:500,final?1700:1500,2,30,16.f,final?76.f:64.f};
         }
     }
@@ -30,7 +30,7 @@ inline EnemyDefinition definition(EnemyKind kind, int chapter = 1) {
         case EnemyKind::Brute:return {600,2000,2,35,20.f,74.f};
         case EnemyKind::Skitter:return {250,1500,1,15,11.f,135.f};
         case EnemyKind::Spitter:return {400,1300,2,30,15.f,78.f};
-        case EnemyKind::Bulwark:return {700,2000,3,45,23.f,52.f};
+        case EnemyKind::BriarCaller:return {500,1100,3,45,16.f,68.f};
         case EnemyKind::Sower:return {500,1500,2,30,16.f,64.f};
         }
     }
@@ -40,7 +40,7 @@ inline EnemyDefinition definition(EnemyKind kind, int chapter = 1) {
         case EnemyKind::Brute:return {450,1800,2,35,20.f,70.f};
         case EnemyKind::Skitter:return {200,1300,1,15,11.f,125.f};
         case EnemyKind::Spitter:return {300,1200,2,30,15.f,72.f};
-        case EnemyKind::Bulwark:return {700,2000,3,45,23.f,52.f};
+        case EnemyKind::BriarCaller:return {400,1000,3,45,16.f,64.f};
         case EnemyKind::Sower:return {500,1500,2,30,16.f,64.f};
         }
     }
@@ -49,7 +49,7 @@ inline EnemyDefinition definition(EnemyKind kind, int chapter = 1) {
     case EnemyKind::Brute: return {300, 1600, 2, 35, 20.f, 66.f};
     case EnemyKind::Skitter: return {150, 1200, 1, 15, 11.f, 115.f};
     case EnemyKind::Spitter: return {300,1200,2,30,15.f,72.f};
-    case EnemyKind::Bulwark: return {700,2000,3,45,23.f,52.f};
+    case EnemyKind::BriarCaller: return {350,1000,3,45,16.f,60.f};
     case EnemyKind::Sower: return {500,1500,2,30,16.f,64.f};
     }
     return {100, 1000, 1, 10, 14.f, 95.f};

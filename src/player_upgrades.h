@@ -53,7 +53,7 @@ inline Stats derive(const Ranks& ranks) {
     constexpr float cooldown[] = {1.85f, 1.70f, 1.55f, 1.40f};
     constexpr float radius[] = {110.f, 145.f, 180.f, 220.f};
     constexpr float pull[] = {220.f, 270.f, 320.f, 380.f};
-    constexpr int damageReduction[] = {0, 6, 11, 16, 20, 24};
+    constexpr int damageReduction[] = {0, 7, 12, 17, 21, 25};
     constexpr float dashMultiplier[] = {3.7f, 4.f, 4.3f, 4.6f};
     constexpr int needleCooldown[] = {0, 600, 480, 360};
     constexpr int bloodKillsPerHeal[] = {0, 5, 4, 3};

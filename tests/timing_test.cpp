@@ -160,12 +160,12 @@ void testEffectiveFrameRateLimit() {
     CHECK(effectiveFrameRateLimit(0, true, true, false) == 0);
     CHECK(effectiveFrameRateLimit(240, true, true, false) == 240);
 
-    // Focused menus are limited to 60, while honoring lower finite requests.
+    // Focused menus use a fixed 30 FPS cap regardless of the gameplay limit.
     CHECK(effectiveFrameRateLimit(30, false, true, false) == 30);
-    CHECK(effectiveFrameRateLimit(60, false, true, false) == 60);
-    CHECK(effectiveFrameRateLimit(120, false, true, false) == 60);
-    CHECK(effectiveFrameRateLimit(0, false, true, false) == 60);
-    CHECK(effectiveFrameRateLimit(240, false, true, false) == 60);
+    CHECK(effectiveFrameRateLimit(60, false, true, false) == 30);
+    CHECK(effectiveFrameRateLimit(120, false, true, false) == 30);
+    CHECK(effectiveFrameRateLimit(0, false, true, false) == 30);
+    CHECK(effectiveFrameRateLimit(240, false, true, false) == 30);
 
     // An unfocused or minimized window uses the low background rate.
     CHECK(effectiveFrameRateLimit(30, true, false, false) == 30);

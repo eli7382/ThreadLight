@@ -41,7 +41,7 @@ void preserveOrdinalsAndDeriveEffects() {
     CHECK(u::kPermanentCount == 11);
     CHECK(u::maximum(u::Id::Restitch) == 0 && u::maximum(u::Id::Count) == 0);
 
-    constexpr int dr[] = {0, 6, 11, 16, 20, 24};
+    constexpr int dr[] = {0, 7, 12, 17, 21, 25};
     constexpr float dash[] = {3.7f, 4.f, 4.3f, 4.6f};
     constexpr int needle[] = {0, 600, 480, 360};
     constexpr int bloodKills[] = {0, 5, 4, 3};

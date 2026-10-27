@@ -5,7 +5,7 @@
 #include "combat.h"
 #include "skitter.h"
 #include "ranged_combat.h"
-#include "bulwark.h"
+#include "briar_caller.h"
 #include "sower.h"
 #include "signature_effects.h"
 #include <algorithm>
@@ -49,7 +49,8 @@ struct Foe {
     float previousPhase=phase,previousHitFlash=hitFlash;
     foundation::RewardId rewardId = 0;
     std::uint64_t projectileTicket = 0;
-    bulwark::State guard{};
+    briar_caller::State briarCaller{};
+    briar_caller::SpeedBoost callerSpeedBoost{};
     sower::State sowerState{};
     signature_effects::SlowState slow{};
     void capture(){previousP=p;previousPhase=phase;previousHitFlash=hitFlash;}

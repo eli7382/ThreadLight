@@ -19,6 +19,7 @@
 #include "signature_reward.h"
 #include "attack_coordinator.h"
 #include "chapter_boss.h"
+#include "briar_caller.h"
 #include "crossweave.h"
 #include "cocoon.h"
 #include "resonant_loom.h"
@@ -32,6 +33,7 @@
 #include <algorithm>
 #include <array>
 #include <cmath>
+#include <limits>
 #include <vector>
 #include <charconv>
 #include <random>
@@ -148,7 +150,7 @@ int main(int argc, char** argv){
  if(minimumQaWindow)SetWindowSize(windowCoordinates.nativeWidth(960),windowCoordinates.nativeHeight(640));
  int SW=windowCoordinates.width(GetRenderWidth()),SH=windowCoordinates.height(GetRenderHeight());
  auto playArea=threadlight::layout::playBounds(SW,SH);
- SetExitKey(KEY_NULL); SetTargetFPS(pacingCheck?pacingRate:60); if(!m6RenderCheck&&!pacingCheck)InitAudioDevice();
+ SetExitKey(KEY_NULL); SetTargetFPS(pacingCheck?pacingRate:(m6RenderCheck?60:30)); if(!m6RenderCheck&&!pacingCheck)InitAudioDevice();
  const bool audioReady=!m6RenderCheck&&!pacingCheck&&IsAudioDeviceReady();
  threadlight::GameAudio sfx;
  if(!sfx.initialize(audioReady))TraceLog(LOG_WARNING,"Audio device unavailable; event sounds are disabled.");
@@ -169,7 +171,7 @@ int main(int argc, char** argv){
  };
  updateTimerResolution(!m6RenderCheck);
  sfx.setMasterVolume(appSettings.sfxVolumePercent/100.0f);
- int appliedFrameRateLimit=pacingCheck?pacingRate:60;
+ int appliedFrameRateLimit=pacingCheck?pacingRate:(m6RenderCheck?60:30);
  using threadlight::Mode;
  Mode mode=Mode::Title,settingsReturn=Mode::Title; bool exitRequested=false; int mainSelection=0,pauseSelection=0,exitSelection=threadlight::menu::kDefaultExitSelection,settingsTab=0,settingsFocus=0;
  bool tutorial=false,tutorialMoved=false,tutorialDashed=false,inventoryOpen=false;
@@ -190,7 +192,7 @@ int main(int argc, char** argv){
  namespace ranged=threadlight::ranged;
  namespace attacks=threadlight::attacks;
  namespace cross=threadlight::crossweave;
- namespace guard=threadlight::bulwark;
+ namespace caller=threadlight::briar_caller;
  namespace field=threadlight::area_hazards;
  namespace sower=threadlight::sower;
  namespace cocoon=threadlight::cocoon;
@@ -275,7 +277,8 @@ int main(int argc, char** argv){
  auto burst=[&](V p,Color col,int n,float force){for(int i=0;i<n&&particles.size()<threadlight::visual::kParticleLimit;i++){float a=(float)GetRandomValue(0,6283)/1000.f,s=(float)GetRandomValue(25,(int)force);particles.push_back({p,{std::cos(a)*s,std::sin(a)*s},.65f,.65f,(float)GetRandomValue(2,6),col});}};
  auto addDeathEffect=[&](const Foe& foe){
   if(deathEffects.size()>=threadlight::visual::kDeathEffectLimit)deathEffects.erase(deathEffects.begin());
-  const bool heavy=foe.kind==battle::EnemyKind::Brute||foe.kind==battle::EnemyKind::Bulwark;
+  const bool heavy=foe.kind==battle::EnemyKind::Brute||
+   (foe.kind==battle::EnemyKind::BriarCaller&&foe.briarCaller.members>=4);
   DeathEffect effect{};effect.p=foe.p;effect.kind=heavy?1:0;
   const int count=heavy?threadlight::visual::kHeavyShardCount:threadlight::visual::kSmallShardCount;
   const float phase=foe.phase*.71f;
@@ -395,9 +398,45 @@ int main(int argc, char** argv){
   traceM1("spawn",foe.rewardId,def.sparkValue);
   if(m1Telemetry)TraceLog(LOG_INFO,"M3 enemy id=%llu kind=%d hp=%d x=%.1f y=%.1f",(unsigned long long)foe.rewardId,(int)kind,def.hp,p.x,p.y);
  };
+ auto mergeBriarCallers=[&](){
+  const int chapterNumber=chapter::encounter(wave).chapter;
+  for(size_t i=0;i<foes.size();++i){
+   auto& keeper=foes[i];
+   if(!keeper.health.alive()||keeper.kind!=battle::EnemyKind::BriarCaller)continue;
+   for(size_t j=i+1;j<foes.size();++j){
+    auto& absorbed=foes[j];
+    if(!absorbed.health.alive()||absorbed.kind!=battle::EnemyKind::BriarCaller||
+       !caller::readyToFuse({keeper.p.x,keeper.p.y},keeper.briarCaller,
+                            {absorbed.p.x,absorbed.p.y},absorbed.briarCaller))continue;
+    const int members=keeper.briarCaller.members+absorbed.briarCaller.members;
+    const auto definition=battle::definition(battle::EnemyKind::BriarCaller,chapterNumber);
+    const int rewardSparkValue=definition.sparkValue*members;
+    const int rewardScore=caller::scale(definition.killScore,members);
+    if(!rewards.mergeAliveEnemies(keeper.rewardId,absorbed.rewardId,
+                                  rewardSparkValue,rewardScore))continue;
+
+    const long long denominator=static_cast<long long>(keeper.health.maxHp)*
+                                absorbed.health.maxHp*members;
+    const long long numerator=static_cast<long long>(keeper.health.hp)*
+                              absorbed.health.maxHp*keeper.briarCaller.members+
+                              static_cast<long long>(absorbed.health.hp)*
+                              keeper.health.maxHp*absorbed.briarCaller.members;
+    const int maxHp=caller::scale(definition.hp,members);
+    keeper.health.maxHp=maxHp;
+    keeper.health.hp=denominator>0?std::clamp(static_cast<int>((static_cast<long long>(maxHp)*numerator+denominator/2)/denominator),1,maxHp):maxHp;
+    keeper.r=caller::scale(definition.radius,members);
+    keeper.briarCaller.members=members;
+    if(anchorState.targetId==absorbed.rewardId){anchorState.targetId=0;anchorState.windowTicks=0;}
+    absorbed.health.hp=0;
+    burst(keeper.p,C(189,231,139),14,105.f);
+    traceM1("briar_caller_merge",keeper.rewardId,members);
+   }
+  }
+ };
  auto releaseSupports=[&](int count){
   if(boss.kind!=root::Kind::Rootwarden){supportQueued+=count;return;}
-  for(int i=0;i<count;++i)addFoe(battle::EnemyKind::Hunter,chapter::kPi*.25f+chapter::kPi*(boss.supportsReleased+i)*.5f);
+  const auto supportKind=wave==6&&boss.phase>=2?battle::EnemyKind::Skitter:battle::EnemyKind::Hunter;
+  for(int i=0;i<count;++i)addFoe(supportKind,chapter::kPi*.25f+chapter::kPi*(boss.supportsReleased+i)*.5f);
   if(count)traceBoss("supports");
  };
  auto budHit=[&](int index,int damage,bool ordinary){
@@ -425,7 +464,8 @@ int main(int argc, char** argv){
     }
     V p{threadlight::layout::clampPlayerX(f.p.x,playArea),threadlight::layout::clampPlayerY(f.p.y,playArea)};
     Spark spark{p,0};spark.pickup.id=drop->id;sparks.push_back(spark);
-    addDeathEffect(f);shake=std::max(shake,f.kind==battle::EnemyKind::Brute?.105f:.045f);
+    addDeathEffect(f);shake=std::max(shake,(f.kind==battle::EnemyKind::Brute||
+     (f.kind==battle::EnemyKind::BriarCaller&&f.briarCaller.members>=4))?.105f:.045f);
     sfx.play(threadlight::audio::Event::EnemyDeath);traceM1("kill",drop->id,drop->sparkValue);
    }
   }else sfx.play(threadlight::audio::Event::EnemyHit);
@@ -436,7 +476,7 @@ int main(int argc, char** argv){
   if(hit.events.phaseChanged){bossPhaseNotice=2.5f;sfx.play(threadlight::audio::Event::BossPhase);releaseSupports(hit.events.supports);traceBoss("phase_two");}
   if(hit.events.defeated){
    anchorState.targetId=0;anchorState.windowTicks=0;
-   for(const auto& foe:foes){rewards.despawnEnemy(foe.rewardId);traceM1("boss_support_removal",foe.rewardId);}
+   for(const auto& foe:foes)if(rewards.despawnEnemy(foe.rewardId))traceM1("boss_support_removal",foe.rewardId);
    foes.clear();projectiles.clear();ground.clear();attackCoordinator.clear();
    if(wave==34){rewards.defeatEnemyWithoutPickup(bossRewardId);finalBossDefeated=true;loomPending=false;}
    else if(const auto drop=rewards.defeatEnemy(bossRewardId)){
@@ -831,6 +871,20 @@ int main(int argc, char** argv){
          addFoe(kind,chapter::kPi*.25f+supportSpawned*chapter::kPi*.5f);--supportQueued;++supportSpawned;
         }
        }
+       mergeBriarCallers();
+       for(auto& foe:foes){
+        if(!foe.health.alive()||foe.kind==battle::EnemyKind::BriarCaller)continue;
+        const caller::State* strongestAura=nullptr;
+        int strongestBoost=0;
+        for(const auto& source:foes){
+         if(!source.health.alive()||source.kind!=battle::EnemyKind::BriarCaller||
+            !caller::insideAura({source.p.x,source.p.y},{foe.p.x,foe.p.y},source.briarCaller))continue;
+         const int boost=caller::speedBoostPercent(source.briarCaller);
+         if(boost>strongestBoost){strongestBoost=boost;strongestAura=&source.briarCaller;}
+        }
+        if(strongestAura)caller::applyAura(foe.callerSpeedBoost,*strongestAura);
+        else caller::tick(foe.callerSpeedBoost);
+       }
        int commitments=0;
        for(const auto& f:foes){
         if(f.kind==battle::EnemyKind::Skitter&&skitter::committed(f.skitterState))++commitments;
@@ -861,24 +915,26 @@ int main(int argc, char** argv){
        int incomingKind=0;
        auto considerDamage=[&](int amount,std::uint64_t id,int kind){const auto before=incoming;incoming.consider(amount,id);if(before.damage!=incoming.damage||before.sourceId!=incoming.sourceId)incomingKind=kind;};
        for(auto &f:foes){
+        if(!f.health.alive())continue;
         const V oldPosition=f.p;
         const float pursuitFactor=effects::factor(f.slow,false);
         effects::tick(f.slow,true);
         const bool wasCommitted=f.kind==battle::EnemyKind::Skitter?skitter::committed(f.skitterState):f.kind==battle::EnemyKind::Sower?sower::committed(f.sowerState):f.kind==battle::EnemyKind::Spitter&&ranged::committed(f.rangedState);
         f.phase+=dt;battle::tick(f.health);f.hitFlash=std::max(0.f,f.hitFlash-dt);
-        if(f.kind==battle::EnemyKind::Bulwark)guard::tick(f.guard,true);
         if(f.kind==battle::EnemyKind::Skitter){
          foundation::Point p{f.p.x,f.p.y},v{f.vel.x,f.vel.y};
          const bool canCommit=chapter::encounter(wave).chapter>=2?grants.contains(f.rewardId):commitments<2;
          const auto result=skitter::tick(f.skitterState,p,v,{player.x,player.y},{player.x-previousPlayer.x,player.y-previousPlayer.y},
-          {playArea.left+f.r,playArea.right-f.r,playArea.top+f.r,playArea.bottom-f.r},canCommit,f.speed);
+          {playArea.left+f.r,playArea.right-f.r,playArea.top+f.r,playArea.bottom-f.r},canCommit,
+          caller::boostedSpeed(f.speed,f.callerSpeedBoost));
          f.p={p.x,p.y};f.vel={v.x,v.y};
          if(result.telegraphStarted)traceM1("skitter_windup",f.rewardId);
          if(result.burstStarted)traceM1("skitter_burst",f.rewardId);
         }else if(f.kind==battle::EnemyKind::Spitter){
          foundation::Point p{f.p.x,f.p.y},v{f.vel.x,f.vel.y};
          const auto result=ranged::tick(f.rangedState,p,v,{player.x,player.y},
-          {playArea.left+f.r,playArea.right-f.r,playArea.top+f.r,playArea.bottom-f.r},grants.contains(f.rewardId)&&f.projectileTicket!=0,f.speed);
+          {playArea.left+f.r,playArea.right-f.r,playArea.top+f.r,playArea.bottom-f.r},grants.contains(f.rewardId)&&f.projectileTicket!=0,
+          caller::boostedSpeed(f.speed,f.callerSpeedBoost));
          f.p={p.x,p.y};f.vel={v.x,v.y};
          if(result.warningStarted)traceM1("spitter_warning",f.rewardId,(int)f.projectileTicket);
          if(result.aimLocked)traceM1("spitter_locked",f.rewardId);
@@ -893,13 +949,26 @@ int main(int argc, char** argv){
          foundation::Point p{f.p.x,f.p.y},v{f.vel.x,f.vel.y};
          if(!bossFieldAreaKnown){bossFieldArea=boss.fields.areaOccupied({playArea.left,playArea.right,playArea.top,playArea.bottom});bossFieldAreaKnown=true;}
          const auto event=sower::tick(f.sowerState,p,v,{player.x,player.y},{(player.x-previousPlayer.x)*120,(player.y-previousPlayer.y)*120},
-          {playArea.left,playArea.right,playArea.top,playArea.bottom},ground,bossEncounter?boss.corridor:field::Corridor{},bossFieldArea,grants.contains(f.rewardId));
+          {playArea.left,playArea.right,playArea.top,playArea.bottom},ground,bossEncounter?boss.corridor:field::Corridor{},
+          bossFieldArea,grants.contains(f.rewardId),true,
+          caller::boostedSpeed(1.f,f.callerSpeedBoost));
          f.p={p.x,p.y};f.vel={v.x,v.y};
          if(event.warningStarted){traceM1("sower_warning",f.rewardId,(int)event.ticket);sfx.play(threadlight::audio::Event::BossWarning);}
         }else{
-         const V d=norm(player-f.p);const float wob=std::sin(f.phase*3)*.28f;
-         f.vel=f.vel+(d+V{-d.y*wob,d.x*wob})*(f.speed*dt*2.5f);
-         const float vl=len(f.vel);if(vl>f.speed)f.vel=f.vel*(f.speed/vl);f.p=f.p+f.vel*dt;
+         V target=player;
+         float movementSpeed=caller::boostedSpeed(f.speed,f.callerSpeedBoost);
+         if(f.kind==battle::EnemyKind::BriarCaller){
+          float nearest=std::numeric_limits<float>::max();
+          for(const auto& other:foes){
+           if(&other==&f||!other.health.alive()||other.kind!=battle::EnemyKind::BriarCaller)continue;
+           const float distance=dist(f.p,other.p);
+           if(distance<nearest){nearest=distance;target=other.p;}
+          }
+          movementSpeed=f.speed*caller::movementScale(f.briarCaller.members);
+         }
+         const V d=norm(target-f.p);const float wob=std::sin(f.phase*3)*.28f;
+         f.vel=f.vel+(d+V{-d.y*wob,d.x*wob})*(movementSpeed*dt*2.5f);
+         const float vl=len(f.vel);if(vl>movementSpeed)f.vel=f.vel*(movementSpeed/vl);f.p=f.p+f.vel*dt;
         }
         const bool nowCommitted=f.kind==battle::EnemyKind::Skitter?skitter::committed(f.skitterState):f.kind==battle::EnemyKind::Sower?sower::committed(f.sowerState):f.kind==battle::EnemyKind::Spitter&&ranged::committed(f.rangedState);
         if(!wasCommitted&&!nowCommitted)f.p=oldPosition+(f.p-oldPosition)*pursuitFactor;
@@ -908,21 +977,21 @@ int main(int argc, char** argv){
          if(!battle::silkContact({oldPosition.x,oldPosition.y},{f.p.x,f.p.y},f.r,
              {thread[i-1].p.x,thread[i-1].p.y},{thread[i].p.x,thread[i].p.y},stats.silkHalfWidth))continue;
          const int hpBefore=f.health.hp;
-         const auto ordinaryHit=battle::applySilk(f.health,f.kind==battle::EnemyKind::Bulwark?guard::damage(stats.silkDamage,f.guard):stats.silkDamage);
+         const auto ordinaryHit=battle::applySilk(f.health,stats.silkDamage);
          const int ordinaryDamage=hpBefore-f.health.hp;
          foeHit(f,ordinaryHit,false);
          if(ordinaryDamage>0&&f.health.alive()){
           effects::onOrdinaryHit(f.slow,catalog::owns(signatureCatalog,catalog::Id::Slipknot));
           const bool anchor=effects::onOrdinaryHit(anchorState,catalog::owns(signatureCatalog,catalog::Id::AnchorStitch),f.rewardId,ordinaryDamage);
           if(anchor&&f.health.alive()){
-           const int bonus=f.kind==battle::EnemyKind::Bulwark?guard::damage(stats.silkDamage,f.guard):effects::damage(stats.silkDamage,false);
+           const int bonus=effects::damage(stats.silkDamage,false);
            foeHit(f,battle::applyDamage(f.health,bonus),true);++anchorProcs;traceM1("anchor_stitch",f.rewardId);
           }
          }
          break;
         }
         if(f.health.alive()&&afterimage::claimContact(offensiveEcho,f.rewardId,{oldPosition.x,oldPosition.y},{f.p.x,f.p.y},f.r)){
-         const int before=f.health.hp;const auto hit=battle::applyDamage(f.health,f.kind==battle::EnemyKind::Bulwark?guard::damage(stats.silkDamage,f.guard,3,4):afterimage::damage(stats.silkDamage));
+         const int before=f.health.hp;const auto hit=battle::applyDamage(f.health,afterimage::damage(stats.silkDamage));
          ++echoHitCount;echoDamage+=before-f.health.hp;traceM1("echo_hit",f.rewardId,before-f.health.hp);foeHit(f,hit,true);
         }
         if(!f.health.alive()&&nowCommitted)--commitments;
@@ -940,7 +1009,7 @@ int main(int argc, char** argv){
         const auto selected=cross::selectTargets(std::span<const cross::Target>(targets.data(),count),crossPulse.center);
         for(size_t i=0;i<selected.count;++i){const auto target=selected.items[i];
          if(target.kind==0){auto& f=foes[target.index];const int hp=f.health.hp;
-          const auto hit=battle::applyDamage(f.health,f.kind==battle::EnemyKind::Bulwark?guard::damage(stats.silkDamage,f.guard):cross::damage(stats.silkDamage));
+          const auto hit=battle::applyDamage(f.health,cross::damage(stats.silkDamage));
           crossDamage+=hp-f.health.hp;foeHit(f,hit,true);++crossHits;
          }else if(target.kind==1){const auto hit=root::applySignature(boss,cross::damage(stats.silkDamage,true));crossDamage+=hit.damage;++crossHits;bossHit(hit);if(hit.events.defeated)break;}
          else if(target.index<boss.budCount){auto& bud=boss.buds[target.index];const int hp=bud.health.hp;
@@ -961,7 +1030,7 @@ int main(int argc, char** argv){
          if(target.kind==0){
           auto found=std::find_if(foes.begin(),foes.end(),[&](const Foe& f){return f.rewardId==target.id&&f.health.alive();});
           if(found!=foes.end()){auto& f=*found;const int hp=f.health.hp;
-           const auto hit=battle::applyDamage(f.health,f.kind==battle::EnemyKind::Bulwark?guard::damage(stats.silkDamage,f.guard,3,5):loom::damage(stats.silkDamage));
+           const auto hit=battle::applyDamage(f.health,loom::damage(stats.silkDamage));
            loomDamage+=hp-f.health.hp;foeHit(f,hit,true);
           }
          }else if(target.kind==1&&root::alive(boss)&&target.id==bossRewardId){
@@ -1029,7 +1098,7 @@ int main(int argc, char** argv){
       for(auto &effect:deathEffects)effect.age+=dt;deathEffects.erase(std::remove_if(deathEffects.begin(),deathEffects.end(),[](const DeathEffect& e){return e.age>=(e.kind?threadlight::visual::kHeavyDeathSeconds:threadlight::visual::kSmallDeathSeconds);}),deathEffects.end());
       const auto events=lifecycle.tick(foes.size(),chapter::encounter(wave).boss&&!root::alive(boss),continueCollection,!sparks.empty());
       if(events.timeoutDespawn){
-       for(const auto& foe:foes){rewards.despawnEnemy(foe.rewardId);traceM1("timeout_removal",foe.rewardId);}
+       for(const auto& foe:foes)if(rewards.despawnEnemy(foe.rewardId))traceM1("timeout_removal",foe.rewardId);
        foes.clear();traceM1("cleanup_timeout",0,foundation::kCleanupTicks);
       }
       if(events.enteredCollection){anchorState={};bossSlow={};needleFlashTicks=0;thread.clear();cross::clear(crossState);cocoon::clear(cocoonState);loom::clear(loomState);loomPending=false;ground.clear();boss.fields.clear();pulseTicks=0;afterimage::clear(offensiveEcho);projectiles.clear();attackCoordinator.clear();dashTime=0;dashVisualActive=false;dashEchoCount=0;dashEchoFade=0;traceM1(events.timeoutDespawn?"collection_timeout":"collection_clear",0,tickPhase==foundation::Phase::Cleanup?phaseElapsedAtStart+1:0);}
@@ -1407,12 +1476,17 @@ int main(int argc, char** argv){
   }
   for(const auto& f:foes){const auto shown=f.present(alpha);
    const float flash=threadlight::visual::hitFlashStrength(shown.hitFlash);
-   const bool heavy=f.kind==battle::EnemyKind::Brute,skitterBody=f.kind==battle::EnemyKind::Skitter,spitterBody=f.kind==battle::EnemyKind::Spitter,bulwarkBody=f.kind==battle::EnemyKind::Bulwark,sowerBody=f.kind==battle::EnemyKind::Sower;
-   const int sides=sowerBody?6:bulwarkBody?8:spitterBody?5:skitterBody?3:heavy?6:4;
-   const Color base=sowerBody?C(177,217,144):bulwarkBody?(f.guard.guarded?C(153,172,205):C(244,212,139)):spitterBody?C(226,139,194):skitterBody?C(255,164,125):heavy?C(255,116,178):C(255,97,132);
+   const bool heavy=f.kind==battle::EnemyKind::Brute,skitterBody=f.kind==battle::EnemyKind::Skitter,spitterBody=f.kind==battle::EnemyKind::Spitter,callerBody=f.kind==battle::EnemyKind::BriarCaller,sowerBody=f.kind==battle::EnemyKind::Sower;
+   const int sides=sowerBody?6:callerBody?5:spitterBody?5:skitterBody?3:heavy?6:4;
+   const Color base=sowerBody?C(177,217,144):callerBody?C(222,185,111):spitterBody?C(226,139,194):skitterBody?C(255,164,125):heavy?C(255,116,178):C(255,97,132);
    const Color edge=ColorLerp(base,C(207,255,246,255),flash);
    const float bob=std::sin(shown.phase*5.f)*2.2f,breath=1.f+std::sin(shown.phase*3.2f)*.035f;
    const Vector2 pos={shown.p.x,shown.p.y+bob};
+   if(callerBody){
+    const float aura=caller::auraRadius(f.briarCaller);
+    DrawCircleV(pos,aura,C(141,207,111,8));
+    DrawCircleLines((int)pos.x,(int)pos.y,aura,C(168,231,142,105));
+   }
    if(f.slow.remainingTicks>0)DrawCircleLines((int)pos.x,(int)pos.y,f.r+5,C(124,210,215,155));
    if(anchorState.targetId==f.rewardId&&anchorState.windowTicks>0)DrawPolyLinesEx(pos,4,f.r+8,45,1.4f,C(239,214,148,210));
    DrawCircleV({pos.x,pos.y+f.r*.48f},f.r*.7f,C(3,9,22,95));
@@ -1420,16 +1494,17 @@ int main(int argc, char** argv){
    DrawPoly(pos,sides,f.r*breath,time*40.f,C(25,22,45));
    DrawPolyLinesEx(pos,sides,f.r*breath,time*40.f,1.5f+flash*1.1f,edge);
    if(sowerBody){DrawCircleLines((int)pos.x,(int)pos.y,f.r*.55f,edge);DrawCircleV(pos,3,C(234,232,168));}
-   if(bulwarkBody){
-    if(f.guard.guarded)DrawPolyLinesEx(pos,8,f.r+4.f,time*40.f,2.f,C(151,185,209,155));
-    else DrawCircleV(pos,7,C(255,224,151,220));
-   }
    if(spitterBody){
     const float charge=ranged::committed(f.rangedState)?1.f-(float)f.rangedState.remaining/ranged::kWindupTicks:0.f;
     DrawCircleV(pos,4.f+charge*3.f,C(246,174,211,(unsigned char)(120+100*charge)));
     const auto direction=f.rangedState.aimDirection;
     DrawLineEx(pos,{pos.x+direction.x*12.f,pos.y+direction.y*12.f},2.f,C(255,217,230));
    }else if(heavy){const float arc=time*25.f;DrawCircleV(pos,3.f,C(255,116,178,175));DrawRing(pos,f.r*.67f,f.r*.75f,arc,arc+55.f,18,C(255,173,207,120));}
+   else if(callerBody){
+    const int petals=std::clamp(f.briarCaller.members,1,5);
+    for(int i=0;i<petals;++i){const float a=time*.45f+6.2831853f*i/petals;DrawCircleV({pos.x+std::cos(a)*f.r*.52f,pos.y+std::sin(a)*f.r*.52f},std::max(2.2f,f.r*.12f),C(255,229,159,235));}
+    if(f.briarCaller.members>1)DrawText(TextFormat("x%d",f.briarCaller.members),(int)pos.x-8,(int)(pos.y-f.r-13),9,C(231,251,200));
+   }
    else DrawLineEx({pos.x-6,pos.y+5},{pos.x+6,pos.y+5},1.f,C(255,141,167,165));
    DrawCircleV({pos.x-4,pos.y-2},2.2f,C(255,238,220));DrawCircleV({pos.x+4,pos.y-2},2.2f,C(255,238,220));
    if(flash>0)DrawCircleV(pos,f.r*.56f,C(219,255,249,(unsigned char)(105.f*flash)));
@@ -1489,8 +1564,10 @@ int main(int argc, char** argv){
   }
   if(showRunHud&&upgrades::rank(ranks,upgrades::Id::Needlecatch)>0)
    DrawText(needlecatch.cooldownTicks?TextFormat("NEEDLECATCH %.1fs",needlecatch.cooldownTicks/120.f):"NEEDLECATCH / READY",24,(int)hud.footerY-8,10,C(200,218,168));
-  if(showRunHud&&upgrades::rank(ranks,upgrades::Id::Bloodstitch)>0)
-   DrawText(TextFormat("BLOODSTITCH %d/%d  HEALED %.0f/%.0f",bloodstitch.kills,stats.bloodKillsPerHeal,bloodstitch.healedCenti/100.f,stats.bloodWaveCap/100.f),SW-285,(int)hud.footerY-8,10,C(218,163,180));
+  if(showRunHud&&upgrades::rank(ranks,upgrades::Id::Bloodstitch)>0){
+   const auto track=chapterHud::layout(SW,SH).dashTrack;
+   DrawText(TextFormat("BLOODSTITCH %d/%d  HEALED %.0f/%.0f",bloodstitch.kills,stats.bloodKillsPerHeal,bloodstitch.healedCenti/100.f,stats.bloodWaveCap/100.f),SW-285,(int)track.y-14,10,C(218,163,180));
+  }
   if(mode==Mode::Play){
    const float footerY=hud.footerY;
    DrawRectangle(12,(int)(footerY+9),SW-24,34,C(5,10,24,185));
@@ -1628,7 +1705,7 @@ int main(int argc, char** argv){
      const bool configured=appSettings.frameRateLimit==threadlight::settings::kFrameRateLimits[i];
      drawButton(fpsChips[i],rateLabels[i],configured,hovered(fpsChips[i]),13);
     }
-    DrawText("Gameplay limit. Menus use at most 60 FPS; unfocused windows use 30 FPS.",(int)settingsLeft+48,(int)settingsTop+204,13,C(111,164,176));
+    DrawText("Gameplay limit. Menus and unfocused windows use 30 FPS.",(int)settingsLeft+48,(int)settingsTop+204,13,C(111,164,176));
     DrawText("SHOW FPS",(int)settingsLeft+48,(int)settingsTop+236,16,settingsFocus==1?C(205,243,237):C(145,183,191));
     DrawText("Measured output rate",(int)settingsLeft+48,(int)settingsTop+259,12,C(111,164,176));
     drawButton(showToggle,appSettings.showFps?"ON":"OFF",settingsFocus==1,hovered(showToggle),14);

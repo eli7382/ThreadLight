@@ -27,7 +27,7 @@ struct Expected {
     int seconds;
     bool boss;
     int chapter;
-    std::array<int,6> count; // hunter, brute, skitter, spitter, bulwark, sower
+    std::array<int,6> count; // hunter, brute, skitter, spitter, briar caller, sower
     int sparks;
 };
 constexpr std::array<Expected,14> expected{{
@@ -47,7 +47,7 @@ constexpr std::array<Expected,14> expected{{
     {"THE BRIAR HEART",0,true,5,{0,0,0,0,0,0},0}
 }};
 constexpr std::array<EnemyKind,6> kinds{{EnemyKind::Hunter,EnemyKind::Brute,
-    EnemyKind::Skitter,EnemyKind::Spitter,EnemyKind::Bulwark,EnemyKind::Sower}};
+    EnemyKind::Skitter,EnemyKind::Spitter,EnemyKind::BriarCaller,EnemyKind::Sower}};
 int kindIndex(EnemyKind kind) {
     for(int i=0;i<static_cast<int>(kinds.size());++i)if(kinds[i]==kind)return i;
     CHECK(false && "unexpected scheduled enemy kind");

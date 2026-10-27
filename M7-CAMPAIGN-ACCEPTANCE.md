@@ -1,10 +1,14 @@
-# M7 campaign acceptance candidate
+# M7 campaign acceptance baseline
 
 Baseline: owner-accepted M6 `4ec554b11024d477ba31bb825e5f8756321de881`.
 Feature branch: `codex/phase34-m7`. Develop/main and previous builds are preserved.
 The campaign remains35 waves. This milestone completes progression choices and
 adds the owner's Needlecatch/Bloodstitch request. It is a candidate for human
 acceptance, not an automatic release or a claim of measured human balance.
+
+The current `develop` branch includes later gameplay updates. See the
+"Current develop additions" section below for the Briar Caller replacement and
+the changes to boss warnings, Wave 7 supports, Bloodstitch placement and Ironbark.
 
 ## Module ownership and scope
 
@@ -20,7 +24,7 @@ Earlier seven permanent upgrades and Restitch values are unchanged. Added:
 
 | Upgrade | Rank I | Rank II | Rank III | Rank IV | Rank V |
 |---|---|---|---|---|---|
-| Ironbark |6% less damage|11%|16%|20%|24%|
+| Ironbark |7% less damage|12%|17%|21%|25%|
 | Longstride |4.0x dash speed|4.3x|4.6x|--|--|
 | Needlecatch |one interception /5s|one /4s|one /3s|--|--|
 | Bloodstitch |3HP /5 ordinary kills;9HP cap|3HP /4 kills;12HP cap|3HP /3 kills;15HP cap|--|--|
@@ -88,6 +92,22 @@ pause/resize/DPI and minimum window behavior, and performance during full runs.
 Do not merge todevelop or change main without owner approval.
 
 
+## Current develop additions
+
+Bulwark has been removed and replaced by Briar Caller. A single Caller has a
+150-unit visible radius and refreshes an 18% movement-speed boost for2 seconds
+on nearby enemies. Callers move toward one another and fuse when they meet
+within the smaller of their aura radii. Fusion improves aura radius, boost
+strength/duration, health, body size and kill score by20% for2 Callers,35% for3,
+50% for4 and100% for5 or more. Movement speed falls7% for each added Caller.
+The fused reward carries the group's total spark value; its kill score follows
+the fusion tier, so killing members separately awards more kill score overall.
+
+Wave 7 phase 2 Rootwarden supports are Skitters. Every boss telegraph is half
+its former duration; active attacks and phase-transition clocks are unchanged.
+Bloodstitch's live monitor is at the top of the screen beside the Dash monitor.
+Ironbark ranks now reduce incoming damage by7%,12%,17%,21% and25%.
+
 ## Verification evidence and limits
 
 Pinned Windows Release build succeeded: MSVC19.44.35229.0/toolset14.44.35207,
@@ -143,7 +163,8 @@ in2086ms. The default CTest entry runs only fast invariants. Output is saved at
 These are explicit MODEL ASSUMPTIONS, not measured gameplay/skill estimates:
 2000 paired seeds per scenario; kill/collection chances .60/.65, .78/.80,
 .92/.93 with a shared run deviation of-6..+6 percentage points, and3 points less
-kill probability for Brute/Bulwark. Missed kills despawn; missed pickups expire.
+kill probability for Brute/Briar Caller. Caller fusion is not simulated in this
+assumed economy model. Missed kills despawn; missed pickups expire.
 Bosses are assumed defeated, with bounded support rewards and optional10-value
 cores at the first four. The model does not simulate combat survival, pickup
 travel/lifetime, ability effects, or success-conditioned player skill. Magnet
