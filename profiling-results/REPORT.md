@@ -6,6 +6,8 @@ Across three 20-second repeats of each encounter and frame cap, the game rendere
 
 The measured workload is **not CPU- or GPU-bound on this machine**. At the 120 cap, median GPU execution p95 was 0.99–1.11 ms, while update p95 was 0.075–0.082 ms, simulation p95 0.044–0.052 ms, and draw-submission p95 0.85–0.98 ms. `EndDrawing` occupied 7.57–7.73 ms at p50 and 8.19–8.29 ms at p95. That wall time includes the software limiter, OpenGL/driver, and presentation path; this run used a 60 Hz display, so it cannot establish 120 Hz physical presentation. The data point to frame pacing/waiting as the dominant cost, with a small 120-FPS shortfall, rather than simulation or GPU execution.
 
+The separate 500 ms process sampler measured average process CPU time at **11.0–12.1% of one logical core** at the 60 cap and **15.6–18.4%** at the 120 cap. This whole-process figure includes the runtime and driver-facing work; it is not an estimate of a single game thread's utilization.
+
 The process working set peaked at **203.7–205.1 MiB** across the capture sampler; private bytes peaked at **58.9–60.4 MiB** in the in-process sampler. The 200 MiB goal is therefore missed by up to 5.1 MiB if it means resident working set, and comfortably met if it means private memory. Private-memory growth over each 20-second capture was −0.1 to +0.8 MiB. Working-set growth was larger in runs whose first sample preceded startup warm-up; these short captures do not establish a leak or long-session growth rate.
 
 ## Measurements
