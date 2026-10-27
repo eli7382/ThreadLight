@@ -47,6 +47,36 @@ Listen at a comfortable system volume, then try the Settings SFX slider at low, 
 
 ## Windows build
 
+### Portable release package
+
+The Windows release is a native GUI-subsystem x64 executable linked to the
+pinned static raylib 5.5 package and the MSVC static runtime (`/MT`). It does not
+need a Visual C++ Redistributable, external game assets, an installer, or a
+development tool on the target PC. The game still requires a working graphics
+driver that supports OpenGL 3.3; Windows 10/11 x64 are the intended target
+environments. Compatibility has only been established on the host and Windows
+configurations recorded in the release report. Clean-PC testing on additional
+hardware, Windows versions, and audio devices remains outstanding.
+
+To reproduce a package from a clean `codex/*` branch checkout, use a Visual
+Studio 2022 Developer PowerShell, the project's pinned MSVC 14.44.35207 toolset,
+CMake 3.21 or newer, and the pinned MSVC raylib 5.5 static package:
+
+```powershell
+$env:THREADLIGHT_RAYLIB_ROOT = 'C:\AI-Game-Benchmark\shared\raylib-5.5'
+.\tools\package-windows-release.ps1
+```
+
+By default, the script writes `portable-release\Threadlight.exe`,
+`Threadlight-Windows-x64-Portable.zip`, and `SHA256SUMS.txt` next to the
+checkout. The ZIP contains the EXE, concise launch/requirements instructions,
+build identification, and the raylib license notice. The script rejects dirty
+checkouts, runs the Release build and full CTest suite, checks PE architecture,
+GUI subsystem and imports with `dumpbin`, then runs the hidden settings render
+check from a temporary directory outside the checkout. `-OutputDirectory`
+selects another destination; `-SkipBuild` is only for packaging an already
+verified build. Keep generated binaries and ZIPs out of Git.
+
 To build from source, install Visual Studio 2022 C++ tools, CMake, and an MSVC-compatible raylib 5.5 package with a CMake configuration and a matching static CRT (for example, the `x64-windows-static` raylib package from vcpkg). From this directory, configure and build:
 
 ```powershell

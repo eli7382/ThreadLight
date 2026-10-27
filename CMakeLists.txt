@@ -42,7 +42,13 @@ if(THREADLIGHT_BUILD_GAME)
       endif()
     endforeach()
   endif()
-  add_executable(Threadlight src/main.cpp src/performance_metrics.cpp)
+  if(WIN32)
+    # Keep the game a native GUI application while forwarding the original
+    # command line to main(), which owns the diagnostic and rendering checks.
+    add_executable(Threadlight WIN32 src/windows_entry.cpp src/main.cpp src/performance_metrics.cpp)
+  else()
+    add_executable(Threadlight src/main.cpp src/performance_metrics.cpp)
+  endif()
   # Prefer the actual library path when available. Some pkg-config based
   # raylib config packages expose Unix -L/-l flags as one imported link item,
   # which MSVC cannot interpret.
@@ -55,7 +61,7 @@ if(THREADLIGHT_BUILD_GAME)
     target_link_libraries(Threadlight PRIVATE raylib)
   endif()
   if(WIN32)
-    target_link_libraries(Threadlight PRIVATE winmm psapi)
+    target_link_libraries(Threadlight PRIVATE winmm psapi shell32)
   endif()
   if(MSVC)
     # The pinned static raylib package is built with the static CRT (/MT).
