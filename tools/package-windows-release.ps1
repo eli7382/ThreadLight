@@ -17,6 +17,13 @@ function Require-Command([string]$Name) {
     }
 }
 
+function Get-Sha256([string]$Path) {
+    $algorithm = [System.Security.Cryptography.SHA256]::Create()
+    $stream = [System.IO.File]::OpenRead($Path)
+    try { [System.BitConverter]::ToString($algorithm.ComputeHash($stream)).Replace('-', '').ToLowerInvariant() }
+    finally { $stream.Dispose(); $algorithm.Dispose() }
+}
+
 Require-Command 'git'
 Require-Command 'cmake'
 Require-Command 'ctest'
@@ -102,8 +109,8 @@ require manual playtesting.
     Compress-Archive -Path (Join-Path $stage '*') -DestinationPath $zip -CompressionLevel Optimal -Force
     $portableExe = Join-Path $output 'Threadlight.exe'
     Copy-Item -LiteralPath $exe -Destination $portableExe -Force
-    $exeHash = (Get-FileHash -Algorithm SHA256 -LiteralPath $portableExe).Hash.ToLowerInvariant()
-    $zipHash = (Get-FileHash -Algorithm SHA256 -LiteralPath $zip).Hash.ToLowerInvariant()
+    $exeHash = Get-Sha256 $portableExe
+    $zipHash = Get-Sha256 $zip
     $exeSize = (Get-Item -LiteralPath $portableExe).Length
     $zipSize = (Get-Item -LiteralPath $zip).Length
     $manifest = @"
