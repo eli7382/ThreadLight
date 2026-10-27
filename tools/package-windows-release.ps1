@@ -68,6 +68,7 @@ try {
     $info = @"
 Threadlight portable Windows x64 build
 Git commit: $commit
+Base develop commit: 3bb22b1d29d3000780fb581127b65f5765bafadc
 Branch: $branch
 Configuration: Release, MSVC 14.44.35207, static CRT (/MT), raylib 5.5 static
 Subsystem: Windows GUI
@@ -146,7 +147,8 @@ Imports: $($dlls -join ', ')
 Redistributable: no VC runtime DLL imports; /MT static CRT
 Assets: game art and audio generated at runtime; no external game assets
 Automated verification: clean isolated Release build; 37/37 CTest passed; packaged ZIP extracted and settings render check passed from an isolated directory outside the repository.
-Manual verification still needed: visible normal-game launch, input/play, audio playback, settings persistence across launch, clean exit, and clean-PC tests on additional Windows/GPU/audio configurations.
+Visible smoke: the ZIP-extracted executable launched from an isolated temp directory and its titled game window was enumerated. Computer-use approval timed out before screenshot inspection or input. Keyboard navigation/gameplay, audio playback, settings persistence across normal launches, and graceful close remain unverified. The hidden render check intentionally runs without an audio device.
+Clean-PC validation still needed on additional Windows versions, GPUs, and audio devices.
 Portability limits: intended for Windows 10/11 x64 with a working graphics driver supporting OpenGL 3.3. Evidence is from one Intel Iris Xe host only; no universal compatibility claim.
 EXE: $exeSize bytes; SHA-256 $exeHash
 ZIP: $zipSize bytes; SHA-256 $zipHash
