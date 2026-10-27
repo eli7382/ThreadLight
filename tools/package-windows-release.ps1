@@ -8,7 +8,7 @@ $ErrorActionPreference = 'Stop'
 $repo = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
 if (-not $OutputDirectory) { $OutputDirectory = Join-Path (Split-Path -Parent $repo) 'portable-release' }
 $output = [System.IO.Path]::GetFullPath($OutputDirectory)
-$build = Join-Path $repo 'build-windows-msvc'
+$build = Join-Path $repo 'build-portable-windows-msvc'
 $exe = Join-Path $build 'Release\Threadlight.exe'
 
 function Require-Command([string]$Name) {
@@ -30,11 +30,11 @@ $branch = (git -C $repo branch --show-current).Trim()
 if (-not $branch.StartsWith('codex/')) { throw "Refusing to package from unexpected branch '$branch'." }
 
 if (-not $SkipBuild) {
-    cmake --preset windows-msvc -S $repo
+    cmake --preset windows-msvc-portable -S $repo
     if ($LASTEXITCODE -ne 0) { throw 'CMake configure failed.' }
-    cmake --build --preset windows-msvc-release --parallel
+    cmake --build --preset windows-msvc-portable-release --parallel
     if ($LASTEXITCODE -ne 0) { throw 'Windows MSVC Release build failed.' }
-    ctest --preset windows-msvc-release --test-dir $build
+    ctest --preset windows-msvc-portable-release --test-dir $build
     if ($LASTEXITCODE -ne 0) { throw 'CTest failed.' }
 }
 if (-not (Test-Path -LiteralPath $exe)) { throw "Release executable is missing: $exe" }
@@ -57,8 +57,8 @@ New-Item -ItemType Directory -Path $smokeRoot | Out-Null
 try {
     Push-Location $smokeRoot
     try {
-        & $exe --settings-render-check
-        if ($LASTEXITCODE -ne 0) { throw "Settings rendering check exited with code $LASTEXITCODE." }
+        $render = Start-Process -FilePath $exe -ArgumentList '--settings-render-check' -WorkingDirectory $smokeRoot -Wait -PassThru
+        if ($render.ExitCode -ne 0) { throw "Settings rendering check exited with code $($render.ExitCode)." }
         $capture = Join-Path $smokeRoot 'settings-vsync.png'
         if (-not (Test-Path -LiteralPath $capture) -or (Get-Item -LiteralPath $capture).Length -lt 1024) {
             throw 'Settings render check did not produce a plausible screenshot.'

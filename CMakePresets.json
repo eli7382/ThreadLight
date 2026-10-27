@@ -13,12 +13,20 @@
         "THREADLIGHT_USE_PINNED_RAYLIB": "ON",
         "THREADLIGHT_RAYLIB_ROOT": "$env{THREADLIGHT_RAYLIB_ROOT}"
       }
+    },
+    {
+      "name": "windows-msvc-portable",
+      "displayName": "Windows x64, isolated portable-release build",
+      "inherits": "windows-msvc",
+      "binaryDir": "${sourceDir}/build-portable-windows-msvc"
     }
   ],
   "buildPresets": [
-    { "name": "windows-msvc-release", "configurePreset": "windows-msvc", "configuration": "Release" }
+    { "name": "windows-msvc-release", "configurePreset": "windows-msvc", "configuration": "Release" },
+    { "name": "windows-msvc-portable-release", "configurePreset": "windows-msvc-portable", "configuration": "Release" }
   ],
   "testPresets": [
-    { "name": "windows-msvc-release", "configurePreset": "windows-msvc", "configuration": "Release", "output": { "outputOnFailure": true } }
+    { "name": "windows-msvc-release", "configurePreset": "windows-msvc", "configuration": "Release", "output": { "outputOnFailure": true } },
+    { "name": "windows-msvc-portable-release", "configurePreset": "windows-msvc-portable", "configuration": "Release", "output": { "outputOnFailure": true } }
   ]
 }
