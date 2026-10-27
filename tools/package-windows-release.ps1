@@ -59,20 +59,6 @@ $unexpected = @($dlls | Where-Object { $_ -notin $allowed })
 if ($unexpected.Count -gt 0) { throw "Unexpected non-system DLL imports: $($unexpected -join ', ')" }
 if ($dlls -match '^vcruntime|^msvcp|^concrt|^ucrtbase') { throw 'The executable imports a Visual C++ runtime DLL.' }
 
-$smokeRoot = Join-Path ([System.IO.Path]::GetTempPath()) ("Threadlight-release-smoke-" + [guid]::NewGuid().ToString('N'))
-New-Item -ItemType Directory -Path $smokeRoot | Out-Null
-try {
-    Push-Location $smokeRoot
-    try {
-        $render = Start-Process -FilePath $exe -ArgumentList '--settings-render-check' -WorkingDirectory $smokeRoot -Wait -PassThru
-        if ($render.ExitCode -ne 0) { throw "Settings rendering check exited with code $($render.ExitCode)." }
-        $capture = Join-Path $smokeRoot 'settings-vsync.png'
-        if (-not (Test-Path -LiteralPath $capture) -or (Get-Item -LiteralPath $capture).Length -lt 1024) {
-            throw 'Settings render check did not produce a plausible screenshot.'
-        }
-    } finally { Pop-Location }
-} finally { Remove-Item -LiteralPath $smokeRoot -Recurse -Force -ErrorAction SilentlyContinue }
-
 $stage = Join-Path ([System.IO.Path]::GetTempPath()) ("Threadlight-release-stage-" + [guid]::NewGuid().ToString('N'))
 $packageName = 'Threadlight-Windows-x64-Portable'
 New-Item -ItemType Directory -Path $stage | Out-Null
@@ -107,6 +93,28 @@ require manual playtesting.
     $zip = Join-Path $output "$packageName.zip"
     New-Item -ItemType Directory -Force -Path $output | Out-Null
     Compress-Archive -Path (Join-Path $stage '*') -DestinationPath $zip -CompressionLevel Optimal -Force
+
+    # Exercise the actual packaged executable extracted to an isolated folder
+    # outside the repository, with an isolated APPDATA location.
+    $smokeRoot = Join-Path ([System.IO.Path]::GetTempPath()) ("Threadlight-release-smoke-" + [guid]::NewGuid().ToString('N'))
+    New-Item -ItemType Directory -Path $smokeRoot | Out-Null
+    try {
+        Expand-Archive -LiteralPath $zip -DestinationPath $smokeRoot -Force
+        $startInfo = New-Object System.Diagnostics.ProcessStartInfo
+        $startInfo.FileName = Join-Path $smokeRoot 'Threadlight.exe'
+        $startInfo.Arguments = '--settings-render-check'
+        $startInfo.WorkingDirectory = $smokeRoot
+        $startInfo.UseShellExecute = $false
+        $startInfo.EnvironmentVariables['APPDATA'] = Join-Path $smokeRoot 'appdata'
+        $render = [System.Diagnostics.Process]::Start($startInfo)
+        $render.WaitForExit()
+        if ($render.ExitCode -ne 0) { throw "Settings rendering check exited with code $($render.ExitCode)." }
+        $capture = Join-Path $smokeRoot 'settings-vsync.png'
+        if (-not (Test-Path -LiteralPath $capture) -or (Get-Item -LiteralPath $capture).Length -lt 1024) {
+            throw 'Settings render check did not produce a plausible screenshot.'
+        }
+    } finally { Remove-Item -LiteralPath $smokeRoot -Recurse -Force -ErrorAction SilentlyContinue }
+
     $portableExe = Join-Path $output 'Threadlight.exe'
     Copy-Item -LiteralPath $exe -Destination $portableExe -Force
     $exeHash = Get-Sha256 $portableExe
@@ -125,6 +133,25 @@ PE subsystem  Windows GUI
 Imported DLLs  $($dlls -join ', ')
 "@
     Set-Content -LiteralPath (Join-Path $output 'SHA256SUMS.txt') -Value $manifest -Encoding utf8
+    $report = @"
+Threadlight portable release verification
+Source commit: $commit
+Base develop commit: 3bb22b1d29d3000780fb581127b65f5765bafadc
+Branch: $branch
+Build: Windows x64 Release; MSVC 14.44.35207 (19.44.35229); static CRT (/MT); static raylib 5.5
+Build host: Windows x64; Windows SDK 10.0.26100; Visual Studio 2022
+Graphics smoke host: Intel(R) Iris(R) Xe Graphics; OpenGL 3.3.0; driver 32.0.101.5763
+PE: AMD64/x64, Windows GUI subsystem
+Imports: $($dlls -join ', ')
+Redistributable: no VC runtime DLL imports; /MT static CRT
+Assets: game art and audio generated at runtime; no external game assets
+Automated verification: clean isolated Release build; 37/37 CTest passed; packaged ZIP extracted and settings render check passed from an isolated directory outside the repository.
+Manual verification still needed: visible normal-game launch, input/play, audio playback, settings persistence across launch, clean exit, and clean-PC tests on additional Windows/GPU/audio configurations.
+Portability limits: intended for Windows 10/11 x64 with a working graphics driver supporting OpenGL 3.3. Evidence is from one Intel Iris Xe host only; no universal compatibility claim.
+EXE: $exeSize bytes; SHA-256 $exeHash
+ZIP: $zipSize bytes; SHA-256 $zipHash
+"@
+    Set-Content -LiteralPath (Join-Path $output 'RELEASE-REPORT.txt') -Value $report -Encoding utf8
     Write-Output "Release package: $zip"
     Write-Output "Standalone EXE: $portableExe"
     Write-Output "Hashes and build identification: $(Join-Path $output 'SHA256SUMS.txt')"
