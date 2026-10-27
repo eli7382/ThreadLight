@@ -6,7 +6,7 @@ param(
 
 $ErrorActionPreference = 'Stop'
 $repo = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
-if (-not $OutputDirectory) { $OutputDirectory = Join-Path (Split-Path -Parent $repo) 'portable-release' }
+if (-not $OutputDirectory) { $OutputDirectory = Join-Path $repo 'portable-release' }
 $output = [System.IO.Path]::GetFullPath($OutputDirectory)
 $build = Join-Path $repo 'build-portable-windows-msvc'
 $exe = Join-Path $build 'Release\Threadlight.exe'

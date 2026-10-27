@@ -68,8 +68,8 @@ $env:THREADLIGHT_RAYLIB_ROOT = 'C:\AI-Game-Benchmark\shared\raylib-5.5'
 ```
 
 By default, the script writes `portable-release\Threadlight.exe`,
-`Threadlight-Windows-x64-Portable.zip`, and `SHA256SUMS.txt` next to the
-checkout. The ZIP contains the EXE, concise launch/requirements instructions,
+`Threadlight-Windows-x64-Portable.zip`, and `SHA256SUMS.txt` inside the
+checkout. The directory is Git-ignored. The ZIP contains the EXE, concise launch/requirements instructions,
 build identification, and the raylib license notice. The script rejects dirty
 checkouts, runs the Release build and full CTest suite, checks PE architecture,
 GUI subsystem and imports with `dumpbin`, then runs the hidden settings render

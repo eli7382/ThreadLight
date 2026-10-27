@@ -1,2 +1,4 @@
 /build-windows-msvc/
+/build-portable-windows-msvc/
+/portable-release/
 __pycache__/
