@@ -368,6 +368,13 @@ int runFullModel() {
 int runInvariantChecks() {
     using namespace threadlight;
     CHECK(chapter::kEncounterCount==35);
+    CHECK(kBossSupportCounts[0]==4);
+    chapter_boss::State rootwarden{};
+    rootwarden.kind=chapter_boss::Kind::Rootwarden;
+    CHECK(chapter_boss::supportKind(rootwarden,0)==combat::EnemyKind::Hunter);
+    CHECK(chapter_boss::supportKind(rootwarden,1)==combat::EnemyKind::Hunter);
+    CHECK(chapter_boss::supportKind(rootwarden,2)==combat::EnemyKind::Skitter);
+    CHECK(chapter_boss::supportKind(rootwarden,3)==combat::EnemyKind::Skitter);
     CHECK(theoreticalCampaignSparks()==kTheoreticalSparkMaximum);
     std::uint64_t scheduledSparks=0;
     for(int wave=0;wave<chapter::kEncounterCount;++wave) {

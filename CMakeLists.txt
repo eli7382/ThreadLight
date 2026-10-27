@@ -133,6 +133,10 @@ if(BUILD_TESTING)
   target_include_directories(ThreadlightCombatUpgradesTests PRIVATE src)
   add_test(NAME ThreadlightCombatUpgradesTests COMMAND ThreadlightCombatUpgradesTests)
 
+  add_executable(ThreadlightBriarCallerTests tests/briar_caller_test.cpp)
+  target_include_directories(ThreadlightBriarCallerTests PRIVATE src)
+  add_test(NAME ThreadlightBriarCallerTests COMMAND ThreadlightBriarCallerTests)
+
   add_executable(ThreadlightSkitterTests tests/skitter_test.cpp)
   target_include_directories(ThreadlightSkitterTests PRIVATE src)
   add_test(NAME ThreadlightSkitterTests COMMAND ThreadlightSkitterTests)

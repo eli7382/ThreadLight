@@ -116,7 +116,7 @@ struct IncomingHit {
 };
 inline int applyIncoming(PlayerHealth& player, IncomingHit hit, bool dashProtected, int* barrierCenti=nullptr,int reductionPercent=0) {
     if (!canReceiveIncoming(player,dashProtected) || hit.damage <= 0 || !hit.sourceId) return 0;
-    hit.damage=std::max(1,static_cast<int>((static_cast<std::int64_t>(hit.damage)*(100-std::clamp(reductionPercent,0,24))+50)/100));
+    hit.damage=std::max(1,static_cast<int>((static_cast<std::int64_t>(hit.damage)*(100-std::clamp(reductionPercent,0,25))+50)/100));
     if(barrierCenti){const int absorbed=std::min(std::max(0,*barrierCenti),hit.damage);*barrierCenti-=absorbed;hit.damage-=absorbed;}
     if(hit.damage<=0)return 0; // Absorption grants no additional immunity.
     const int taken = std::min(player.hp, hit.damage);

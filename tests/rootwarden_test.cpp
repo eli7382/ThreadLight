@@ -95,9 +95,9 @@ void exactStageTimingAndSupportEvents() {
 
     events = tickN(state, {200.0f, 700.0f}, kArena, rw::kStalkTicks);
     CHECK(events.warning);
-    CHECK(state.stage == Stage::StepWarning && state.remaining == rw::kStepTicks);
+    CHECK(state.stage == Stage::StepWarning && state.remaining == rw::kWarningTicks);
     CHECK(state.branchCount == 0);
-    tickN(state, {200.0f, 700.0f}, kArena, rw::kStepTicks);
+    tickN(state, {200.0f, 700.0f}, kArena, rw::kWarningTicks);
     CHECK(state.stage == Stage::StepActive && state.remaining == rw::kStepTicks);
     tickN(state, {200.0f, 700.0f}, kArena, rw::kStepTicks);
     CHECK(state.stage == Stage::Recover && state.remaining == rw::kRecoveryTicks);
@@ -111,6 +111,8 @@ void exactStageTimingAndSupportEvents() {
 void phaseThresholdExposureAndFiniteSupports() {
     State state;
     rw::start(state, {640.0f, 400.0f}, kArena);
+    CHECK(rw::supportKind(state, 6) == threadlight::combat::EnemyKind::Hunter);
+    CHECK(rw::supportKind(state, 5) == threadlight::combat::EnemyKind::Hunter);
     CHECK(rw::incomingDamage(state, state.p, state.p, 0.0f) == rw::kDamage);
 
     const rw::DamageResult atThreshold = rw::applySilk(state, 3150);
@@ -127,6 +129,9 @@ void phaseThresholdExposureAndFiniteSupports() {
     CHECK(crossing.damage == 1);
     CHECK(state.health.hp == 3849);
     CHECK(state.phase == 2);
+    CHECK(rw::supportKind(state, 6) == threadlight::combat::EnemyKind::Skitter);
+    CHECK(rw::supportKind(state, 5) == threadlight::combat::EnemyKind::Hunter);
+    CHECK(rw::supportKind(state, 7) == threadlight::combat::EnemyKind::Hunter);
     CHECK(state.stage == Stage::Transition && state.remaining == rw::kTransitionTicks);
     CHECK(crossing.events.phaseChanged);
     CHECK(crossing.events.supports == 2);
@@ -174,7 +179,7 @@ void phaseThresholdExposureAndFiniteSupports() {
 
     tickN(state, {1000.0f, 400.0f}, kArena, rw::kStalkTicks);
     CHECK(state.stage == Stage::StepWarning);
-    tickN(state, {1000.0f, 400.0f}, kArena, rw::kStepTicks);
+    tickN(state, {1000.0f, 400.0f}, kArena, rw::kWarningTicks);
     CHECK(state.stage == Stage::StepActive);
     tickN(state, {1000.0f, 400.0f}, kArena, rw::kStepTicks);
     CHECK(state.stage == Stage::Recover);

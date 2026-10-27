@@ -46,6 +46,7 @@ inline float vulnerableRadius(const State& s){return s.kind==Kind::Heart?78.f:s.
 inline float contactRadius(const State& s){return s.kind==Kind::Heart?30.f:s.kind==Kind::Hollow?28.f:s.kind==Kind::Conductor?28.f:s.kind==Kind::Dancer?22.f:26.f;}
 inline const char* name(const State& s){return s.kind==Kind::Heart?"THE BRIAR HEART":s.kind==Kind::Hollow?"THE HOLLOW WEAVER":s.kind==Kind::Dancer?"THE NEEDLE DANCER":s.kind==Kind::Conductor?"THE THORN CONDUCTOR":"THE ROOTWARDEN";}
 inline combat::EnemyKind supportKind(const State& s,int ordinal){
+    if(s.kind==Kind::Rootwarden)return ordinal>=2?combat::EnemyKind::Skitter:combat::EnemyKind::Hunter;
     if(s.kind==Kind::Hollow)return ordinal>=4?combat::EnemyKind::Sower:combat::EnemyKind::Hunter;
     if(s.kind==Kind::Heart)return ordinal>=6?combat::EnemyKind::Spitter:ordinal>=4?combat::EnemyKind::Skitter:combat::EnemyKind::Hunter;
     return s.kind==Kind::Dancer?combat::EnemyKind::Skitter:s.kind==Kind::Conductor&&ordinal>=4?combat::EnemyKind::Spitter:combat::EnemyKind::Hunter;

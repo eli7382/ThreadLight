@@ -181,9 +181,10 @@ void dancerChainHasFreshWarningsCounterstepsAndRecovery() {
         prepareDancerPhase(state, playerHealth, phase);
         int expectedWarningCount = 1;
         for (int strike = 0; strike < phase; ++strike) {
-            CHECK(state.stage == boss::Stage::StepWarning && state.remaining == 48);
+            const int warningTicks = strike == 0 ? 48 : 36;
+            CHECK(state.stage == boss::Stage::StepWarning && state.remaining == warningTicks);
             CHECK(state.warnings == static_cast<std::uint64_t>(expectedWarningCount));
-            tickBossN(state, playerHealth, 48, {1000.0f, 400.0f});
+            tickBossN(state, playerHealth, warningTicks, {1000.0f, 400.0f});
             CHECK(state.stage == boss::Stage::StepActive && state.remaining == 34);
             tickBossN(state, playerHealth, 34, {1000.0f, 400.0f});
             if (strike + 1 < phase) {

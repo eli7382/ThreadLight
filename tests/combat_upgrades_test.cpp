@@ -78,6 +78,22 @@ void testSweptCollisionAndIncomingOwnership() {
     CHECK(!c::canReceiveIncoming(dying,false));
 }
 
+void testIronbarkRankVAppliedDamageMatchesItsAdvertisedReduction() {
+    u::Ranks ranks{};
+    ranks.value[u::index(u::Id::Ironbark)] = u::maximum(u::Id::Ironbark);
+    const auto stats = u::derive(ranks);
+    CHECK(stats.damageReductionPercent == 25);
+
+    c::PlayerHealth player;
+    c::IncomingHit hit{};
+    hit.consider(1000, 1);
+    const int taken = c::applyIncoming(player, hit, false, nullptr,
+                                       stats.damageReductionPercent);
+    CHECK(taken == 750);
+    CHECK(player.hp == 9250);
+    CHECK(player.immunityTicks == c::kPlayerImmunityTicks);
+}
+
 void testDerivedRankValues() {
     u::Ranks ranks;
     auto stats = u::derive(ranks);
@@ -231,6 +247,7 @@ void testExhaustionAndCommittedResize() {
 
 int main() {
     testSharedCombatAndBreakpoints(); testSweptCollisionAndIncomingOwnership();
+    testIronbarkRankVAppliedDamageMatchesItsAdvertisedReduction();
     testDerivedRankValues(); testCreditTransactionAndRecovery(); testOfferEligibilityDeterminismAndPity();
     testPendingBatchAndBoundedSkitterPressure(); testExhaustionAndCommittedResize();
     if (failures) return EXIT_FAILURE;

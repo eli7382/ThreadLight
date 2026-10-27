@@ -4,8 +4,11 @@
 
 #include <algorithm>
 #include <cmath>
+#include <limits>
 
 namespace threadlight::briar_caller {
+
+using Point = foundation::Point;
 
 constexpr float kBaseAuraRadius = 150.0f;
 constexpr int kBaseSpeedBoostPercent = 18;
@@ -19,6 +22,29 @@ struct SpeedBoost {
     int remainingTicks = 0;
     int percent = 0;
 };
+
+inline int fusedMembers(const State& first, const State& second) {
+    return std::max(1, first.members) + std::max(1, second.members);
+}
+
+inline int fusedHealth(int firstHp, int firstMaxHp, const State& first,
+                       int secondHp, int secondMaxHp, const State& second,
+                       int combinedMaxHp) {
+    if (combinedMaxHp <= 0) return 0;
+    if (firstMaxHp <= 0 || secondMaxHp <= 0) return combinedMaxHp;
+
+    const int members = fusedMembers(first, second);
+    const long long denominator = static_cast<long long>(firstMaxHp) *
+                                  secondMaxHp * members;
+    const long long numerator = static_cast<long long>(firstHp) * secondMaxHp *
+                                    std::max(1, first.members) +
+                                static_cast<long long>(secondHp) * firstMaxHp *
+                                    std::max(1, second.members);
+    if (denominator <= 0) return combinedMaxHp;
+    return std::clamp(static_cast<int>((static_cast<long long>(combinedMaxHp) *
+                                        numerator + denominator / 2) / denominator),
+                      1, combinedMaxHp);
+}
 
 inline int improvementPercent(int members) {
     switch (std::max(1, members)) {
@@ -43,6 +69,30 @@ inline float scale(float base, int members) {
 inline float movementScale(int members) {
     const float slowdown = 0.07f * static_cast<float>(std::max(1, members) - 1);
     return std::max(0.0f, 1.0f - slowdown);
+}
+
+inline float movementSpeed(float baseSpeed, const State& state) {
+    return baseSpeed * movementScale(state.members);
+}
+
+template <typename Range, typename Actor, typename IsAlive, typename IsCaller, typename Position>
+inline Point movementTarget(Point current, Point player, const Range& actors,
+                            const Actor* self, IsAlive isAlive, IsCaller isCaller,
+                            Position position) {
+    Point target = player;
+    float nearestSquared = std::numeric_limits<float>::max();
+    for (const auto& actor : actors) {
+        if (&actor == self || !isAlive(actor) || !isCaller(actor)) continue;
+        const Point candidate = position(actor);
+        const float dx = candidate.x - current.x;
+        const float dy = candidate.y - current.y;
+        const float distanceSquared = dx * dx + dy * dy;
+        if (distanceSquared < nearestSquared) {
+            nearestSquared = distanceSquared;
+            target = candidate;
+        }
+    }
+    return target;
 }
 
 inline float auraRadius(const State& state) {

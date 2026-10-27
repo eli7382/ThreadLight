@@ -408,22 +408,19 @@ int main(int argc, char** argv){
     if(!absorbed.health.alive()||absorbed.kind!=battle::EnemyKind::BriarCaller||
        !caller::readyToFuse({keeper.p.x,keeper.p.y},keeper.briarCaller,
                             {absorbed.p.x,absorbed.p.y},absorbed.briarCaller))continue;
-    const int members=keeper.briarCaller.members+absorbed.briarCaller.members;
+    const int members=caller::fusedMembers(keeper.briarCaller,absorbed.briarCaller);
     const auto definition=battle::definition(battle::EnemyKind::BriarCaller,chapterNumber);
     const int rewardSparkValue=definition.sparkValue*members;
     const int rewardScore=caller::scale(definition.killScore,members);
     if(!rewards.mergeAliveEnemies(keeper.rewardId,absorbed.rewardId,
                                   rewardSparkValue,rewardScore))continue;
 
-    const long long denominator=static_cast<long long>(keeper.health.maxHp)*
-                                absorbed.health.maxHp*members;
-    const long long numerator=static_cast<long long>(keeper.health.hp)*
-                              absorbed.health.maxHp*keeper.briarCaller.members+
-                              static_cast<long long>(absorbed.health.hp)*
-                              keeper.health.maxHp*absorbed.briarCaller.members;
     const int maxHp=caller::scale(definition.hp,members);
+    const int hp=caller::fusedHealth(keeper.health.hp,keeper.health.maxHp,keeper.briarCaller,
+                                    absorbed.health.hp,absorbed.health.maxHp,
+                                    absorbed.briarCaller,maxHp);
     keeper.health.maxHp=maxHp;
-    keeper.health.hp=denominator>0?std::clamp(static_cast<int>((static_cast<long long>(maxHp)*numerator+denominator/2)/denominator),1,maxHp):maxHp;
+    keeper.health.hp=hp;
     keeper.r=caller::scale(definition.radius,members);
     keeper.briarCaller.members=members;
     if(anchorState.targetId==absorbed.rewardId){anchorState.targetId=0;anchorState.windowTicks=0;}
@@ -435,7 +432,7 @@ int main(int argc, char** argv){
  };
  auto releaseSupports=[&](int count){
   if(boss.kind!=root::Kind::Rootwarden){supportQueued+=count;return;}
-  const auto supportKind=wave==6&&boss.phase>=2?battle::EnemyKind::Skitter:battle::EnemyKind::Hunter;
+  const auto supportKind=root::supportKind(boss,wave);
   for(int i=0;i<count;++i)addFoe(supportKind,chapter::kPi*.25f+chapter::kPi*(boss.supportsReleased+i)*.5f);
   if(count)traceBoss("supports");
  };
@@ -958,13 +955,12 @@ int main(int argc, char** argv){
          V target=player;
          float movementSpeed=caller::boostedSpeed(f.speed,f.callerSpeedBoost);
          if(f.kind==battle::EnemyKind::BriarCaller){
-          float nearest=std::numeric_limits<float>::max();
-          for(const auto& other:foes){
-           if(&other==&f||!other.health.alive()||other.kind!=battle::EnemyKind::BriarCaller)continue;
-           const float distance=dist(f.p,other.p);
-           if(distance<nearest){nearest=distance;target=other.p;}
-          }
-          movementSpeed=f.speed*caller::movementScale(f.briarCaller.members);
+          const auto targetPoint=caller::movementTarget({f.p.x,f.p.y},{player.x,player.y},foes,&f,
+           [](const Foe& other){return other.health.alive();},
+           [](const Foe& other){return other.kind==battle::EnemyKind::BriarCaller;},
+           [](const Foe& other){return caller::Point{other.p.x,other.p.y};});
+          target={targetPoint.x,targetPoint.y};
+          movementSpeed=caller::movementSpeed(f.speed,f.briarCaller);
          }
          const V d=norm(target-f.p);const float wob=std::sin(f.phase*3)*.28f;
          f.vel=f.vel+(d+V{-d.y*wob,d.x*wob})*(movementSpeed*dt*2.5f);
