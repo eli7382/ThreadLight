@@ -63,7 +63,7 @@ bool Recorder::open(const std::filesystem::path& path) {
     if (path.empty() || std::filesystem::exists(path, error) || error) return false;
     output_.open(path, std::ios::out | std::ios::binary);
     if (!output_) return false;
-    output_ << "frame,elapsed_s,interval_ms,raylib_frame_ms,update_wall_ms,simulation_wall_ms,draw_submit_wall_ms,present_wait_wall_ms,steps,discarded_ms,mode_at_start,phase_after_update,wave_after_update,framebuffer_w,framebuffer_h,enemies,silk_segments,active_silk_segments,sparks,particles,projectiles,ground_hazards,boss_hazards,working_set_bytes,private_bytes,configured_fps,effective_fps,vsync_requested,monitor_hz,focused_at_update,frame_start_qpc_ms\n";
+    output_ << "frame,elapsed_s,interval_ms,raylib_frame_ms,update_wall_ms,simulation_wall_ms,draw_submit_wall_ms,present_wait_wall_ms,steps,discarded_ms,mode_at_start,phase_after_update,wave_after_update,framebuffer_w,framebuffer_h,enemies,silk_segments,active_silk_segments,sparks,particles,projectiles,ground_hazards,boss_hazards,working_set_bytes,private_bytes,configured_fps,effective_fps,vsync_requested,monitor_hz,focused_at_update,frame_start_qpc_ms,gpu_timer_supported,gpu_render_ms,gpu_source_frame\n";
     output_ << std::fixed << std::setprecision(4);
     return healthy_ = static_cast<bool>(output_);
 }
@@ -73,6 +73,10 @@ bool Recorder::record(const Frame& f) {
     intervals_.add(f.intervalMs);
     discardedMs_ += f.discardedMs;
     if (f.discardedMs > 0) ++discardedFrames_;
+    if (std::isfinite(f.gpuRenderMs) && f.gpuRenderMs >= 0.0) {
+        gpuRenderTimes_.add(f.gpuRenderMs);
+        ++gpuRenderSamples_;
+    }
     output_ << f.number << ',' << f.elapsedSeconds << ',' << f.intervalMs << ',' << f.raylibFrameMs << ','
             << f.updateMs << ',' << f.simulationMs << ',' << f.drawMs << ',' << f.presentMs << ','
             << f.steps << ',' << f.discardedMs << ',' << f.mode << ',' << f.phase << ',' << f.wave << ','
@@ -81,7 +85,10 @@ bool Recorder::record(const Frame& f) {
     if (f.memory.available) output_ << f.memory.workingSetBytes << ',' << f.memory.privateBytes;
     else output_ << ',';
     output_ << ',' << f.configuredFps << ',' << f.effectiveFps << ',' << f.vsyncRequested
-            << ',' << f.monitorHz << ',' << f.focused << ',' << f.frameQpcMs << '\n';
+            << ',' << f.monitorHz << ',' << f.focused << ',' << f.frameQpcMs << ',' << f.gpuTimerSupported << ',';
+    if (std::isfinite(f.gpuRenderMs) && f.gpuRenderMs >= 0.0) output_ << f.gpuRenderMs << ',' << f.gpuSourceFrame;
+    else output_ << ',';
+    output_ << '\n';
     if (f.number % 120 == 0) output_.flush();
     return healthy_ = static_cast<bool>(output_);
 }

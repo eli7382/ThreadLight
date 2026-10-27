@@ -41,10 +41,16 @@
 #include <filesystem>
 #include <memory>
 #include <string>
+#include <cstdint>
+#include <limits>
 
 #if defined(_WIN32)
 extern "C" unsigned int __stdcall timeBeginPeriod(unsigned int);
 extern "C" unsigned int __stdcall timeEndPeriod(unsigned int);
+using WglProc=void (__stdcall*)(void);
+using WinModule=void*;
+extern "C" __declspec(dllimport) WinModule __stdcall GetModuleHandleA(const char*);
+extern "C" __declspec(dllimport) WglProc __stdcall GetProcAddress(WinModule,const char*);
 #endif
 
 namespace {
@@ -58,6 +64,89 @@ using Particle=threadlight::presentation::Particle<Color>;
 float len(V a){return std::sqrt(a.x*a.x+a.y*a.y);} float dist(V a,V b){return len(a-b);} V norm(V a){float l=len(a);return l>0.001f?a*(1/l):V{};} Vector2 cv(V a){return {a.x,a.y};}
 V catmullRom(V p0,V p1,V p2,V p3,float t){const float t2=t*t,t3=t2*t;return (p1*2.f+(p2-p0)*t+(p0*2.f-p1*5.f+p2*4.f-p3)*t2+(p0*-1.f+p1*3.f-p2*3.f+p3)*t3)*.5f;}
 Color C(unsigned char r,unsigned char g,unsigned char b,unsigned char a=255){return {r,g,b,a};}
+
+class AsyncGpuTimer {
+public:
+ bool initialize(){
+#if defined(_WIN32)
+  gen_=resolve<GenQueries>("glGenQueries");del_=resolve<DeleteQueries>("glDeleteQueries");
+  begin_=resolve<BeginQuery>("glBeginQuery");end_=resolve<EndQuery>("glEndQuery");
+  getAvailable_=resolve<GetQueryObjectiv>("glGetQueryObjectiv");
+  getResult_=resolve<GetQueryObjectui64v>("glGetQueryObjectui64v");
+  if(!getResult_)getResult_=resolve<GetQueryObjectui64v>("glGetQueryObjectui64vARB");
+  if(!gen_||!del_||!begin_||!end_||!getAvailable_||!getResult_)return false;
+  gen_(static_cast<int>(kQueryCount),queries_.data());
+  for(auto query:queries_)if(query==0){del_(static_cast<int>(kQueryCount),queries_.data());queries_.fill(0);return false;}
+  enabled_=true;
+#endif
+  return enabled_;
+ }
+ bool poll(double& milliseconds,std::uint64_t& sourceFrame){
+#if defined(_WIN32)
+  if(!enabled_||!pending_)return false;
+  int ready=0;getAvailable_(queries_[head_],kQueryResultAvailable,&ready);
+  if(!ready)return false;
+  std::uint64_t nanoseconds=0;getResult_(queries_[head_],kQueryResult,&nanoseconds);
+  milliseconds=static_cast<double>(nanoseconds)/1'000'000.0;
+  sourceFrame=sourceFrames_[head_];head_=(head_+1)%kQueryCount;--pending_;
+  return true;
+#else
+  (void)milliseconds;(void)sourceFrame;return false;
+#endif
+ }
+ bool begin(std::uint64_t sourceFrame){
+#if defined(_WIN32)
+  if(!enabled_||active_||pending_==kQueryCount){if(enabled_&&pending_==kQueryCount)++skipped_;return false;}
+  const std::size_t slot=(head_+pending_)%kQueryCount;
+  begin_(kTimeElapsed,queries_[slot]);sourceFrames_[slot]=sourceFrame;++pending_;active_=true;return true;
+#else
+  (void)sourceFrame;return false;
+#endif
+ }
+ void end(){
+#if defined(_WIN32)
+  if(active_){end_(kTimeElapsed);active_=false;}
+#endif
+ }
+ void shutdown(){
+#if defined(_WIN32)
+  if(enabled_&&del_)del_(static_cast<int>(kQueryCount),queries_.data());
+  queries_.fill(0);enabled_=active_=false;pending_=0;
+#endif
+ }
+ bool enabled()const{return enabled_;}
+ std::size_t pending()const{return pending_;}
+ std::uint64_t skipped()const{return skipped_;}
+ ~AsyncGpuTimer(){shutdown();}
+private:
+#if defined(_WIN32)
+ using GenQueries=void (__stdcall*)(int,unsigned int*);
+ using DeleteQueries=void (__stdcall*)(int,const unsigned int*);
+ using BeginQuery=void (__stdcall*)(unsigned int,unsigned int);
+ using EndQuery=void (__stdcall*)(unsigned int);
+ using GetQueryObjectiv=void (__stdcall*)(unsigned int,unsigned int,int*);
+ using GetQueryObjectui64v=void (__stdcall*)(unsigned int,unsigned int,std::uint64_t*);
+ using WglGetProcAddressFn=WglProc (__stdcall*)(const char*);
+ static WglGetProcAddressFn wglGetProcAddress(){
+  const auto module=GetModuleHandleA("opengl32.dll");
+  return module?reinterpret_cast<WglGetProcAddressFn>(GetProcAddress(module,"wglGetProcAddress")):nullptr;
+ }
+ template<class T>static T resolve(const char* name){
+  const auto getProc=wglGetProcAddress();const WglProc raw=getProc?getProc(name):nullptr;const auto address=reinterpret_cast<std::intptr_t>(raw);
+  return (!raw||address==1||address==2||address==3||address==-1)?nullptr:reinterpret_cast<T>(raw);
+ }
+ static constexpr unsigned int kTimeElapsed=0x88BF,kQueryResult=0x8866,kQueryResultAvailable=0x8867;
+ static constexpr std::size_t kQueryCount=8;
+ GenQueries gen_=nullptr;DeleteQueries del_=nullptr;BeginQuery begin_=nullptr;EndQuery end_=nullptr;
+ GetQueryObjectiv getAvailable_=nullptr;GetQueryObjectui64v getResult_=nullptr;
+ std::array<unsigned int,kQueryCount> queries_{};
+ std::array<std::uint64_t,kQueryCount> sourceFrames_{};
+ std::size_t head_=0,pending_=0;bool active_=false,enabled_=false;std::uint64_t skipped_=0;
+#else
+ bool enabled_=false;
+#endif
+};
+
 const char* modeName(threadlight::Mode mode){
  using threadlight::Mode;
  switch(mode){
@@ -76,7 +165,7 @@ int main(int argc, char** argv){
  bool m6RenderCheck=false;
  bool pacingCheck=false;
  bool settingsRenderCheck=false;
- int pacingRate=60,pacingVsync=-1;
+ int pacingRate=60,pacingVsync=-1,pacingDurationSeconds=5;
  int bossFixture=-1; // Explicit development-only CLI fixture; never a campaign checkpoint.
  int waveFixture=-1;
  int waveFixtureWave=7;
@@ -85,9 +174,11 @@ int main(int argc, char** argv){
  int rewardFixture=0;bool utilityFixture=false,minimumQaWindow=false;
  std::uint32_t spawnSeed=7382;
  std::string perfLogPath;
+ bool disableGpuTimer=false;
  for(int i=1;i<argc;i++){
   const std::string_view arg=argv[i];
    if(arg=="--perf-log"&&i+1<argc){if(!perfLogPath.empty())return 2;perfLogPath=argv[++i];if(perfLogPath.empty())return 2;}
+   else if(arg=="--perf-no-gpu-timer")disableGpuTimer=true;
    else if(arg=="--settings-render-check"){
     if(++fixtureOptions>1)return 2;
     settingsRenderCheck=true;m6RenderCheck=true;utilityFixture=true;waveFixture=4;waveFixtureWave=7;
@@ -96,6 +187,19 @@ int main(int argc, char** argv){
     const std::string_view text=argv[++i];const auto parsed=std::from_chars(text.data(),text.data()+text.size(),pacingRate);
     if(parsed.ec!=std::errc{}||parsed.ptr!=text.data()+text.size()||(pacingRate!=30&&pacingRate!=60&&pacingRate!=120&&pacingRate!=240))return 2;
     pacingCheck=true;utilityFixture=true;waveFixture=4;waveFixtureWave=7;
+   }else if((arg=="--boss-pacing-check"||arg=="--late-game-pacing-check")&&i+2<argc){
+    const bool bossOnly=arg=="--boss-pacing-check";
+    if(++fixtureOptions>1)return 2;
+    int requestedWave=0;
+    const std::string_view waveText=argv[++i];
+    const auto waveParsed=std::from_chars(waveText.data(),waveText.data()+waveText.size(),requestedWave);
+    const std::string_view rateText=argv[++i];
+    const auto rateParsed=std::from_chars(rateText.data(),rateText.data()+rateText.size(),pacingRate);
+    if(waveParsed.ec!=std::errc{}||waveParsed.ptr!=waveText.data()+waveText.size()||
+       (bossOnly?(requestedWave!=28&&requestedWave!=35):(requestedWave<28||requestedWave>35))||rateParsed.ec!=std::errc{}||
+       rateParsed.ptr!=rateText.data()+rateText.size()||(pacingRate!=60&&pacingRate!=120))return 2;
+    bossFixture=4;bossFixtureWave=requestedWave-1;
+    pacingCheck=true;pacingDurationSeconds=20;
    }else if(arg=="--pacing-vsync"&&i+1<argc){
     if(pacingVsync!=-1)return 2;
     const std::string_view value=argv[++i];if(value=="on")pacingVsync=1;else if(value=="off")pacingVsync=0;else return 2;
@@ -134,6 +238,7 @@ int main(int argc, char** argv){
  if(bossFixture>=0&&waveFixture>=0)return 2;
  if(m6RenderCheck&&rewardFixture==0&&!utilityFixture&&(bossFixture<0||bossFixtureWave<27))return 2;
  if(minimumQaWindow&&!m6RenderCheck)return 2;
+ if(disableGpuTimer&&perfLogPath.empty())return 2;
  if((pacingVsync!=-1&&!pacingCheck)||(pacingCheck&&m6RenderCheck))return 2;
  std::unique_ptr<threadlight::performance::Recorder> perf;
  if(!perfLogPath.empty()){
@@ -142,6 +247,11 @@ int main(int argc, char** argv){
  }
  SetConfigFlags(FLAG_WINDOW_HIGHDPI|FLAG_WINDOW_RESIZABLE|FLAG_MSAA_4X_HINT|(m6RenderCheck?FLAG_WINDOW_HIDDEN:0));
  InitWindow(threadlight::layout::kInitialScreenWidth,threadlight::layout::kInitialScreenHeight,"THREADLIGHT | A small game of living silk");
+ AsyncGpuTimer gpuTimer;
+ if(!perfLogPath.empty()){
+  if(disableGpuTimer||!gpuTimer.initialize())TraceLog(LOG_INFO,"GPU_TIMER enabled=0 (OpenGL timer queries unavailable or disabled)");
+  else TraceLog(LOG_INFO,"GPU_TIMER enabled=1 method=GL_TIME_ELAPSED query_ring=8 nonblocking=1");
+ }
  const auto windowCoordinates=threadlight::layout::WindowCoordinates::atStartup(
      GetScreenWidth(),GetScreenHeight(),GetRenderWidth(),GetRenderHeight());
  SetWindowMinSize(windowCoordinates.nativeWidth(960),windowCoordinates.nativeHeight(640));
@@ -496,11 +606,14 @@ int main(int argc, char** argv){
    std::uint64_t perfFrameNumber=0;
   if(m6RenderCheck||pacingCheck)reset();
   if(settingsRenderCheck)mode=Mode::Settings;
+  if(pacingCheck&&bossFixture>=0)TraceLog(LOG_INFO,"LATE_GAME_PACING_CHECK wave=%d fps=%d duration_s=%d",bossFixtureWave+1,pacingRate,pacingDurationSeconds);
   const auto pacingStart=PerfClock::now();
   while(!WindowShouldClose()&&!exitRequested){
-    if(pacingCheck&&PerfClock::now()-pacingStart>=std::chrono::seconds(5))break;
+    if(pacingCheck&&PerfClock::now()-pacingStart>=std::chrono::seconds(pacingDurationSeconds))break;
     const auto frameStart=perf?PerfClock::now():PerfClock::time_point{};
     const double frameQpcMs=perf?threadlight::performance::queryClockMilliseconds():0;
+    double gpuRenderMs=-1.0;std::uint64_t gpuSourceFrame=0;
+    if(perf)gpuTimer.poll(gpuRenderMs,gpuSourceFrame);
     double simulationMs=0,discardedMs=0;int frameSteps=0;
    const Mode screenAtFrameStart=mode;
    const double frameSeconds=std::max(0.0,static_cast<double>(GetFrameTime()));
@@ -1128,7 +1241,7 @@ int main(int argc, char** argv){
    const float shownDashEchoFade=threadlight::presentation::decay(previousDashEchoFade,dashEchoFade,alpha);
 
   const auto drawStart=perf?PerfClock::now():PerfClock::time_point{};
-  BeginDrawing();ClearBackground(C(7,12,27));
+  BeginDrawing();if(perf)gpuTimer.begin(perfFrameNumber+1);ClearBackground(C(7,12,27));
   // Own the modelview for the entire frame: raylib's retained screenScale can
   // change independently of its startup mouse scale. Its projection/viewport
   // already match the framebuffer. Apply our startup scale exactly once.
@@ -1757,6 +1870,7 @@ int main(int argc, char** argv){
    updateTimerResolution(!m6RenderCheck&&effectiveFrameRateLimit!=0);
    SetTargetFPS(effectiveFrameRateLimit);appliedFrameRateLimit=effectiveFrameRateLimit;
   }
+  if(perf){rlDrawRenderBatchActive();gpuTimer.end();}
   const auto presentStart=perf?PerfClock::now():PerfClock::time_point{};
   EndDrawing();
   if(perf){
@@ -1778,6 +1892,7 @@ int main(int argc, char** argv){
    sample.groundHazards=ground.liveCount();sample.bossHazards=boss.fields.liveCount();sample.memory=memorySample;
    sample.configuredFps=appSettings.frameRateLimit;sample.effectiveFps=effectiveFrameRateLimit;
    sample.vsyncRequested=appSettings.vsync;sample.monitorHz=GetMonitorRefreshRate(GetCurrentMonitor());sample.focused=focused;sample.frameQpcMs=frameQpcMs;
+   sample.gpuTimerSupported=gpuTimer.enabled();sample.gpuRenderMs=gpuRenderMs;sample.gpuSourceFrame=gpuSourceFrame;
    if(!perf->record(sample)){TraceLog(LOG_WARNING,"Performance log write failed; stopping diagnostics.");perf.reset();}
   }
  }
@@ -1789,6 +1904,11 @@ int main(int argc, char** argv){
   TraceLog(LOG_INFO,"PERF intervals=%llu p50<=%.1fms p95<=%.1fms p99<=%.1fms max=%.2fms discarded=%.2fms frames=%llu%s",
    (unsigned long long)h.count(),h.percentile(.50),h.percentile(.95),h.percentile(.99),h.maxMs(),perf->discardedMs(),
    (unsigned long long)perf->discardedFrames(),perf->healthy()?"":" (log flush failed)");
+  const auto& gpu=perf->gpuRenderTimes();
+  TraceLog(LOG_INFO,"GPU_TIMER supported=%d samples=%llu p50<=%.2fms p95<=%.2fms p99<=%.2fms max=%.3fms pending=%llu skipped=%llu",
+   gpuTimer.enabled(),(unsigned long long)perf->gpuRenderSamples(),gpu.percentile(.50),gpu.percentile(.95),gpu.percentile(.99),gpu.maxMs(),
+   (unsigned long long)gpuTimer.pending(),(unsigned long long)gpuTimer.skipped());
+  gpuTimer.shutdown();
  }
  sfx.shutdown();
  if(audioReady)CloseAudioDevice();

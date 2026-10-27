@@ -25,10 +25,12 @@ are rejected. The test cap stays finite even if the diagnostic loses focus.
 `--settings-render-check --m7-min-window` is a separate hidden settings screenshot
 fixture. Neither mode changes normal gameplay behavior.
 
-The existing opt-in CSV keeps its original 25 columns and appends six independent
-presentation fields: configured/effective FPS, requested VSync, monitor refresh,
-focus at update and system-QPC frame-start milliseconds. There are no experimental
-queue fields. Wall times are not GPU execution or physical input-latency measures.
+The opt-in CSV keeps its original 25 columns, appends six presentation fields, and
+adds three asynchronous GPU-query fields. `gpu_render_ms` is available only when
+OpenGL timer queries are supported; `gpu_source_frame` identifies its originating
+frame because results are polled later without blocking. GPU timing covers queued
+render work through the explicit batch flush and excludes `EndDrawing` presentation.
+Wall times remain distinct from GPU execution and physical input-latency measures.
 
 `tools/check_presentation.ps1` runs finite tests with isolated APPDATA, a
 nine-second game watchdog, PID-filtered PresentMon output and unique temporary

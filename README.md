@@ -102,10 +102,36 @@ captures and verify the result with profiling disabled. Timing columns are wall
 times, not CPU utilization or GPU timings: draw submission and `EndDrawing` can
 include driver work, GPU synchronization, buffer presentation, the frame limiter
 and input polling. Draw submission also includes end-of-frame audio maintenance
-and any fixture screenshot work. Filter CSV rows by `mode_at_start`, phase and
-wave when comparing gameplay; use an external GPU profiler to measure GPU time and memory.
+and any fixture screenshot work. When available, an opt-in asynchronous OpenGL
+`GL_TIME_ELAPSED` query adds `gpu_render_ms` and `gpu_source_frame`; the frame
+identifier can lag because results are polled without waiting. This measures GPU
+work through the explicit draw-batch flush, before `EndDrawing`, and does not
+include presentation. Unsupported drivers leave the samples blank. GPU utilization
+and memory still require an external profiler. Filter CSV rows by `mode_at_start`,
+phase and wave when comparing gameplay.
+Pass `--perf-no-gpu-timer` with `--perf-log` to isolate CPU logger overhead from
+the OpenGL timer-query path.
 Hidden `--m7-render-check` fixtures may also be combined with `--perf-log` for a
 smoke test, but their screenshots and capture work are not representative gameplay.
+
+For repeatable, bounded late-game workloads, the diagnostic-only
+`--late-game-pacing-check <28..35> <60|120>` option starts the selected campaign
+wave with the existing mixed build, applies the same scripted movement and dash
+route, runs for 20 seconds at the requested software FPS cap, and exits. Waves 28
+and 35 are the Hollow and Heart boss fights; Waves 29-34 use their real chapter
+spawn schedules. The legacy `--boss-pacing-check` alias accepts only 28 and 35.
+Captures run silently, do not save settings, and never test Unlimited FPS. Combine
+the command with `--pacing-vsync off --perf-log <new.csv>`:
+
+```powershell
+.\build-windows-msvc\Release\Threadlight.exe --late-game-pacing-check 34 60 --pacing-vsync off --perf-log C:\Temp\wave34-60.csv
+.\build-windows-msvc\Release\Threadlight.exe --late-game-pacing-check 28 120 --pacing-vsync off --perf-log C:\Temp\hollow-120.csv
+.\build-windows-msvc\Release\Threadlight.exe --late-game-pacing-check 35 120 --pacing-vsync off --perf-log C:\Temp\heart-120.csv
+```
+
+These are deterministic per-wave fixtures with scripted inputs, not a normal
+campaign playthrough. The supported waves and rates are deliberately limited to
+late campaign Waves 28-35 and the requested 60/120 FPS targets.
 
 The optional CPU benchmark compares the original Afterimage contact scan with the
 current implementation using fixed synthetic paths, identical query outcomes,

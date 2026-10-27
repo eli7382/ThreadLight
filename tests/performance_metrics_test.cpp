@@ -35,17 +35,19 @@ int main(){
     sample.mode="play";sample.phase="spawning";sample.wave=2;sample.enemies=4;
     sample.memory={123,456,true};
     sample.configuredFps=120;sample.effectiveFps=60;sample.vsyncRequested=true;sample.monitorHz=60;sample.frameQpcMs=1234.5;
+    sample.gpuTimerSupported=true;sample.gpuRenderMs=.75;sample.gpuSourceFrame=1;
     CHECK(recorder.record(sample));
     recorder.finish();CHECK(recorder.healthy());
     CHECK(recorder.intervals().count()==1);
     CHECK(recorder.discardedFrames()==1 && recorder.discardedMs()==4.5);
+    CHECK(recorder.gpuRenderSamples()==1 && recorder.gpuRenderTimes().percentile(.5)==.8);
     Recorder second;CHECK(!second.open(path)); // Existing files are never truncated.
     std::ifstream input(path);std::string header,row;
     std::getline(input,header);std::getline(input,row);input.close();
-    CHECK(std::count(header.begin(),header.end(),',')==30);
-    CHECK(std::count(row.begin(),row.end(),',')==30);
+    CHECK(std::count(header.begin(),header.end(),',')==33);
+    CHECK(std::count(row.begin(),row.end(),',')==33);
     CHECK(row.find(",play,spawning,2,")!=std::string::npos);
-    CHECK(row.ends_with(",123,456,120,60,1,60,0,1234.5000"));
+    CHECK(row.ends_with(",123,456,120,60,1,60,0,1234.5000,1,0.7500,1"));
     std::error_code error;std::filesystem::remove(path,error);CHECK(!error);
     if(failures)return EXIT_FAILURE;
     std::cout<<"Performance histogram and CSV checks passed.\n";

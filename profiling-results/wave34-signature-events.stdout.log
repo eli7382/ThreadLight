@@ -1,0 +1,183 @@
+INFO: Initializing raylib 5.5
+INFO: Platform backend: DESKTOP (GLFW)
+INFO: Supported raylib modules:
+INFO:     > rcore:..... loaded (mandatory)
+INFO:     > rlgl:...... loaded (mandatory)
+INFO:     > rshapes:... loaded (optional)
+INFO:     > rtextures:. loaded (optional)
+INFO:     > rtext:..... loaded (optional)
+INFO:     > rmodels:... loaded (optional)
+INFO:     > raudio:.... loaded (optional)
+INFO: DISPLAY: Trying to enable MSAA x4
+INFO: DISPLAY: Device initialized successfully
+INFO:     > Display size: 1920 x 1080
+INFO:     > Screen size:  1280 x 800
+INFO:     > Render size:  1920 x 1050
+INFO:     > Viewport offsets: 0, 0
+INFO: GLAD: OpenGL extensions loaded successfully
+INFO: GL: Supported extensions count: 245
+INFO: GL: OpenGL device information:
+INFO:     > Vendor:   Intel
+INFO:     > Renderer: Intel(R) Iris(R) Xe Graphics
+INFO:     > Version:  3.3.0 - Build 32.0.101.5763
+INFO:     > GLSL:     3.30 - Build 32.0.101.5763
+INFO: GL: VAO extension detected, VAO functions loaded successfully
+INFO: GL: NPOT textures extension detected, full NPOT textures supported
+INFO: GL: DXT compressed textures supported
+INFO: GL: ETC2/EAC compressed textures supported
+INFO: PLATFORM: DESKTOP (GLFW - Win32): Initialized successfully
+INFO: TEXTURE: [ID 1] Texture loaded successfully (1x1 | R8G8B8A8 | 1 mipmaps)
+INFO: TEXTURE: [ID 1] Default texture loaded successfully
+INFO: SHADER: [ID 1] Vertex shader compiled successfully
+INFO: SHADER: [ID 2] Fragment shader compiled successfully
+INFO: SHADER: [ID 3] Program shader loaded successfully
+INFO: SHADER: [ID 3] Default shader loaded successfully
+INFO: RLGL: Render batch vertex buffers loaded successfully in RAM (CPU)
+INFO: RLGL: Render batch vertex buffers loaded successfully in VRAM (GPU)
+INFO: RLGL: Default OpenGL state initialized successfully
+INFO: TEXTURE: [ID 2] Texture loaded successfully (128x128 | GRAY_ALPHA | 1 mipmaps)
+INFO: FONT: Default font loaded successfully (224 glyphs)
+INFO: SYSTEM: Working Directory: C:\Users\Cyber_Magshimim\Documents\ChatGPT\ThreadLight\phase2-visuals-source\build-phase34-m7-msvc-x64\Release
+INFO: TIMER: Target time per frame: 16.667 milliseconds
+WARNING: Audio device unavailable; event sounds are disabled.
+INFO: PRESENTATION vsync_requested=0 display_hz=60 pacing_check=1 requested_fps=60
+INFO: M1 seed=7382 tick=0 wave=34 phase=countdown elapsed=0 event=encounter_start id=0 value=0 spawned=0 killed=0 removed=0 spark_created=0 spark_collected=0 spark_expired=0 issued=0 resolved=0 bank=0 score=0 pickups_created=0 pick
+INFO: LATE_GAME_PACING_CHECK wave=34 fps=60 duration_s=20
+INFO: ThreadLight logical client 1280x800, framebuffer 1920x1050, scale 1.50x1.50
+INFO: M1 seed=7382 tick=90 wave=34 phase=spawning elapsed=0 event=transition id=0 value=0 spawned=0 killed=0 removed=0 spark_created=0 spark_collected=0 spark_expired=0 issued=0 resolved=0 bank=0 score=0 pickups_created=0 pick
+INFO: M1 seed=7382 tick=91 wave=34 phase=spawning elapsed=0 event=spawn id=1 value=1 spawned=1 killed=0 removed=0 spark_created=0 spark_collected=0 spark_expired=0 issued=0 resolved=0 bank=0 score=0 pickups_created=0 pick
+INFO: M3 enemy id=1 kind=0 hp=350 x=1261.0 y=428.0
+INFO: M1 seed=7382 tick=235 wave=34 phase=spawning elapsed=144 event=spawn id=2 value=1 spawned=2 killed=0 removed=0 spark_created=0 spark_collected=0 spark_expired=0 issued=0 resolved=0 bank=0 score=0 pickups_created=0 pick
+INFO: M3 enemy id=2 kind=0 hp=350 x=1261.0 y=408.8
+INFO: M1 seed=7382 tick=262 wave=34 phase=spawning elapsed=171 event=echo_created id=1 value=24 spawned=2 killed=0 removed=0 spark_created=0 spark_collected=0 spark_expired=0 issued=0 resolved=0 bank=0 score=0 pickups_created=0 pick
+INFO: M1 seed=7382 tick=271 wave=34 phase=spawning elapsed=180 event=spawn id=3 value=2 spawned=3 killed=0 removed=0 spark_created=0 spark_collected=0 spark_expired=0 issued=0 resolved=0 bank=0 score=0 pickups_created=0 pick
+INFO: M3 enemy id=3 kind=1 hp=900 x=648.8 y=723.0
+INFO: M1 seed=7382 tick=379 wave=34 phase=spawning elapsed=288 event=spawn id=4 value=1 spawned=4 killed=0 removed=0 spark_created=0 spark_collected=0 spark_expired=0 issued=0 resolved=0 bank=0 score=0 pickups_created=0 pick
+INFO: M3 enemy id=4 kind=0 hp=350 x=1261.0 y=428.4
+INFO: M1 seed=7382 tick=451 wave=34 phase=spawning elapsed=360 event=spawn id=5 value=2 spawned=5 killed=0 removed=0 spark_created=0 spark_collected=0 spark_expired=0 issued=0 resolved=0 bank=0 score=0 pickups_created=0 pick
+INFO: M3 enemy id=5 kind=1 hp=900 x=660.3 y=723.0
+INFO: M1 seed=7382 tick=451 wave=34 phase=spawning elapsed=360 event=spawn id=6 value=2 spawned=6 killed=0 removed=0 spark_created=0 spark_collected=0 spark_expired=0 issued=0 resolved=0 bank=0 score=0 pickups_created=0 pick
+INFO: M3 enemy id=6 kind=3 hp=600 x=664.4 y=728.0
+INFO: M1 seed=7382 tick=511 wave=34 phase=spawning elapsed=420 event=spawn id=7 value=1 spawned=7 killed=0 removed=0 spark_created=0 spark_collected=0 spark_expired=0 issued=0 resolved=0 bank=0 score=0 pickups_created=0 pick
+INFO: M3 enemy id=7 kind=2 hp=350 x=1264.0 y=410.9
+INFO: M1 seed=7382 tick=622 wave=34 phase=spawning elapsed=531 event=echo_created id=2 value=24 spawned=7 killed=0 removed=0 spark_created=0 spark_collected=0 spark_expired=0 issued=0 resolved=0 bank=0 score=0 pickups_created=0 pick
+INFO: M1 seed=7382 tick=631 wave=34 phase=spawning elapsed=540 event=spawn id=8 value=2 spawned=8 killed=0 removed=0 spark_created=0 spark_collected=0 spark_expired=0 issued=0 resolved=0 bank=0 score=0 pickups_created=0 pick
+INFO: M3 enemy id=8 kind=1 hp=900 x=646.8 y=723.0
+INFO: M1 seed=7382 tick=642 wave=34 phase=spawning elapsed=551 event=cocoon_formed id=34 value=123593 spawned=8 killed=0 removed=0 spark_created=0 spark_collected=0 spark_expired=0 issued=0 resolved=0 bank=0 score=0 pickups_created=0 pick
+INFO: M1 seed=7382 tick=642 wave=34 phase=spawning elapsed=551 event=crossweave_pulse id=1 value=0 spawned=8 killed=0 removed=0 spark_created=0 spark_collected=0 spark_expired=0 issued=0 resolved=0 bank=0 score=0 pickups_created=0 pick
+INFO: M1 seed=7382 tick=680 wave=34 phase=spawning elapsed=589 event=echo_hit id=5 value=124 spawned=8 killed=0 removed=0 spark_created=0 spark_collected=0 spark_expired=0 issued=0 resolved=0 bank=0 score=0 pickups_created=0 pick
+INFO: M1 seed=7382 tick=691 wave=34 phase=spawning elapsed=600 event=spawn id=9 value=1 spawned=9 killed=0 removed=0 spark_created=0 spark_collected=0 spark_expired=0 issued=0 resolved=0 bank=0 score=0 pickups_created=0 pick
+INFO: M3 enemy id=9 kind=2 hp=350 x=1264.0 y=424.8
+INFO: M1 seed=7382 tick=765 wave=34 phase=spawning elapsed=674 event=skitter_windup id=7 value=0 spawned=9 killed=0 removed=0 spark_created=0 spark_collected=0 spark_expired=0 issued=0 resolved=0 bank=0 score=0 pickups_created=0 pick
+INFO: M1 seed=7382 tick=774 wave=34 phase=spawning elapsed=683 event=spitter_warning id=6 value=1 spawned=9 killed=0 removed=0 spark_created=0 spark_collected=0 spark_expired=0 issued=0 resolved=0 bank=0 score=0 pickups_created=0 pick
+INFO: M1 seed=7382 tick=777 wave=34 phase=spawning elapsed=686 event=kill id=5 value=2 spawned=9 killed=1 removed=0 spark_created=2 spark_collected=0 spark_expired=0 issued=0 resolved=0 bank=0 score=35 pickups_created=1 pick
+INFO: M1 seed=7382 tick=804 wave=34 phase=spawning elapsed=713 event=spitter_locked id=6 value=0 spawned=9 killed=1 removed=0 spark_created=2 spark_collected=0 spark_expired=0 issued=0 resolved=0 bank=0 score=35 pickups_created=1 pick
+INFO: M1 seed=7382 tick=811 wave=34 phase=spawning elapsed=720 event=spawn id=10 value=2 spawned=10 killed=1 removed=0 spark_created=2 spark_collected=0 spark_expired=0 issued=0 resolved=0 bank=0 score=35 pickups_created=1 pick
+INFO: M3 enemy id=10 kind=1 hp=900 x=637.3 y=723.0
+INFO: M1 seed=7382 tick=811 wave=34 phase=spawning elapsed=720 event=spawn id=11 value=2 spawned=11 killed=1 removed=0 spark_created=2 spark_collected=0 spark_expired=0 issued=0 resolved=0 bank=0 score=35 pickups_created=1 pick
+INFO: M3 enemy id=11 kind=5 hp=600 x=635.3 y=97.0
+INFO: M1 seed=7382 tick=849 wave=34 phase=spawning elapsed=758 event=skitter_burst id=7 value=0 spawned=11 killed=1 removed=0 spark_created=2 spark_collected=0 spark_expired=0 issued=0 resolved=0 bank=0 score=35 pickups_created=1 pick
+INFO: M1 seed=7382 tick=871 wave=34 phase=spawning elapsed=780 event=spawn id=12 value=1 spawned=12 killed=1 removed=0 spark_created=2 spark_collected=0 spark_expired=0 issued=0 resolved=0 bank=0 score=35 pickups_created=1 pick
+INFO: M3 enemy id=12 kind=2 hp=350 x=1264.0 y=415.2
+INFO: M1 seed=7382 tick=882 wave=34 phase=spawning elapsed=791 event=projectile_launched id=1 value=6 spawned=12 killed=1 removed=0 spark_created=2 spark_collected=0 spark_expired=0 issued=0 resolved=0 bank=0 score=35 pickups_created=1 pick
+INFO: M1 seed=7382 tick=921 wave=34 phase=spawning elapsed=830 event=kill id=8 value=2 spawned=12 killed=2 removed=0 spark_created=4 spark_collected=0 spark_expired=0 issued=0 resolved=0 bank=0 score=70 pickups_created=2 pick
+INFO: M1 seed=7382 tick=945 wave=34 phase=spawning elapsed=854 event=skitter_windup id=9 value=0 spawned=12 killed=2 removed=0 spark_created=4 spark_collected=0 spark_expired=0 issued=0 resolved=0 bank=0 score=70 pickups_created=2 pick
+INFO: M1 seed=7382 tick=982 wave=34 phase=spawning elapsed=891 event=echo_created id=3 value=24 spawned=12 killed=2 removed=0 spark_created=4 spark_collected=0 spark_expired=0 issued=0 resolved=0 bank=0 score=70 pickups_created=2 pick
+INFO: M1 seed=7382 tick=1029 wave=34 phase=spawning elapsed=938 event=skitter_burst id=9 value=0 spawned=12 killed=2 removed=0 spark_created=4 spark_collected=0 spark_expired=0 issued=0 resolved=0 bank=0 score=70 pickups_created=2 pick
+INFO: M1 seed=7382 tick=1051 wave=34 phase=spawning elapsed=960 event=spawn id=13 value=2 spawned=13 killed=2 removed=0 spark_created=4 spark_collected=0 spark_expired=0 issued=0 resolved=0 bank=0 score=70 pickups_created=2 pick
+INFO: M3 enemy id=13 kind=3 hp=600 x=626.4 y=728.0
+INFO: M1 seed=7382 tick=1051 wave=34 phase=spawning elapsed=960 event=spawn id=14 value=3 spawned=14 killed=2 removed=0 spark_created=4 spark_collected=0 spark_expired=0 issued=0 resolved=0 bank=0 score=70 pickups_created=2 pick
+INFO: M3 enemy id=14 kind=4 hp=1000 x=1252.0 y=413.4
+INFO: M1 seed=7382 tick=1125 wave=34 phase=spawning elapsed=1034 event=skitter_windup id=12 value=0 spawned=14 killed=2 removed=0 spark_created=4 spark_collected=0 spark_expired=0 issued=0 resolved=0 bank=0 score=70 pickups_created=2 pick
+INFO: M1 seed=7382 tick=1171 wave=34 phase=spawning elapsed=1080 event=spawn id=15 value=2 spawned=15 killed=2 removed=0 spark_created=4 spark_collected=0 spark_expired=0 issued=0 resolved=0 bank=0 score=70 pickups_created=2 pick
+INFO: M3 enemy id=15 kind=5 hp=600 x=614.9 y=97.0
+INFO: M1 seed=7382 tick=1182 wave=34 phase=spawning elapsed=1091 event=sower_warning id=11 value=1 spawned=15 killed=2 removed=0 spark_created=4 spark_collected=0 spark_expired=0 issued=0 resolved=0 bank=0 score=70 pickups_created=2 pick
+INFO: M1 seed=7382 tick=1204 wave=34 phase=spawning elapsed=1113 event=pickup id=5 value=0 spawned=15 killed=2 removed=0 spark_created=4 spark_collected=2 spark_expired=0 issued=0 resolved=0 bank=2 score=80 pickups_created=2 pick
+INFO: M1 seed=7382 tick=1209 wave=34 phase=spawning elapsed=1118 event=skitter_burst id=12 value=0 spawned=15 killed=2 removed=0 spark_created=4 spark_collected=2 spark_expired=0 issued=0 resolved=0 bank=2 score=80 pickups_created=2 pick
+INFO: M1 seed=7382 tick=1224 wave=34 phase=spawning elapsed=1133 event=kill id=4 value=1 spawned=15 killed=3 removed=0 spark_created=5 spark_collected=2 spark_expired=0 issued=0 resolved=0 bank=2 score=90 pickups_created=3 pick
+INFO: M1 seed=7382 tick=1230 wave=34 phase=spawning elapsed=1139 event=pickup id=8 value=0 spawned=15 killed=3 removed=0 spark_created=5 spark_collected=4 spark_expired=0 issued=0 resolved=0 bank=4 score=100 pickups_created=3 pick
+INFO: M1 seed=7382 tick=1249 wave=34 phase=spawning elapsed=1158 event=spitter_warning id=6 value=2 spawned=15 killed=3 removed=0 spark_created=5 spark_collected=4 spark_expired=0 issued=0 resolved=0 bank=4 score=100 pickups_created=3 pick
+INFO: M1 seed=7382 tick=1279 wave=34 phase=spawning elapsed=1188 event=spitter_locked id=6 value=0 spawned=15 killed=3 removed=0 spark_created=5 spark_collected=4 spark_expired=0 issued=0 resolved=0 bank=4 score=100 pickups_created=3 pick
+INFO: M1 seed=7382 tick=1291 wave=34 phase=spawning elapsed=1200 event=skitter_windup id=7 value=0 spawned=15 killed=3 removed=0 spark_created=5 spark_collected=4 spark_expired=0 issued=0 resolved=0 bank=4 score=100 pickups_created=3 pick
+INFO: M1 seed=7382 tick=1342 wave=34 phase=spawning elapsed=1251 event=echo_created id=4 value=24 spawned=15 killed=3 removed=0 spark_created=5 spark_collected=4 spark_expired=0 issued=0 resolved=0 bank=4 score=100 pickups_created=3 pick
+INFO: M1 seed=7382 tick=1357 wave=34 phase=spawning elapsed=1266 event=projectile_launched id=2 value=6 spawned=15 killed=3 removed=0 spark_created=5 spark_collected=4 spark_expired=0 issued=0 resolved=0 bank=4 score=100 pickups_created=3 pick
+INFO: M1 seed=7382 tick=1374 wave=34 phase=spawning elapsed=1283 event=spitter_warning id=13 value=3 spawned=15 killed=3 removed=0 spark_created=5 spark_collected=4 spark_expired=0 issued=0 resolved=0 bank=4 score=100 pickups_created=3 pick
+INFO: M1 seed=7382 tick=1375 wave=34 phase=spawning elapsed=1284 event=skitter_burst id=7 value=0 spawned=15 killed=3 removed=0 spark_created=5 spark_collected=4 spark_expired=0 issued=0 resolved=0 bank=4 score=100 pickups_created=3 pick
+INFO: M1 seed=7382 tick=1404 wave=34 phase=spawning elapsed=1313 event=spitter_locked id=13 value=0 spawned=15 killed=3 removed=0 spark_created=5 spark_collected=4 spark_expired=0 issued=0 resolved=0 bank=4 score=100 pickups_created=3 pick
+INFO: M1 seed=7382 tick=1411 wave=34 phase=spawning elapsed=1320 event=spawn id=16 value=1 spawned=16 killed=3 removed=0 spark_created=5 spark_collected=4 spark_expired=0 issued=0 resolved=0 bank=4 score=100 pickups_created=3 pick
+INFO: M3 enemy id=16 kind=0 hp=350 x=19.0 y=410.6
+INFO: M1 seed=7382 tick=1415 wave=34 phase=spawning elapsed=1324 event=skitter_windup id=9 value=0 spawned=16 killed=3 removed=0 spark_created=5 spark_collected=4 spark_expired=0 issued=0 resolved=0 bank=4 score=100 pickups_created=3 pick
+INFO: M1 seed=7382 tick=1482 wave=34 phase=spawning elapsed=1391 event=projectile_launched id=3 value=13 spawned=16 killed=3 removed=0 spark_created=5 spark_collected=4 spark_expired=0 issued=0 resolved=0 bank=4 score=100 pickups_created=3 pick
+INFO: M1 seed=7382 tick=1499 wave=34 phase=spawning elapsed=1408 event=skitter_burst id=9 value=0 spawned=16 killed=3 removed=0 spark_created=5 spark_collected=4 spark_expired=0 issued=0 resolved=0 bank=4 score=100 pickups_created=3 pick
+INFO: M1 seed=7382 tick=1542 wave=34 phase=spawning elapsed=1451 event=sower_warning id=15 value=2 spawned=16 killed=3 removed=0 spark_created=5 spark_collected=4 spark_expired=0 issued=0 resolved=0 bank=4 score=100 pickups_created=3 pick
+INFO: M1 seed=7382 tick=1555 wave=34 phase=spawning elapsed=1464 event=spawn id=17 value=1 spawned=17 killed=3 removed=0 spark_created=5 spark_collected=4 spark_expired=0 issued=0 resolved=0 bank=4 score=100 pickups_created=3 pick
+INFO: M3 enemy id=17 kind=0 hp=350 x=19.0 y=416.3
+INFO: M1 seed=7382 tick=1581 wave=34 phase=spawning elapsed=1490 event=skitter_windup id=12 value=0 spawned=17 killed=3 removed=0 spark_created=5 spark_collected=4 spark_expired=0 issued=0 resolved=0 bank=4 score=100 pickups_created=3 pick
+INFO: M1 seed=7382 tick=1591 wave=34 phase=spawning elapsed=1500 event=spawn id=18 value=2 spawned=18 killed=3 removed=0 spark_created=5 spark_collected=4 spark_expired=0 issued=0 resolved=0 bank=4 score=100 pickups_created=3 pick
+INFO: M3 enemy id=18 kind=1 hp=900 x=652.9 y=101.0
+INFO: M1 seed=7382 tick=1624 wave=34 phase=spawning elapsed=1533 event=pickup id=4 value=0 spawned=18 killed=3 removed=0 spark_created=5 spark_collected=5 spark_expired=0 issued=0 resolved=0 bank=5 score=105 pickups_created=3 pick
+INFO: M1 seed=7382 tick=1662 wave=34 phase=spawning elapsed=1571 event=sower_warning id=11 value=3 spawned=18 killed=3 removed=0 spark_created=5 spark_collected=5 spark_expired=0 issued=0 resolved=0 bank=5 score=105 pickups_created=3 pick
+INFO: M1 seed=7382 tick=1665 wave=34 phase=spawning elapsed=1574 event=skitter_burst id=12 value=0 spawned=18 killed=3 removed=0 spark_created=5 spark_collected=5 spark_expired=0 issued=0 resolved=0 bank=5 score=105 pickups_created=3 pick
+INFO: M1 seed=7382 tick=1699 wave=34 phase=spawning elapsed=1608 event=spawn id=19 value=1 spawned=19 killed=3 removed=0 spark_created=5 spark_collected=5 spark_expired=0 issued=0 resolved=0 bank=5 score=105 pickups_created=3 pick
+INFO: M3 enemy id=19 kind=0 hp=350 x=19.0 y=409.5
+INFO: M1 seed=7382 tick=1702 wave=34 phase=spawning elapsed=1611 event=echo_created id=5 value=24 spawned=19 killed=3 removed=0 spark_created=5 spark_collected=5 spark_expired=0 issued=0 resolved=0 bank=5 score=105 pickups_created=3 pick
+INFO: M1 seed=7382 tick=1705 wave=34 phase=spawning elapsed=1614 event=spitter_warning id=6 value=4 spawned=19 killed=3 removed=0 spark_created=5 spark_collected=5 spark_expired=0 issued=0 resolved=0 bank=5 score=105 pickups_created=3 pick
+INFO: M1 seed=7382 tick=1735 wave=34 phase=spawning elapsed=1644 event=spitter_locked id=6 value=0 spawned=19 killed=3 removed=0 spark_created=5 spark_collected=5 spark_expired=0 issued=0 resolved=0 bank=5 score=105 pickups_created=3 pick
+INFO: M1 seed=7382 tick=1757 wave=34 phase=spawning elapsed=1666 event=kill id=12 value=1 spawned=19 killed=4 removed=0 spark_created=6 spark_collected=5 spark_expired=0 issued=0 resolved=0 bank=5 score=120 pickups_created=4 pick
+INFO: M1 seed=7382 tick=1771 wave=34 phase=spawning elapsed=1680 event=spawn id=20 value=2 spawned=20 killed=4 removed=0 spark_created=6 spark_collected=5 spark_expired=0 issued=0 resolved=0 bank=5 score=120 pickups_created=4 pick
+INFO: M3 enemy id=20 kind=1 hp=900 x=648.8 y=101.0
+INFO: M1 seed=7382 tick=1771 wave=34 phase=spawning elapsed=1680 event=spawn id=21 value=2 spawned=21 killed=4 removed=0 spark_created=6 spark_collected=5 spark_expired=0 issued=0 resolved=0 bank=5 score=120 pickups_created=4 pick
+INFO: M3 enemy id=21 kind=3 hp=600 x=616.9 y=96.0
+INFO: M1 seed=7382 tick=1771 wave=34 phase=spawning elapsed=1680 event=skitter_windup id=7 value=0 spawned=21 killed=4 removed=0 spark_created=6 spark_collected=5 spark_expired=0 issued=0 resolved=0 bank=5 score=120 pickups_created=4 pick
+INFO: M1 seed=7382 tick=1813 wave=34 phase=spawning elapsed=1722 event=projectile_launched id=4 value=6 spawned=21 killed=4 removed=0 spark_created=6 spark_collected=5 spark_expired=0 issued=0 resolved=0 bank=5 score=120 pickups_created=4 pick
+INFO: M1 seed=7382 tick=1814 wave=34 phase=spawning elapsed=1723 event=spitter_warning id=13 value=5 spawned=21 killed=4 removed=0 spark_created=6 spark_collected=5 spark_expired=0 issued=0 resolved=0 bank=5 score=120 pickups_created=4 pick
+INFO: M1 seed=7382 tick=1831 wave=34 phase=spawning elapsed=1740 event=spawn id=22 value=1 spawned=22 killed=4 removed=0 spark_created=6 spark_collected=5 spark_expired=0 issued=0 resolved=0 bank=5 score=120 pickups_created=4 pick
+INFO: M3 enemy id=22 kind=2 hp=350 x=16.0 y=413.1
+INFO: M1 seed=7382 tick=1844 wave=34 phase=spawning elapsed=1753 event=spitter_locked id=13 value=0 spawned=22 killed=4 removed=0 spark_created=6 spark_collected=5 spark_expired=0 issued=0 resolved=0 bank=5 score=120 pickups_created=4 pick
+INFO: M1 seed=7382 tick=1855 wave=34 phase=spawning elapsed=1764 event=skitter_burst id=7 value=0 spawned=22 killed=4 removed=0 spark_created=6 spark_collected=5 spark_expired=0 issued=0 resolved=0 bank=5 score=120 pickups_created=4 pick
+INFO: M1 seed=7382 tick=1865 wave=34 phase=spawning elapsed=1774 event=player_damage id=19 value=1400 spawned=22 killed=4 removed=0 spark_created=6 spark_collected=5 spark_expired=0 issued=0 resolved=0 bank=5 score=120 pickups_created=4 pick
+INFO: M1 seed=7382 tick=1895 wave=34 phase=spawning elapsed=1804 event=skitter_windup id=9 value=0 spawned=22 killed=4 removed=0 spark_created=6 spark_collected=5 spark_expired=0 issued=0 resolved=0 bank=5 score=120 pickups_created=4 pick
+INFO: M1 seed=7382 tick=1922 wave=34 phase=spawning elapsed=1831 event=projectile_launched id=5 value=13 spawned=22 killed=4 removed=0 spark_created=6 spark_collected=5 spark_expired=0 issued=0 resolved=0 bank=5 score=120 pickups_created=4 pick
+INFO: M1 seed=7382 tick=1940 wave=34 phase=spawning elapsed=1849 event=kill id=19 value=1 spawned=22 killed=5 removed=0 spark_created=7 spark_collected=5 spark_expired=0 issued=0 resolved=0 bank=5 score=130 pickups_created=5 pick
+INFO: M1 seed=7382 tick=1951 wave=34 phase=spawning elapsed=1860 event=spawn id=23 value=2 spawned=23 killed=5 removed=0 spark_created=7 spark_collected=5 spark_expired=0 issued=0 resolved=0 bank=5 score=130 pickups_created=5 pick
+INFO: M3 enemy id=23 kind=1 hp=900 x=641.4 y=101.0
+INFO: M1 seed=7382 tick=1979 wave=34 phase=spawning elapsed=1888 event=skitter_burst id=9 value=0 spawned=23 killed=5 removed=0 spark_created=7 spark_collected=5 spark_expired=0 issued=0 resolved=0 bank=5 score=130 pickups_created=5 pick
+INFO: M1 seed=7382 tick=2005 wave=34 phase=spawning elapsed=1914 event=kill id=17 value=1 spawned=23 killed=6 removed=0 spark_created=8 spark_collected=5 spark_expired=0 issued=0 resolved=0 bank=5 score=140 pickups_created=6 pick
+INFO: M1 seed=7382 tick=2011 wave=34 phase=spawning elapsed=1920 event=spawn id=24 value=1 spawned=24 killed=6 removed=0 spark_created=8 spark_collected=5 spark_expired=0 issued=0 resolved=0 bank=5 score=140 pickups_created=6 pick
+INFO: M3 enemy id=24 kind=2 hp=350 x=16.0 y=406.7
+INFO: M1 seed=7382 tick=2022 wave=34 phase=spawning elapsed=1931 event=sower_warning id=15 value=4 spawned=24 killed=6 removed=0 spark_created=8 spark_collected=5 spark_expired=0 issued=0 resolved=0 bank=5 score=140 pickups_created=6 pick
+INFO: M1 seed=7382 tick=2050 wave=34 phase=spawning elapsed=1959 event=kill id=15 value=2 spawned=24 killed=7 removed=0 spark_created=10 spark_collected=5 spark_expired=0 issued=0 resolved=0 bank=5 score=170 pickups_created=7 pick
+INFO: M1 seed=7382 tick=2050 wave=34 phase=spawning elapsed=1959 event=pickup id=15 value=0 spawned=24 killed=7 removed=0 spark_created=10 spark_collected=7 spark_expired=0 issued=0 resolved=0 bank=7 score=180 pickups_created=7 pick
+INFO: M1 seed=7382 tick=2062 wave=34 phase=spawning elapsed=1971 event=echo_created id=6 value=24 spawned=24 killed=7 removed=0 spark_created=10 spark_collected=7 spark_expired=0 issued=0 resolved=0 bank=7 score=180 pickups_created=7 pick
+INFO: M1 seed=7382 tick=2075 wave=34 phase=spawning elapsed=1984 event=echo_hit id=18 value=124 spawned=24 killed=7 removed=0 spark_created=10 spark_collected=7 spark_expired=0 issued=0 resolved=0 bank=7 score=180 pickups_created=7 pick
+INFO: M1 seed=7382 tick=2085 wave=34 phase=spawning elapsed=1994 event=skitter_windup id=22 value=0 spawned=24 killed=7 removed=0 spark_created=10 spark_collected=7 spark_expired=0 issued=0 resolved=0 bank=7 score=180 pickups_created=7 pick
+INFO: M1 seed=7382 tick=2094 wave=34 phase=spawning elapsed=2003 event=spitter_warning id=21 value=6 spawned=24 killed=7 removed=0 spark_created=10 spark_collected=7 spark_expired=0 issued=0 resolved=0 bank=7 score=180 pickups_created=7 pick
+INFO: M1 seed=7382 tick=2108 wave=34 phase=spawning elapsed=2017 event=pickup id=12 value=0 spawned=24 killed=7 removed=0 spark_created=10 spark_collected=8 spark_expired=0 issued=0 resolved=0 bank=8 score=185 pickups_created=7 pick
+INFO: M1 seed=7382 tick=2124 wave=34 phase=spawning elapsed=2033 event=spitter_locked id=21 value=0 spawned=24 killed=7 removed=0 spark_created=10 spark_collected=8 spark_expired=0 issued=0 resolved=0 bank=8 score=185 pickups_created=7 pick
+INFO: M1 seed=7382 tick=2131 wave=34 phase=spawning elapsed=2040 event=spawn id=25 value=2 spawned=25 killed=7 removed=0 spark_created=10 spark_collected=8 spark_expired=0 issued=0 resolved=0 bank=8 score=185 pickups_created=7 pick
+INFO: M3 enemy id=25 kind=5 hp=600 x=624.4 y=727.0
+INFO: M1 seed=7382 tick=2136 wave=34 phase=spawning elapsed=2045 event=kill id=22 value=1 spawned=25 killed=8 removed=0 spark_created=11 spark_collected=8 spark_expired=0 issued=0 resolved=0 bank=8 score=200 pickups_created=8 pick
+INFO: M1 seed=7382 tick=2137 wave=34 phase=spawning elapsed=2046 event=spitter_warning id=6 value=7 spawned=25 killed=8 removed=0 spark_created=11 spark_collected=8 spark_expired=0 issued=0 resolved=0 bank=8 score=200 pickups_created=8 pick
+INFO: M1 seed=7382 tick=2167 wave=34 phase=spawning elapsed=2076 event=spitter_locked id=6 value=0 spawned=25 killed=8 removed=0 spark_created=11 spark_collected=8 spark_expired=0 issued=0 resolved=0 bank=8 score=200 pickups_created=8 pick
+INFO: M1 seed=7382 tick=2191 wave=34 phase=spawning elapsed=2100 event=spawn id=26 value=1 spawned=26 killed=8 removed=0 spark_created=11 spark_collected=8 spark_expired=0 issued=0 resolved=0 bank=8 score=200 pickups_created=8 pick
+INFO: M3 enemy id=26 kind=2 hp=350 x=16.0 y=413.4
+INFO: M1 seed=7382 tick=2202 wave=34 phase=spawning elapsed=2111 event=projectile_launched id=6 value=21 spawned=26 killed=8 removed=0 spark_created=11 spark_collected=8 spark_expired=0 issued=0 resolved=0 bank=8 score=200 pickups_created=8 pick
+INFO: M1 seed=7382 tick=2203 wave=34 phase=spawning elapsed=2112 event=sower_warning id=11 value=5 spawned=26 killed=8 removed=0 spark_created=11 spark_collected=8 spark_expired=0 issued=0 resolved=0 bank=8 score=200 pickups_created=8 pick
+INFO: M1 seed=7382 tick=2245 wave=34 phase=spawning elapsed=2154 event=projectile_launched id=7 value=6 spawned=26 killed=8 removed=0 spark_created=11 spark_collected=8 spark_expired=0 issued=0 resolved=0 bank=8 score=200 pickups_created=8 pick
+INFO: M1 seed=7382 tick=2246 wave=34 phase=spawning elapsed=2155 event=skitter_windup id=7 value=0 spawned=26 killed=8 removed=0 spark_created=11 spark_collected=8 spark_expired=0 issued=0 resolved=0 bank=8 score=200 pickups_created=8 pick
+INFO: M1 seed=7382 tick=2312 wave=34 phase=spawning elapsed=2221 event=spitter_warning id=13 value=8 spawned=26 killed=8 removed=0 spark_created=11 spark_collected=8 spark_expired=0 issued=0 resolved=0 bank=8 score=200 pickups_created=8 pick
+INFO: M1 seed=7382 tick=2330 wave=34 phase=spawning elapsed=2239 event=skitter_burst id=7 value=0 spawned=26 killed=8 removed=0 spark_created=11 spark_collected=8 spark_expired=0 issued=0 resolved=0 bank=8 score=200 pickups_created=8 pick
+INFO: M1 seed=7382 tick=2342 wave=34 phase=spawning elapsed=2251 event=spitter_locked id=13 value=0 spawned=26 killed=8 removed=0 spark_created=11 spark_collected=8 spark_expired=0 issued=0 resolved=0 bank=8 score=200 pickups_created=8 pick
+INFO: M1 seed=7382 tick=2360 wave=34 phase=spawning elapsed=2269 event=player_damage id=24 value=1800 spawned=26 killed=8 removed=0 spark_created=11 spark_collected=8 spark_expired=0 issued=0 resolved=0 bank=8 score=200 pickups_created=8 pick
+INFO: M1 seed=7382 tick=2362 wave=34 phase=spawning elapsed=2271 event=kill id=24 value=1 spawned=26 killed=9 removed=0 spark_created=12 spark_collected=8 spark_expired=0 issued=0 resolved=0 bank=8 score=215 pickups_created=9 pick
+INFO: M1 seed=7382 tick=2362 wave=34 phase=spawning elapsed=2271 event=pickup id=24 value=0 spawned=26 killed=9 removed=0 spark_created=12 spark_collected=9 spark_expired=0 issued=0 resolved=0 bank=9 score=220 pickups_created=9 pick
+INFO: M1 seed=7382 tick=2370 wave=34 phase=spawning elapsed=2279 event=skitter_windup id=9 value=0 spawned=26 killed=9 removed=0 spark_created=12 spark_collected=9 spark_expired=0 issued=0 resolved=0 bank=9 score=220 pickups_created=9 pick
+INFO: M1 seed=7382 tick=2371 wave=34 phase=spawning elapsed=2280 event=spawn id=27 value=2 spawned=27 killed=9 removed=0 spark_created=12 spark_collected=9 spark_expired=0 issued=0 resolved=0 bank=9 score=220 pickups_created=9 pick
+INFO: M3 enemy id=27 kind=3 hp=600 x=609.5 y=96.0
+INFO: M1 seed=7382 tick=2371 wave=34 phase=spawning elapsed=2280 event=spawn id=28 value=3 spawned=28 killed=9 removed=0 spark_created=12 spark_collected=9 spark_expired=0 issued=0 resolved=0 bank=9 score=220 pickups_created=9 pick
+INFO: M3 enemy id=28 kind=4 hp=1000 x=28.0 y=400.6
+INFO: M1 seed=7382 tick=2383 wave=34 phase=spawning elapsed=2292 event=pickup id=19 value=0 spawned=28 killed=9 removed=0 spark_created=12 spark_collected=10 spark_expired=0 issued=0 resolved=0 bank=10 score=225 pickups_created=9 pick
+INFO: TEXTURE: [ID 2] Unloaded texture data from VRAM (GPU)
+INFO: SHADER: [ID 3] Default shader unloaded successfully
+INFO: TEXTURE: [ID 1] Default texture unloaded successfully
+INFO: Window closed successfully

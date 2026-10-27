@@ -23,6 +23,9 @@ struct Frame {
     std::uint64_t number = 0;
     double elapsedSeconds = 0, intervalMs = 0, raylibFrameMs = 0;
     double updateMs = 0, simulationMs = 0, drawMs = 0, presentMs = 0;
+    double gpuRenderMs = -1.0;
+    std::uint64_t gpuSourceFrame = 0;
+    bool gpuTimerSupported = false;
     double discardedMs = 0;
     int steps = 0, wave = 0, width = 0, height = 0;
     const char* mode = "", *phase = "";
@@ -56,12 +59,16 @@ public:
     const FrameHistogram& intervals() const { return intervals_; }
     double discardedMs() const { return discardedMs_; }
     std::uint64_t discardedFrames() const { return discardedFrames_; }
+    const FrameHistogram& gpuRenderTimes() const { return gpuRenderTimes_; }
+    std::uint64_t gpuRenderSamples() const { return gpuRenderSamples_; }
     bool healthy() const { return healthy_; }
 private:
     std::ofstream output_;
     FrameHistogram intervals_;
+    FrameHistogram gpuRenderTimes_;
     double discardedMs_ = 0;
     std::uint64_t discardedFrames_ = 0;
+    std::uint64_t gpuRenderSamples_ = 0;
     bool healthy_ = false;
 };
 
