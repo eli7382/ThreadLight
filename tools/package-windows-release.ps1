@@ -1,11 +1,12 @@
 [CmdletBinding()]
 param(
-    [string]$OutputDirectory = (Join-Path (Split-Path -Parent $PSScriptRoot) 'portable-release'),
+    [string]$OutputDirectory = '',
     [switch]$SkipBuild
 )
 
 $ErrorActionPreference = 'Stop'
 $repo = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
+if (-not $OutputDirectory) { $OutputDirectory = Join-Path (Split-Path -Parent $repo) 'portable-release' }
 $output = [System.IO.Path]::GetFullPath($OutputDirectory)
 $build = Join-Path $repo 'build-windows-msvc'
 $exe = Join-Path $build 'Release\Threadlight.exe'
