@@ -48,7 +48,7 @@ inline int moveSelection(int selection, int direction, int optionCount) {
 }
 
 inline int settingsFocusCount(int tab) {
-    return tab == 0 ? 3 : 2;
+    return tab == 0 ? 4 : 2;
 }
 
 inline void switchSettingsTab(int& tab, int& focus) {

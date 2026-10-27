@@ -15,6 +15,9 @@ struct MemorySample {
 
 // Windows reports process memory; other platforms report unavailable.
 MemorySample processMemory();
+// Windows QPC clock, in milliseconds, for aligning with PresentMon captures.
+// Other platforms return zero.
+double queryClockMilliseconds();
 
 struct Frame {
     std::uint64_t number = 0;
@@ -29,6 +32,9 @@ struct Frame {
     bool gpuQueueActive = false;
     std::size_t gpuQueueDepth = 0;
     double gpuWaitMs = 0;
+    int configuredFps = 0, effectiveFps = 0, monitorHz = 0;
+    bool vsyncRequested = false, focused = false;
+    double frameQpcMs = 0;
 };
 
 // Bounded histogram: 0.1 ms buckets through 1000 ms, plus an overflow bucket.

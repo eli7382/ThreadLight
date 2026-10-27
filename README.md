@@ -38,6 +38,12 @@ with `--gpu-queue`. Its implementation, capped validation, and limitations are
 documented in [GPU-QUEUE-PROTOTYPE.md](GPU-QUEUE-PROTOTYPE.md). A normal launch
 keeps the prototype disabled.
 
+**Settings → Video → VSync** is a separate, saved, opt-in control. It requests
+display-synchronized presentation and can constrain output to the display refresh
+rate even when a higher software FPS limit or Unlimited is selected. Existing
+profiles default to VSync off. See [PRESENTATION-PACING.md](PRESENTATION-PACING.md)
+for the measured Windows presentation investigation and its limitations.
+
 M1-M6 are accepted; M7 is a feature-branch candidate for owner acceptance. Historical Phase 2.2 pre-release package notes describe that older test package, not the status of the approved source baseline. The root `Threadlight.exe` is preserved and is not rebuilt by these changes; launch the new executable from its build directory.
 
 ### Manual listening check
