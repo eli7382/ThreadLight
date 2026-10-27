@@ -12,7 +12,7 @@ The process working set peaked at **203.7–205.1 MiB** across the capture sampl
 
 ## Measurements
 
-The table shows the median of three run-level percentiles per condition. `EndDrawing` is CPU wall time and is not a GPU timing. GPU percentiles are asynchronous OpenGL `GL_TIME_ELAPSED` query results, attributed to their source frame; query results were available for at least 1,198 of about 1,200 frames at 60 FPS and 2,365 of about 2,380 at 120 FPS per condition.
+The table shows the median of three run-level percentiles per condition. Update wall time includes the simulation interval, so those two p95 columns overlap and must not be added. `EndDrawing` is CPU wall time and is not a GPU timing. GPU percentiles are asynchronous OpenGL `GL_TIME_ELAPSED` query results, attributed to their source frame; query results were available for at least 1,198 of about 1,200 frames at 60 FPS and 2,365 of about 2,380 at 120 FPS per condition.
 
 | Encounter | Cap | Actual FPS (mean ± run SD) | Frame p50 / p95 / p99 (ms) | GPU p50 / p95 / p99 (ms) | Update / simulation / draw submit p95 (ms) | `EndDrawing` p50 / p95 (ms) | Worst frame (ms) | >12.5 ms frames | Sim time discarded |
 |---|---:|---:|---:|---:|---:|---:|---:|---:|---:|
