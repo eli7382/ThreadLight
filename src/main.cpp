@@ -534,14 +534,14 @@ int main(int argc, char** argv){
  };
   auto drawText=[&](const char* s,int x,int y,int size,Color c){DrawText(s,x,y,size,c);};
   auto paletteColor=[](cosmetics::Rgba color){return C(color.r,color.g,color.b,color.a);};
-  const auto& playerPalette=cosmetics::palette(cosmetics::normalizePalette(
+  const cosmetics::Palette* playerPalette=&cosmetics::palette(cosmetics::normalizePalette(
       static_cast<int>(appSettings.selectedPalette),appSettings.violetAscendantUnlocked));
   auto applyMenuAction=[&](threadlight::menu::Action action){threadlight::menu::apply(mode,settingsReturn,exitRequested,exitSelection,action);};
   auto changeFrameLimit=[&](int value){if(!threadlight::settings::validFrameRateLimit(value)||value==appSettings.frameRateLimit)return;appSettings.frameRateLimit=value;settingsEdits.dirty=true;saveSettings();};
   auto changeShowFps=[&](){appSettings.showFps=!appSettings.showFps;if(appSettings.showFps)measuredFps=threadlight::timing::initialMeasuredFps(lastFrameSeconds);settingsEdits.dirty=true;saveSettings();};
   auto changeVsync=[&](){appSettings.vsync=!appSettings.vsync;applyVsync();settingsEdits.dirty=true;saveSettings();};
   auto changeSfxVolume=[&](int value,bool persist=true){value=std::clamp(value,0,100);if(value==appSettings.sfxVolumePercent)return;appSettings.sfxVolumePercent=value;settingsEdits.dirty=true;sfx.setMasterVolume(value/100.0f);if(persist)saveSettings();};
-  auto changePalette=[&](cosmetics::PaletteId palette){if(appSettings.selectedPalette==palette)return;if(!threadlight::settings::selectPalette(appSettings,palette))return;settingsEdits.dirty=true;saveSettings();};
+  auto changePalette=[&](cosmetics::PaletteId palette){if(appSettings.selectedPalette==palette)return;if(!threadlight::settings::selectPalette(appSettings,palette))return;playerPalette=&cosmetics::palette(cosmetics::normalizePalette(static_cast<int>(appSettings.selectedPalette),appSettings.violetAscendantUnlocked));settingsEdits.dirty=true;saveSettings();};
   auto contains=[](Rectangle rectangle,Vector2 point){return CheckCollisionPointRec(point,rectangle);};
   auto buttonRect=[&](int index,int count,float centerY,float width=300.f,float height=46.f,float gap=54.f){return Rectangle{(SW-width)*.5f,centerY+(index-(count-1)*.5f)*gap-height*.5f,width,height};};
   auto mainButton=[&](int index){return buttonRect(index,5,SH*.5f+86.f,310.f,38.f,43.f);};
@@ -1329,9 +1329,9 @@ int main(int argc, char** argv){
      const float age=age0+(age1-age0)*(t0+t1)*.5f;
      const float shimmer=.5f+.5f*std::sin(time*5.f-age*1.6f);
      const auto silk=threadlight::visual::silkAppearance(age,shimmer,stats.activeSilkSeconds);
-     Color halo=ColorLerp(paletteColor(playerPalette.silkHaloFresh),paletteColor(playerPalette.silkHaloAged),silk.ageBlend);
-     Color body=ColorLerp(paletteColor(playerPalette.silkBodyFresh),paletteColor(playerPalette.silkBodyAged),silk.ageBlend);
-     Color core=ColorLerp(paletteColor(playerPalette.silkCoreFresh),paletteColor(playerPalette.silkCoreAged),silk.ageBlend);
+      Color halo=ColorLerp(paletteColor(playerPalette->silkHaloFresh),paletteColor(playerPalette->silkHaloAged),silk.ageBlend);
+      Color body=ColorLerp(paletteColor(playerPalette->silkBodyFresh),paletteColor(playerPalette->silkBodyAged),silk.ageBlend);
+      Color core=ColorLerp(paletteColor(playerPalette->silkCoreFresh),paletteColor(playerPalette->silkCoreAged),silk.ageBlend);
      halo.a=(unsigned char)std::lround(silk.haloOpacity*255.f);
      body.a=(unsigned char)std::lround(silk.bodyOpacity*(.94f+.06f*shimmer)*255.f);
      core.a=(unsigned char)std::lround(silk.coreOpacity*255.f);
@@ -1346,9 +1346,9 @@ int main(int argc, char** argv){
    const float fade=.35f+.65f*(float)offensiveEcho.remainingTicks/afterimage::kEchoTicks;
    for(size_t i=1;i<offensiveEcho.count;++i){
     const Vector2 a{offensiveEcho.path[i-1].x,offensiveEcho.path[i-1].y},b{offensiveEcho.path[i].x,offensiveEcho.path[i].y};
-    DrawLineEx(a,b,afterimage::kHalfWidth*2,paletteColor(cosmetics::withAlpha(playerPalette.afterimageHalo,(unsigned char)(30*fade))));
-    DrawLineEx(a,b,3.f,paletteColor(cosmetics::withAlpha(playerPalette.afterimageCore,(unsigned char)(190*fade))));
-    if(i%4==0)DrawCircleV(a,2.4f,paletteColor(cosmetics::withAlpha(playerPalette.afterimageSpark,(unsigned char)(160*fade))));
+    DrawLineEx(a,b,afterimage::kHalfWidth*2,paletteColor(cosmetics::withAlpha(playerPalette->afterimageHalo,(unsigned char)(30*fade))));
+    DrawLineEx(a,b,3.f,paletteColor(cosmetics::withAlpha(playerPalette->afterimageCore,(unsigned char)(190*fade))));
+    if(i%4==0)DrawCircleV(a,2.4f,paletteColor(cosmetics::withAlpha(playerPalette->afterimageSpark,(unsigned char)(160*fade))));
    }
   }
   // A short, bright trail behind the dashing player communicates direction
@@ -1358,12 +1358,12 @@ int main(int argc, char** argv){
    for(size_t i=previousDashEchoCount-1;i>0;i--){
     const float ageWeight=.25f+.75f*(1.f-(float)(i-1)/(float)(previousDashEchoCount-1));
     const unsigned char glow=(unsigned char)(86.f*fade*ageWeight),core=(unsigned char)(230.f*fade*ageWeight);
-    DrawLineEx(cv(previousDashEcho[i]),cv(previousDashEcho[i-1]),7.f*fade,paletteColor(cosmetics::withAlpha(playerPalette.dashHalo,glow)));
-    DrawLineEx(cv(previousDashEcho[i]),cv(previousDashEcho[i-1]),2.4f*fade,paletteColor(cosmetics::withAlpha(playerPalette.dashCore,core)));
-    DrawCircleV(cv(previousDashEcho[i]),radius*.72f,paletteColor(cosmetics::withAlpha(playerPalette.dashSpark,(unsigned char)(145.f*fade*ageWeight))));
+    DrawLineEx(cv(previousDashEcho[i]),cv(previousDashEcho[i-1]),7.f*fade,paletteColor(cosmetics::withAlpha(playerPalette->dashHalo,glow)));
+    DrawLineEx(cv(previousDashEcho[i]),cv(previousDashEcho[i-1]),2.4f*fade,paletteColor(cosmetics::withAlpha(playerPalette->dashCore,core)));
+    DrawCircleV(cv(previousDashEcho[i]),radius*.72f,paletteColor(cosmetics::withAlpha(playerPalette->dashSpark,(unsigned char)(145.f*fade*ageWeight))));
    }
-   DrawLineEx(cv(previousDashEcho[0]),cv(shownPlayer),7.f*fade,paletteColor(cosmetics::withAlpha(playerPalette.dashHalo,(unsigned char)(86.f*fade))));
-   DrawLineEx(cv(previousDashEcho[0]),cv(shownPlayer),2.4f*fade,paletteColor(cosmetics::withAlpha(playerPalette.dashCore,(unsigned char)(230.f*fade))));
+   DrawLineEx(cv(previousDashEcho[0]),cv(shownPlayer),7.f*fade,paletteColor(cosmetics::withAlpha(playerPalette->dashHalo,(unsigned char)(86.f*fade))));
+   DrawLineEx(cv(previousDashEcho[0]),cv(shownPlayer),2.4f*fade,paletteColor(cosmetics::withAlpha(playerPalette->dashCore,(unsigned char)(230.f*fade))));
   }
   for(const auto& source:sparks){auto s=source.present(alpha);
    const bool expiring=foundation::isCombat(lifecycle.phase())&&s.pickup.combatAgeTicks>foundation::kPickupLifetimeTicks-360;
@@ -1580,14 +1580,14 @@ int main(int argc, char** argv){
   if(mode!=Mode::Title){
    const float impact=threadlight::visual::damageImpactStrength(shownDamageFeedback);
    const bool dashVisual=dashTime>0||dashVisualActive;
-   DrawCircleV(cv(shownPlayer),31,paletteColor(cosmetics::withAlpha(playerPalette.playerAuraOuter,playerPalette.playerAuraOuterAlpha)));
-   DrawCircleV(cv(shownPlayer),21,paletteColor(cosmetics::withAlpha(playerPalette.playerAuraInner,playerPalette.playerAuraInnerAlpha)));
+   DrawCircleV(cv(shownPlayer),31,paletteColor(cosmetics::withAlpha(playerPalette->playerAuraOuter,playerPalette->playerAuraOuterAlpha)));
+   DrawCircleV(cv(shownPlayer),21,paletteColor(cosmetics::withAlpha(playerPalette->playerAuraInner,playerPalette->playerAuraInnerAlpha)));
    if(impact>0)DrawCircleV(cv(shownPlayer),radius+13,C(242,76,101,(unsigned char)(35*impact)));
-   const Color rim=dashVisual?paletteColor(playerPalette.playerDashRim):ColorLerp(paletteColor(playerPalette.playerRim),C(255,133,151,235),impact*.72f);
-   const Color core=dashVisual?paletteColor(playerPalette.playerDashRim):ColorLerp(paletteColor(playerPalette.playerCore),C(255,171,181,255),impact*.48f);
+   const Color rim=dashVisual?paletteColor(playerPalette->playerDashRim):ColorLerp(paletteColor(playerPalette->playerRim),C(255,133,151,235),impact*.72f);
+   const Color core=dashVisual?paletteColor(playerPalette->playerDashRim):ColorLerp(paletteColor(playerPalette->playerCore),C(255,171,181,255),impact*.48f);
    DrawCircleV(cv(shownPlayer),radius+4,rim);
    DrawCircleV(cv(shownPlayer),radius,core);
-   if(dashVisual)DrawCircleLines((int)shownPlayer.x,(int)shownPlayer.y,radius+8,paletteColor(playerPalette.playerDashRim));
+   if(dashVisual)DrawCircleLines((int)shownPlayer.x,(int)shownPlayer.y,radius+8,paletteColor(playerPalette->playerDashRim));
    if(cocoon::barrierActive(cocoonState))DrawCircleLines((int)shownPlayer.x,(int)shownPlayer.y,radius+9,C(223,241,188,215));
    if(impact>0){const float ringRadius=threadlight::visual::damageRingRadius(radius,shownDamageFeedback);DrawRing(cv(shownPlayer),ringRadius,ringRadius+1.6f,0,360,48,C(255,118,139,(unsigned char)(100*impact)));}
   }
@@ -1906,6 +1906,8 @@ int main(int argc, char** argv){
     DrawRectangleRounded(award,.25f,12,C(35,24,70,235));
     DrawRectangleRoundedLines(award,.25f,12,C(174,127,255,(unsigned char)(175*pulse)));
     const Vector2 crest{award.x+29.f,award.y+20.f};
+    DrawCircleV(crest,18.f,C(119,62,245,(unsigned char)(20*reveal)));
+    DrawCircleV(crest,13.f,C(158,106,255,(unsigned char)(34*reveal)));
     DrawRing(crest,11.f,12.5f,18.f+(float)GetTime()*48.f,236.f+(float)GetTime()*48.f,36,C(192,154,255,(unsigned char)(155*reveal)));
     DrawCircleV(crest,5.f,C(227,205,255,(unsigned char)(255*reveal)));
     DrawText("VIOLET ASCENDANT UNLOCKED",(int)award.x+58,(int)award.y+12,14,C(239,224,255));
