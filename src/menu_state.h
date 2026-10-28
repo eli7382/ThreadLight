@@ -48,11 +48,11 @@ inline int moveSelection(int selection, int direction, int optionCount) {
 }
 
 inline int settingsFocusCount(int tab) {
-    return tab == 0 ? 4 : 2;
+    return tab == 0 ? 4 : (tab == 1 ? 2 : 3);
 }
 
 inline void switchSettingsTab(int& tab, int& focus) {
-    tab = 1 - tab;
+    tab = (tab + 1) % 3;
     focus = 0;
 }
 

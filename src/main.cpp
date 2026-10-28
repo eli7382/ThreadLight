@@ -3,6 +3,7 @@
 #include "game_logic.h"
 #include "game_layout.h"
 #include "app_settings.h"
+#include "cosmetic_palette.h"
 #include "menu_state.h"
 #include "game_timing.h"
 #include "game_presentation.h"
@@ -78,6 +79,7 @@ int main(int argc, char** argv){
  bool m6RenderCheck=false;
  bool pacingCheck=false;
  bool settingsRenderCheck=false;
+ int personalizationRenderCheck=-1; // 0 locked, 1 unlocked cyan, 2 unlocked violet.
  int pacingRate=60,pacingVsync=-1;
  int bossFixture=-1; // Explicit development-only CLI fixture; never a campaign checkpoint.
  int waveFixture=-1;
@@ -93,6 +95,14 @@ int main(int argc, char** argv){
    else if(arg=="--settings-render-check"){
     if(++fixtureOptions>1)return 2;
     settingsRenderCheck=true;m6RenderCheck=true;utilityFixture=true;waveFixture=4;waveFixtureWave=7;
+   }else if(arg=="--personalization-render-check"&&i+1<argc){
+    if(++fixtureOptions>1)return 2;
+    const std::string_view value=argv[++i];
+    if(value=="locked")personalizationRenderCheck=0;
+    else if(value=="cyan")personalizationRenderCheck=1;
+    else if(value=="violet")personalizationRenderCheck=2;
+    else return 2;
+    m6RenderCheck=true;utilityFixture=true;waveFixture=4;waveFixtureWave=7;
    }else if(arg=="--pacing-check"&&i+1<argc){
     if(++fixtureOptions>1)return 2;
     const std::string_view text=argv[++i];const auto parsed=std::from_chars(text.data(),text.data()+text.size(),pacingRate);
@@ -156,6 +166,10 @@ int main(int argc, char** argv){
  if(!sfx.initialize(audioReady))TraceLog(LOG_WARNING,"Audio device unavailable; event sounds are disabled.");
  const auto settingsPath=threadlight::settings::userSettingsPath();
  auto appSettings=threadlight::settings::load(settingsPath);
+ if(personalizationRenderCheck>=0){
+  appSettings.violetAscendantUnlocked=personalizationRenderCheck!=0;
+  appSettings.selectedPalette=personalizationRenderCheck==2?threadlight::cosmetics::PaletteId::VioletAscendant:threadlight::cosmetics::PaletteId::OriginalCyan;
+ }
  if(pacingCheck){appSettings.frameRateLimit=pacingRate;if(pacingVsync!=-1)appSettings.vsync=pacingVsync==1;}
  auto applyVsync=[&](){if(appSettings.vsync)SetWindowState(FLAG_VSYNC_HINT);else ClearWindowState(FLAG_VSYNC_HINT);};
  applyVsync();
@@ -175,11 +189,13 @@ int main(int argc, char** argv){
  using threadlight::Mode;
  Mode mode=Mode::Title,settingsReturn=Mode::Title; bool exitRequested=false; int mainSelection=0,pauseSelection=0,exitSelection=threadlight::menu::kDefaultExitSelection,settingsTab=0,settingsFocus=0;
  bool tutorial=false,tutorialMoved=false,tutorialDashed=false,inventoryOpen=false;
+ bool violetUnlockedThisRun=false;
  int titleView=0,codexSelection=0;
  float tutorialSkipHold=0.f, bossPhaseNotice=0.f;
  int pauseConfirm=0,confirmSelection=1,tutorialSpawnStart=-1;
  threadlight::settings::PendingEdits settingsEdits;
  namespace foundation=threadlight::foundation;
+ namespace cosmetics=threadlight::cosmetics;
  namespace battle=threadlight::combat;
  namespace upgrades=threadlight::upgrades;
  namespace skitter=threadlight::skitter;
@@ -327,6 +343,7 @@ int main(int argc, char** argv){
   traceM1("encounter_start");
  };
  auto reset=[&](){
+  violetUnlockedThisRun=false;
   tutorial=false;inventoryOpen=false;pauseConfirm=0;bossPhaseNotice=0;runDamageTaken={};
   player={(playArea.left+playArea.right)*.5f,(playArea.top+playArea.bottom)*.5f};
   health={};playerWasMoving=false;ranks={};
@@ -498,12 +515,16 @@ int main(int argc, char** argv){
   traceM1("encounter_complete");
   ++wave;startEncounter();
  };
- auto drawText=[&](const char* s,int x,int y,int size,Color c){DrawText(s,x,y,size,c);};
+  auto drawText=[&](const char* s,int x,int y,int size,Color c){DrawText(s,x,y,size,c);};
+  auto paletteColor=[](cosmetics::Rgba color){return C(color.r,color.g,color.b,color.a);};
+  const auto& playerPalette=cosmetics::palette(cosmetics::normalizePalette(
+      static_cast<int>(appSettings.selectedPalette),appSettings.violetAscendantUnlocked));
   auto applyMenuAction=[&](threadlight::menu::Action action){threadlight::menu::apply(mode,settingsReturn,exitRequested,exitSelection,action);};
   auto changeFrameLimit=[&](int value){if(!threadlight::settings::validFrameRateLimit(value)||value==appSettings.frameRateLimit)return;appSettings.frameRateLimit=value;settingsEdits.dirty=true;saveSettings();};
   auto changeShowFps=[&](){appSettings.showFps=!appSettings.showFps;if(appSettings.showFps)measuredFps=threadlight::timing::initialMeasuredFps(lastFrameSeconds);settingsEdits.dirty=true;saveSettings();};
   auto changeVsync=[&](){appSettings.vsync=!appSettings.vsync;applyVsync();settingsEdits.dirty=true;saveSettings();};
   auto changeSfxVolume=[&](int value,bool persist=true){value=std::clamp(value,0,100);if(value==appSettings.sfxVolumePercent)return;appSettings.sfxVolumePercent=value;settingsEdits.dirty=true;sfx.setMasterVolume(value/100.0f);if(persist)saveSettings();};
+  auto changePalette=[&](cosmetics::PaletteId palette){if(appSettings.selectedPalette==palette)return;if(!threadlight::settings::selectPalette(appSettings,palette))return;settingsEdits.dirty=true;saveSettings();};
   auto contains=[](Rectangle rectangle,Vector2 point){return CheckCollisionPointRec(point,rectangle);};
   auto buttonRect=[&](int index,int count,float centerY,float width=300.f,float height=46.f,float gap=54.f){return Rectangle{(SW-width)*.5f,centerY+(index-(count-1)*.5f)*gap-height*.5f,width,height};};
   auto mainButton=[&](int index){return buttonRect(index,5,SH*.5f+86.f,310.f,38.f,43.f);};
@@ -534,6 +555,7 @@ int main(int argc, char** argv){
    std::uint64_t perfFrameNumber=0;
   if(m6RenderCheck||pacingCheck)reset();
   if(settingsRenderCheck)mode=Mode::Settings;
+  if(personalizationRenderCheck>=0){mode=Mode::Settings;settingsTab=2;}
   const auto pacingStart=PerfClock::now();
   while(!WindowShouldClose()&&!exitRequested){
     if(pacingCheck&&PerfClock::now()-pacingStart>=std::chrono::seconds(5))break;
@@ -610,6 +632,7 @@ int main(int argc, char** argv){
    const float settingsLeft=(SW-settingsWidth)*.5f,settingsTop=SH*.5f-256.f;
    const Rectangle videoTab{settingsLeft+48.f,settingsTop+76.f,165.f,42.f};
    const Rectangle audioTab{settingsLeft+230.f,settingsTop+76.f,165.f,42.f};
+   const Rectangle personalizationTab{settingsLeft+412.f,settingsTop+76.f,220.f,42.f};
    constexpr int frameRateChoiceCount=static_cast<int>(threadlight::settings::kFrameRateLimits.size());
    const float fpsChipWidth=(settingsWidth-340.f-8.f*(frameRateChoiceCount-1))/frameRateChoiceCount;
    std::array<Rectangle,frameRateChoiceCount> fpsChips{};
@@ -619,6 +642,12 @@ int main(int argc, char** argv){
    const Rectangle frameRow{settingsLeft+42.f,settingsTop+132.f,settingsWidth-84.f,64.f};
    const Rectangle volumeSlider{settingsLeft+48.f,settingsTop+207.f,settingsWidth-96.f,18.f};
    const Rectangle volumeRow{settingsLeft+42.f,settingsTop+144.f,settingsWidth-84.f,100.f};
+   const float paletteCardGap=16.f;
+   const float paletteCardWidth=(settingsWidth-84.f-paletteCardGap)*.5f;
+   const std::array<Rectangle,2> paletteCards{{
+    {settingsLeft+42.f,settingsTop+144.f,paletteCardWidth,268.f},
+    {settingsLeft+42.f+paletteCardWidth+paletteCardGap,settingsTop+144.f,paletteCardWidth,268.f}
+   }};
    const Rectangle settingsBack{settingsLeft+settingsWidth*.5f-125.f,settingsTop+442.f,250.f,44.f};
    const Vector2 mouse=GetMousePosition();
    const Vector2 mouseDelta=GetMouseDelta();
@@ -705,12 +734,20 @@ int main(int argc, char** argv){
     else {
      if(hovered(videoTab)&&IsMouseButtonPressed(MOUSE_BUTTON_LEFT)){settingsTab=0;settingsFocus=0;}
      else if(hovered(audioTab)&&IsMouseButtonPressed(MOUSE_BUTTON_LEFT)){settingsTab=1;settingsFocus=0;}
-     else if(hovered(settingsBack)){settingsFocus=settingsTab==0?3:1;if(IsMouseButtonPressed(MOUSE_BUTTON_LEFT))applyMenuAction(threadlight::menu::Action::Back);}
+     else if(hovered(personalizationTab)&&IsMouseButtonPressed(MOUSE_BUTTON_LEFT)){settingsTab=2;settingsFocus=0;}
+     else if(hovered(settingsBack)){settingsFocus=settingsTab==0?3:(settingsTab==1?1:2);if(IsMouseButtonPressed(MOUSE_BUTTON_LEFT))applyMenuAction(threadlight::menu::Action::Back);}
      else if(settingsTab==0){
       for(int i=0;i<frameRateChoiceCount;i++)if(hovered(fpsChips[i])){settingsFocus=0;if(IsMouseButtonPressed(MOUSE_BUTTON_LEFT))changeFrameLimit(threadlight::settings::kFrameRateLimits[i]);}
       if(hovered(showToggle)){settingsFocus=1;if(IsMouseButtonPressed(MOUSE_BUTTON_LEFT))changeShowFps();}
       if(hovered(vsyncToggle)){settingsFocus=2;if(IsMouseButtonPressed(MOUSE_BUTTON_LEFT))changeVsync();}
      }else if(settingsTab==1&&hovered(volumeRow))settingsFocus=0;
+     else if(settingsTab==2){
+      for(int i=0;i<2;++i)if(hovered(paletteCards[i])){
+       settingsFocus=i;
+       if(IsMouseButtonPressed(MOUSE_BUTTON_LEFT)&&i==0)changePalette(cosmetics::PaletteId::OriginalCyan);
+       if(IsMouseButtonPressed(MOUSE_BUTTON_LEFT)&&i==1)changePalette(cosmetics::PaletteId::VioletAscendant);
+      }
+     }
      if(settingsTab==1&&hovered(volumeSlider)&&IsWindowFocused()&&IsMouseButtonPressed(MOUSE_BUTTON_LEFT)){
       settingsFocus=0;
       settingsEdits.dragging=true;
@@ -731,6 +768,9 @@ int main(int argc, char** argv){
       else if(settingsTab==0&&settingsFocus==2)changeVsync();
       else if((settingsTab==0&&settingsFocus==3)||(settingsTab==1&&settingsFocus==1))applyMenuAction(threadlight::menu::Action::Back);
       else if(settingsTab==1&&settingsFocus==0)changeSfxVolume(threadlight::settings::adjustSfxVolume(appSettings.sfxVolumePercent,1));
+      else if(settingsTab==2&&settingsFocus==0)changePalette(cosmetics::PaletteId::OriginalCyan);
+      else if(settingsTab==2&&settingsFocus==1)changePalette(cosmetics::PaletteId::VioletAscendant);
+      else if(settingsTab==2&&settingsFocus==2)applyMenuAction(threadlight::menu::Action::Back);
      }
     }
    }else if(screenAtFrameStart==Mode::ExitConfirm){
@@ -1182,6 +1222,9 @@ int main(int argc, char** argv){
    if(mode!=screenAtFrameStart){
     if((mode==Mode::Lost||mode==Mode::Won)&&!tutorial&&bossFixture<0&&waveFixture<0){
      const bool won=mode==Mode::Won;const bool better=threadlight::settings::isBetterRun(appSettings,won,wave+1,rewards.score());
+     if(threadlight::settings::grantVioletAscendant(appSettings,won,wave+1,false,false)){
+      violetUnlockedThisRun=true;settingsEdits.dirty=true;
+     }
      if(better){appSettings.bestWave=wave+1;appSettings.bestWon=won;appSettings.bestScore=rewards.score();appSettings.bestKills=rewards.counters().killed;settingsEdits.dirty=true;}
     }
     if(settingsEdits.dirty&&!m6RenderCheck)saveSettings();
@@ -1268,9 +1311,9 @@ int main(int argc, char** argv){
      const float age=age0+(age1-age0)*(t0+t1)*.5f;
      const float shimmer=.5f+.5f*std::sin(time*5.f-age*1.6f);
      const auto silk=threadlight::visual::silkAppearance(age,shimmer,stats.activeSilkSeconds);
-     Color halo=ColorLerp(C(0,222,211),C(42,129,165),silk.ageBlend);
-     Color body=ColorLerp(C(14,247,220),C(45,151,184),silk.ageBlend);
-     Color core=ColorLerp(C(224,255,246),C(119,184,204),silk.ageBlend);
+     Color halo=ColorLerp(paletteColor(playerPalette.silkHaloFresh),paletteColor(playerPalette.silkHaloAged),silk.ageBlend);
+     Color body=ColorLerp(paletteColor(playerPalette.silkBodyFresh),paletteColor(playerPalette.silkBodyAged),silk.ageBlend);
+     Color core=ColorLerp(paletteColor(playerPalette.silkCoreFresh),paletteColor(playerPalette.silkCoreAged),silk.ageBlend);
      halo.a=(unsigned char)std::lround(silk.haloOpacity*255.f);
      body.a=(unsigned char)std::lround(silk.bodyOpacity*(.94f+.06f*shimmer)*255.f);
      core.a=(unsigned char)std::lround(silk.coreOpacity*255.f);
@@ -1285,9 +1328,9 @@ int main(int argc, char** argv){
    const float fade=.35f+.65f*(float)offensiveEcho.remainingTicks/afterimage::kEchoTicks;
    for(size_t i=1;i<offensiveEcho.count;++i){
     const Vector2 a{offensiveEcho.path[i-1].x,offensiveEcho.path[i-1].y},b{offensiveEcho.path[i].x,offensiveEcho.path[i].y};
-    DrawLineEx(a,b,afterimage::kHalfWidth*2,C(129,202,255,(unsigned char)(30*fade)));
-    DrawLineEx(a,b,3.f,C(172,230,255,(unsigned char)(190*fade)));
-    if(i%4==0)DrawCircleV(a,2.4f,C(237,230,180,(unsigned char)(160*fade)));
+    DrawLineEx(a,b,afterimage::kHalfWidth*2,paletteColor(cosmetics::withAlpha(playerPalette.afterimageHalo,(unsigned char)(30*fade))));
+    DrawLineEx(a,b,3.f,paletteColor(cosmetics::withAlpha(playerPalette.afterimageCore,(unsigned char)(190*fade))));
+    if(i%4==0)DrawCircleV(a,2.4f,paletteColor(cosmetics::withAlpha(playerPalette.afterimageSpark,(unsigned char)(160*fade))));
    }
   }
   // A short, bright trail behind the dashing player communicates direction
@@ -1297,12 +1340,12 @@ int main(int argc, char** argv){
    for(size_t i=previousDashEchoCount-1;i>0;i--){
     const float ageWeight=.25f+.75f*(1.f-(float)(i-1)/(float)(previousDashEchoCount-1));
     const unsigned char glow=(unsigned char)(86.f*fade*ageWeight),core=(unsigned char)(230.f*fade*ageWeight);
-    DrawLineEx(cv(previousDashEcho[i]),cv(previousDashEcho[i-1]),7.f*fade,C(0,183,229,glow));
-    DrawLineEx(cv(previousDashEcho[i]),cv(previousDashEcho[i-1]),2.4f*fade,C(190,248,255,core));
-    DrawCircleV(cv(previousDashEcho[i]),radius*.72f,C(67,220,255,(unsigned char)(145.f*fade*ageWeight)));
+    DrawLineEx(cv(previousDashEcho[i]),cv(previousDashEcho[i-1]),7.f*fade,paletteColor(cosmetics::withAlpha(playerPalette.dashHalo,glow)));
+    DrawLineEx(cv(previousDashEcho[i]),cv(previousDashEcho[i-1]),2.4f*fade,paletteColor(cosmetics::withAlpha(playerPalette.dashCore,core)));
+    DrawCircleV(cv(previousDashEcho[i]),radius*.72f,paletteColor(cosmetics::withAlpha(playerPalette.dashSpark,(unsigned char)(145.f*fade*ageWeight))));
    }
-   DrawLineEx(cv(previousDashEcho[0]),cv(shownPlayer),7.f*fade,C(0,183,229,(unsigned char)(86.f*fade)));
-   DrawLineEx(cv(previousDashEcho[0]),cv(shownPlayer),2.4f*fade,C(190,248,255,(unsigned char)(230.f*fade)));
+   DrawLineEx(cv(previousDashEcho[0]),cv(shownPlayer),7.f*fade,paletteColor(cosmetics::withAlpha(playerPalette.dashHalo,(unsigned char)(86.f*fade))));
+   DrawLineEx(cv(previousDashEcho[0]),cv(shownPlayer),2.4f*fade,paletteColor(cosmetics::withAlpha(playerPalette.dashCore,(unsigned char)(230.f*fade))));
   }
   for(const auto& source:sparks){auto s=source.present(alpha);
    const bool expiring=foundation::isCombat(lifecycle.phase())&&s.pickup.combatAgeTicks>foundation::kPickupLifetimeTicks-360;
@@ -1519,14 +1562,14 @@ int main(int argc, char** argv){
   if(mode!=Mode::Title){
    const float impact=threadlight::visual::damageImpactStrength(shownDamageFeedback);
    const bool dashVisual=dashTime>0||dashVisualActive;
-   DrawCircleV(cv(shownPlayer),31,C(45,230,214,18));
-   DrawCircleV(cv(shownPlayer),21,C(51,230,221,34));
+   DrawCircleV(cv(shownPlayer),31,paletteColor(cosmetics::withAlpha(playerPalette.playerAuraOuter,18)));
+   DrawCircleV(cv(shownPlayer),21,paletteColor(cosmetics::withAlpha(playerPalette.playerAuraInner,34)));
    if(impact>0)DrawCircleV(cv(shownPlayer),radius+13,C(242,76,101,(unsigned char)(35*impact)));
-   const Color rim=dashVisual?C(126,239,255,245):ColorLerp(C(164,255,232,220),C(255,133,151,235),impact*.72f);
-   const Color core=dashVisual?C(224,251,255,255):ColorLerp(C(221,255,245,255),C(255,171,181,255),impact*.48f);
+   const Color rim=dashVisual?paletteColor(playerPalette.playerDashRim):ColorLerp(paletteColor(playerPalette.playerRim),C(255,133,151,235),impact*.72f);
+   const Color core=dashVisual?paletteColor(playerPalette.playerDashRim):ColorLerp(paletteColor(playerPalette.playerCore),C(255,171,181,255),impact*.48f);
    DrawCircleV(cv(shownPlayer),radius+4,rim);
    DrawCircleV(cv(shownPlayer),radius,core);
-   if(dashVisual)DrawCircleLines((int)shownPlayer.x,(int)shownPlayer.y,radius+8,C(204,251,255,245));
+   if(dashVisual)DrawCircleLines((int)shownPlayer.x,(int)shownPlayer.y,radius+8,paletteColor(playerPalette.playerDashRim));
    if(cocoon::barrierActive(cocoonState))DrawCircleLines((int)shownPlayer.x,(int)shownPlayer.y,radius+9,C(223,241,188,215));
    if(impact>0){const float ringRadius=threadlight::visual::damageRingRadius(radius,shownDamageFeedback);DrawRing(cv(shownPlayer),ringRadius,ringRadius+1.6f,0,360,48,C(255,118,139,(unsigned char)(100*impact)));}
   }
@@ -1693,6 +1736,7 @@ int main(int argc, char** argv){
    DrawText("SETTINGS",(int)settingsLeft+48,(int)settingsTop+27,28,C(226,255,247));
    drawButton(videoTab,"VIDEO",settingsTab==0,hovered(videoTab));
    drawButton(audioTab,"AUDIO",settingsTab==1,hovered(audioTab));
+   drawButton(personalizationTab,"PERSONALIZATION",settingsTab==2,hovered(personalizationTab),13);
    DrawLine((int)settingsLeft+42,(int)settingsTop+129,(int)(settingsLeft+settingsWidth-42),(int)settingsTop+129,C(58,115,131,95));
    if(settingsTab==0){
     DrawRectangleRoundedLines(frameRow,.08f,8,settingsFocus==0?C(76,201,197,115):C(47,89,105,75));
@@ -1709,7 +1753,7 @@ int main(int argc, char** argv){
     DrawText("VSYNC",(int)settingsLeft+48,(int)settingsTop+318,16,settingsFocus==2?C(205,243,237):C(145,183,191));
     DrawText("Match display refresh; may limit output even with Unlimited.",(int)settingsLeft+48,(int)settingsTop+341,12,C(111,164,176));
     drawButton(vsyncToggle,appSettings.vsync?"ON":"OFF",settingsFocus==2,hovered(vsyncToggle),14);
-   }else{
+   }else if(settingsTab==1){
     DrawRectangleRoundedLines(volumeRow,.08f,8,settingsFocus==0?C(76,201,197,115):C(47,89,105,75));
     DrawText("SOUND EFFECTS VOLUME",(int)settingsLeft+48,(int)settingsTop+160,16,settingsFocus==0?C(205,243,237):C(145,183,191));
     DrawText(TextFormat("%d%%",appSettings.sfxVolumePercent),(int)(settingsLeft+settingsWidth-100.f),(int)settingsTop+158,18,C(226,255,247));
@@ -1720,8 +1764,45 @@ int main(int argc, char** argv){
     DrawCircleV({volumeSlider.x+volumeSlider.width*volumeFraction,trackY},9.f,C(207,255,243));
     DrawCircleLines((int)(volumeSlider.x+volumeSlider.width*volumeFraction),(int)trackY,11.f,C(73,230,207));
     DrawText("Drag to set volume. Arrow keys change it in 5% steps; changes apply immediately.",(int)settingsLeft+48,(int)settingsTop+245,13,C(111,164,176));
+   }else{
+    for(int i=0;i<2;++i){
+     const Rectangle card=paletteCards[i];
+     const auto id=i==0?cosmetics::PaletteId::OriginalCyan:cosmetics::PaletteId::VioletAscendant;
+     const auto& preview=cosmetics::palette(id);
+     const bool unlocked=i==0||appSettings.violetAscendantUnlocked;
+     const bool selected=unlocked&&appSettings.selectedPalette==id;
+     const bool focusedCard=settingsFocus==i;
+     DrawRectangleRounded(card,.055f,12,C(8,17,34,248));
+     DrawRectangleRoundedLines(card,.055f,12,selected?paletteColor(preview.accent):focusedCard?C(125,161,233,185):C(57,86,116,145));
+     DrawText(i==0?"ORIGINAL CYAN":"VIOLET ASCENDANT",(int)card.x+20,(int)card.y+18,15,C(226,245,249));
+     const char* status=i==0?(selected?"EQUIPPED":"AVAILABLE"):(selected?"EQUIPPED":(unlocked?"UNLOCKED":"LOCKED"));
+     const Color statusColor=selected?paletteColor(preview.highlight):(unlocked?C(126,210,190):C(180,164,217));
+     DrawText(status,(int)(card.x+card.width-MeasureText(status,10)-20),(int)card.y+21,10,statusColor);
+     const float centerX=card.x+card.width*.5f,playerY=card.y+124.f;
+     const Color halo=paletteColor(cosmetics::withAlpha(preview.silkHaloFresh,90));
+     const Color body=paletteColor(cosmetics::withAlpha(preview.silkBodyFresh,220));
+     const Color core=paletteColor(preview.silkCoreFresh);
+     DrawLineEx({card.x+35.f,playerY+23.f},{centerX-15.f,playerY+5.f},8.f,halo);
+     DrawLineEx({card.x+35.f,playerY+23.f},{centerX-15.f,playerY+5.f},3.5f,body);
+     DrawLineEx({centerX-15.f,playerY+5.f},{card.x+card.width-35.f,playerY-18.f},8.f,halo);
+     DrawLineEx({centerX-15.f,playerY+5.f},{card.x+card.width-35.f,playerY-18.f},3.5f,body);
+     DrawLineEx({card.x+35.f,playerY+23.f},{centerX-15.f,playerY+5.f},1.5f,core);
+     DrawLineEx({centerX-15.f,playerY+5.f},{card.x+card.width-35.f,playerY-18.f},1.5f,core);
+     DrawCircleV({centerX-15.f,playerY+5.f},17.f,paletteColor(cosmetics::withAlpha(preview.playerAuraOuter,44)));
+     DrawCircleV({centerX-15.f,playerY+5.f},9.f,paletteColor(preview.playerRim));
+     DrawCircleV({centerX-15.f,playerY+5.f},5.5f,paletteColor(preview.playerCore));
+     DrawLine((int)card.x+20,(int)card.y+165,(int)(card.x+card.width-20),(int)card.y+165,C(53,77,102,130));
+     if(i==1&&!unlocked){
+      DrawCircleLines((int)(card.x+card.width*.5f),(int)card.y+196,7.f,C(198,179,239,235));
+      DrawRectangleRounded({centerX-9.f,card.y+195.f,18.f,15.f},.2f,4,C(198,179,239,235));
+      DrawText("Win Wave 35 to unlock",(int)(centerX-MeasureText("Win Wave 35 to unlock",13)*.5f),(int)card.y+220,13,C(194,185,220));
+     }else{
+      const char* note=selected?"This color is active":"Select to equip immediately";
+      DrawText(note,(int)(centerX-MeasureText(note,12)*.5f),(int)card.y+205,12,C(145,181,197));
+     }
+    }
    }
-   drawButton(settingsBack,"BACK",(settingsTab==0&&settingsFocus==3)||(settingsTab==1&&settingsFocus==1),hovered(settingsBack));
+   drawButton(settingsBack,"BACK",(settingsTab==0&&settingsFocus==3)||(settingsTab==1&&settingsFocus==1)||(settingsTab==2&&settingsFocus==2),hovered(settingsBack));
    DrawText("TAB SWITCHES SECTIONS     ESC RETURNS",(int)settingsLeft+48,(int)settingsTop+488,11,C(108,167,178));
   }
   if(mode==Mode::ExitConfirm){
@@ -1795,6 +1876,18 @@ int main(int argc, char** argv){
   }
   if((mode==Mode::Lost||mode==Mode::Won)&&!inventoryOpen){
    panel(mode==Mode::Won?"VICTORY":"RUN COMPLETE",mode==Mode::Won?"THE BRIAR HEART FALLS":"LOST TO THE BRIAR","Your run at a glance.");
+   if(mode==Mode::Won&&violetUnlockedThisRun){
+    const Rectangle award{SW*.5f-220.f,SH*.5f-86.f,440.f,40.f};
+    const float reveal=std::clamp((float)GetTime()*.7f,0.f,1.f);
+    const float pulse=.72f+.28f*std::sin((float)GetTime()*3.2f);
+    DrawRectangleRounded(award,.25f,12,C(35,24,70,235));
+    DrawRectangleRoundedLines(award,.25f,12,C(174,127,255,(unsigned char)(175*pulse)));
+    const Vector2 crest{award.x+29.f,award.y+20.f};
+    DrawRing(crest,11.f,12.5f,18.f+(float)GetTime()*48.f,236.f+(float)GetTime()*48.f,36,C(192,154,255,(unsigned char)(155*reveal)));
+    DrawCircleV(crest,5.f,C(227,205,255,(unsigned char)(255*reveal)));
+    DrawText("VIOLET ASCENDANT UNLOCKED",(int)award.x+58,(int)award.y+12,14,C(239,224,255));
+    DrawText("A new color awaits in Settings  >  Personalization",(int)award.x+58,(int)award.y+26,9,C(191,174,224));
+   }
    DrawText(TextFormat("Wave %d / %d   Score %06llu   Kills %llu",wave+1,chapter::kEncounterCount,(unsigned long long)rewards.score(),(unsigned long long)rewards.counters().killed),SW/2-255,SH/2-36,17,C(179,225,216));
    DrawText(TextFormat("Evolutions %llu   Signatures %d   Sparks collected %llu",(unsigned long long)rewards.counters().creditsResolved,catalog::ownedCount(signatureCatalog),(unsigned long long)rewards.counters().sparksCollected),SW/2-255,SH/2-5,15,C(179,225,216));
    DrawText("DAMAGE TAKEN / HP",SW/2-255,SH/2+30,12,C(255,213,131));
@@ -1816,6 +1909,7 @@ int main(int argc, char** argv){
    };
    if(mode==Mode::Signature){capture("m7-signature.png");exitRequested=true;}
    if(settingsRenderCheck){capture("settings-vsync.png");exitRequested=true;}
+   if(personalizationRenderCheck>=0){capture(personalizationRenderCheck==0?"personalization-locked.png":personalizationRenderCheck==1?"personalization-cyan.png":"personalization-violet.png");exitRequested=true;}
    if(utilityFixture&&simulationTick>=240){capture("m7-utilities.png");exitRequested=true;}
    if(!capturedWarning&&(boss.stage==root::Stage::RootWarning||boss.stage==root::Stage::StepWarning)){
     capture("m6-warning.png");capturedWarning=true;

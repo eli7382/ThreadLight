@@ -11,6 +11,8 @@
 #include <string_view>
 #include <system_error>
 
+#include "cosmetic_palette.h"
+
 namespace threadlight::settings {
 
 struct AppSettings {
@@ -23,12 +25,34 @@ struct AppSettings {
     std::uint64_t bestScore = 0, bestKills = 0;
     bool bestWon = false;
     bool vsync = false;
+    cosmetics::PaletteId selectedPalette = cosmetics::PaletteId::OriginalCyan;
+    bool violetAscendantUnlocked = false;
 };
 
 inline bool isBetterRun(const AppSettings& settings, bool won, int wave, std::uint64_t score) {
     if (settings.bestWave == 0) return true;
     if (won != settings.bestWon) return won;
     return wave > settings.bestWave || (wave == settings.bestWave && score > settings.bestScore);
+}
+
+inline bool selectPalette(AppSettings& settings, cosmetics::PaletteId palette) {
+    if (palette == cosmetics::PaletteId::VioletAscendant && !settings.violetAscendantUnlocked)
+        return false;
+    if (palette != cosmetics::PaletteId::OriginalCyan && palette != cosmetics::PaletteId::VioletAscendant)
+        return false;
+    settings.selectedPalette = palette;
+    return true;
+}
+
+// Fixture and tutorial runs are never authoritative campaign records. Wave 35
+// is the final encounter, and this helper is called only on the actual Won
+// mode transition in normal play.
+inline bool grantVioletAscendant(AppSettings& settings, bool won, int completedWave,
+                                  bool isolatedFixture, bool tutorialRun) {
+    if (!won || completedWave < 35 || isolatedFixture || tutorialRun ||
+        settings.violetAscendantUnlocked) return false;
+    settings.violetAscendantUnlocked = true;
+    return true;
 }
 
 // Live edits are cheap; disk writes happen once at an edit boundary. Failed
@@ -138,6 +162,11 @@ inline AppSettings load(const std::filesystem::path& path) {
             if (parseInteger(value, parsed) && parsed >= 0 && parsed <= 35) settings.bestWave = parsed;
         } else if (key == "best_won") {
             settings.bestWon = value == "1";
+        } else if (key == "selected_palette") {
+            if (parseInteger(value, parsed) && cosmetics::validPaletteId(parsed))
+                settings.selectedPalette = static_cast<cosmetics::PaletteId>(parsed);
+        } else if (key == "violet_ascendant_unlocked") {
+            settings.violetAscendantUnlocked = value == "1";
         } else if (key == "best_score" || key == "best_kills") {
             std::uint64_t number = 0;
             const auto result = std::from_chars(value.data(), value.data() + value.size(), number);
@@ -146,6 +175,13 @@ inline AppSettings load(const std::filesystem::path& path) {
             }
         }
     }
+    // Earlier settings files have no cosmetic keys. A completed best-run
+    // record is reliable evidence because bestWon is written only by the
+    // normal full-campaign victory flow; isolated QA fixtures are excluded.
+    if (settings.bestWon && settings.bestWave >= 35)
+        settings.violetAscendantUnlocked = true;
+    settings.selectedPalette = cosmetics::normalizePalette(
+        static_cast<int>(settings.selectedPalette), settings.violetAscendantUnlocked);
     return settings;
 }
 
@@ -159,7 +195,7 @@ inline bool save(const std::filesystem::path& path, const AppSettings& settings)
     {
         std::ofstream output(temporary, std::ios::binary | std::ios::trunc);
         if (!output) return false;
-        output << "version=1\n"
+        output << "version=2\n"
                << "frame_rate_limit=" << (validFrameRateLimit(settings.frameRateLimit)
                     ? settings.frameRateLimit : kDefaultFrameRateLimit) << '\n'
                << "show_fps=" << (settings.showFps ? 1 : 0) << '\n'
@@ -170,7 +206,10 @@ inline bool save(const std::filesystem::path& path, const AppSettings& settings)
                << "best_wave=" << std::clamp(settings.bestWave, 0, 35) << '\n'
                << "best_score=" << settings.bestScore << '\n'
                << "best_kills=" << settings.bestKills << '\n'
-               << "best_won=" << (settings.bestWon ? 1 : 0) << '\n';
+               << "best_won=" << (settings.bestWon ? 1 : 0) << '\n'
+               << "selected_palette=" << static_cast<int>(cosmetics::normalizePalette(
+                    static_cast<int>(settings.selectedPalette), settings.violetAscendantUnlocked)) << '\n'
+               << "violet_ascendant_unlocked=" << (settings.violetAscendantUnlocked ? 1 : 0) << '\n';
         output.flush();
         if (!output) return false;
     }
