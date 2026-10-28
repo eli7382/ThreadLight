@@ -17,6 +17,7 @@ struct Palette {
     Rgba afterimageHalo, afterimageCore, afterimageSpark;
     Rgba dashHalo, dashCore, dashSpark;
     Rgba playerAuraOuter, playerAuraInner, playerRim, playerCore, playerDashRim;
+    std::uint8_t playerAuraOuterAlpha, playerAuraInnerAlpha;
     Rgba accent, highlight;
 };
 
@@ -25,7 +26,7 @@ inline constexpr Palette kOriginalCyan{
     {224,255,246}, {119,184,204}, {129,202,255}, {172,230,255}, {237,230,180},
     {0,183,229}, {190,248,255}, {67,220,255}, {45,230,214},
     {51,230,221}, {164,255,232}, {221,255,245}, {126,239,255},
-    {67,220,206}, {224,255,247}
+    18, 34, {67,220,206}, {224,255,247}
 };
 
 // Deep indigo keeps the fine silk legible; violet light is layered beneath a
@@ -35,7 +36,7 @@ inline constexpr Palette kVioletAscendant{
     {244,230,255}, {178,170,224}, {246,235,255}, {137,91,255}, {224,205,255},
     {112,61,239}, {233,211,255}, {194,157,255}, {130,83,238},
     {158,106,250}, {206,170,255}, {239,226,255}, {231,207,255},
-    {167,110,255}, {246,235,255}
+    29, 48, {167,110,255}, {246,235,255}
 };
 
 inline constexpr bool validPaletteId(int value) {
