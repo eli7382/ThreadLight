@@ -97,6 +97,8 @@ void testKeyboardFocusWrapsWithinEachMenu() {
     CHECK(moveSelection(3, 1, 4) == 0);
     CHECK(settingsFocusCount(0) == 4);
     CHECK(settingsFocusCount(1) == 2);
+    CHECK(settingsFocusCount(2) == 3);
+    CHECK(settingsFocusCount(2)-1 == 2); // Personalization keeps Back in the keyboard loop.
     CHECK(moveSelection(0, -1, settingsFocusCount(0)) == 3);
     CHECK(moveSelection(1, 1, settingsFocusCount(0)) == 2); // VSync follows Show FPS.
     CHECK(moveSelection(2, 1, settingsFocusCount(0)) == 3); // Back follows VSync.
@@ -105,6 +107,9 @@ void testKeyboardFocusWrapsWithinEachMenu() {
     int tab = 0, focus = 2;
     switchSettingsTab(tab, focus);
     CHECK(tab == 1);
+    CHECK(focus == 0);
+    switchSettingsTab(tab, focus);
+    CHECK(tab == 2);
     CHECK(focus == 0);
     switchSettingsTab(tab, focus);
     CHECK(tab == 0);

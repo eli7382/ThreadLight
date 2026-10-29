@@ -29,6 +29,8 @@ void testDefaultsAndLimits() {
     CHECK(!defaults.vsync);
     CHECK(defaults.sfxVolumePercent == 78);
     CHECK(!defaults.tutorialCompleted);
+    CHECK(defaults.selectedPalette == threadlight::cosmetics::PaletteId::OriginalCyan);
+    CHECK(!defaults.violetAscendantUnlocked);
     CHECK(validFrameRateLimit(30));
     CHECK(validFrameRateLimit(60));
     CHECK(validFrameRateLimit(120));
@@ -106,6 +108,21 @@ void testPersistenceAndInvalidRecovery() {
     CHECK(vsyncOffLoaded.bestKills==saved.bestKills);
     CHECK(vsyncOffLoaded.bestWon==saved.bestWon);
 
+    auto paletteSettings=saved;
+    CHECK(!selectPalette(paletteSettings,threadlight::cosmetics::PaletteId::VioletAscendant));
+    CHECK(paletteSettings.selectedPalette==threadlight::cosmetics::PaletteId::OriginalCyan);
+    CHECK(!grantVioletAscendant(paletteSettings,true,35,true,false)); // Fixtures cannot award it.
+    CHECK(!grantVioletAscendant(paletteSettings,true,35,false,true)); // Tutorial cannot award it.
+    CHECK(!grantVioletAscendant(paletteSettings,false,35,false,false));
+    CHECK(!grantVioletAscendant(paletteSettings,true,34,false,false));
+    CHECK(grantVioletAscendant(paletteSettings,true,35,false,false));
+    CHECK(!grantVioletAscendant(paletteSettings,true,35,false,false)); // Permanent, first-win signal.
+    CHECK(selectPalette(paletteSettings,threadlight::cosmetics::PaletteId::VioletAscendant));
+    CHECK(save(path,paletteSettings));
+    const auto paletteLoaded=load(path);
+    CHECK(paletteLoaded.violetAscendantUnlocked);
+    CHECK(paletteLoaded.selectedPalette==threadlight::cosmetics::PaletteId::VioletAscendant);
+
     const AppSettings updated{30, true, 80};
     CHECK(save(path, updated)); // Replacing an existing settings file is supported.
     const auto updatedSettings = load(path);
@@ -122,6 +139,23 @@ void testPersistenceAndInvalidRecovery() {
     CHECK(!legacySettings.showFps);
     CHECK(legacySettings.sfxVolumePercent==40);
     CHECK(!legacySettings.vsync); // Older files have no vsync key.
+    CHECK(legacySettings.selectedPalette==threadlight::cosmetics::PaletteId::OriginalCyan);
+    CHECK(!legacySettings.violetAscendantUnlocked);
+
+    {
+        std::ofstream historical(path,std::ios::binary|std::ios::trunc);
+        historical << "best_wave=35\nbest_won=1\n";
+    }
+    const auto historicalVictory=load(path);
+    CHECK(historicalVictory.violetAscendantUnlocked); // Reliably identifiable legacy full victory.
+
+    {
+        std::ofstream locked(path,std::ios::binary|std::ios::trunc);
+        locked << "selected_palette=1\n";
+    }
+    const auto lockedSelection=load(path);
+    CHECK(lockedSelection.selectedPalette==threadlight::cosmetics::PaletteId::OriginalCyan);
+    CHECK(!lockedSelection.violetAscendantUnlocked);
 
     {
         std::ofstream invalid(path, std::ios::binary | std::ios::trunc);
