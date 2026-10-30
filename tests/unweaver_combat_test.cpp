@@ -3,6 +3,7 @@
 #include "game_logic.h"
 #include "game_layout.h"
 #include "needle_interception.h"
+#include "player_upgrades.h"
 #include "silk_utilities.h"
 #include <array>
 #include <cmath>
@@ -499,6 +500,187 @@ void syntheticDashWindowValidatorStress() {
              <<selectedRoute<<" protected_contacts="<<protectedReplay.protectedContacts
              <<" exhausted_contacts="<<rejectedReplay.unprotectedContacts<<'\n';
 }
+
+enum class CorePolicy { OrbitCW, OrbitCCW, PerimeterCW, PerimeterCCW, DashSpam,
+                        DashConserve, AggressiveSilk, DefensiveMovement, ReverseAfterCounter };
+enum class CoreBuild { Baseline, Offense, Mobility, Defense };
+constexpr int kCoreStressTicks=1200; // Ten real seconds at 120 Hz.
+constexpr float kCoreDt=1.f/120.f;
+constexpr root::Arena kCorePlayerBounds{28.f,896.f,28.f,480.f};
+const char* policyName(CorePolicy p){
+    switch(p){case CorePolicy::OrbitCW:return "orbit-cw";case CorePolicy::OrbitCCW:return "orbit-ccw";
+    case CorePolicy::PerimeterCW:return "perimeter-cw";case CorePolicy::PerimeterCCW:return "perimeter-ccw";
+    case CorePolicy::DashSpam:return "dash-spam";case CorePolicy::DashConserve:return "dash-conserve";
+    case CorePolicy::AggressiveSilk:return "aggressive-silk";case CorePolicy::DefensiveMovement:return "defensive";
+    case CorePolicy::ReverseAfterCounter:return "reverse-after-counter";}return "invalid";
+}
+const char* buildName(CoreBuild b){switch(b){case CoreBuild::Baseline:return "baseline";case CoreBuild::Offense:return "offense";
+    case CoreBuild::Mobility:return "mobility";case CoreBuild::Defense:return "defense";}return "invalid";}
+threadlight::upgrades::Ranks coreRanks(CoreBuild b){
+    namespace up=threadlight::upgrades;up::Ranks r;
+    if(b==CoreBuild::Offense){r.value[up::index(up::Id::Razor)]=5;r.value[up::index(up::Id::Broad)]=3;r.value[up::index(up::Id::Living)]=2;}
+    if(b==CoreBuild::Mobility){r.value[up::index(up::Id::Quick)]=5;r.value[up::index(up::Id::Rhythm)]=3;r.value[up::index(up::Id::Longstride)]=3;}
+    if(b==CoreBuild::Defense){r.value[up::index(up::Id::Heartwood)]=5;r.value[up::index(up::Id::Ironbark)]=5;
+        r.value[up::index(up::Id::Quick)]=2;r.value[up::index(up::Id::Rhythm)]=1;}
+    return r;
+}
+Point coreDirection(Point delta){
+    if(uw::length(delta)<.01f)return {};
+    const float angle=std::round(uw::angleOf(delta)/(uw::kPi*.25f))*uw::kPi*.25f;return uw::direction(angle);
+}
+struct CoreOutcome {
+    int ticks=0,playerHp=0,bossHp=0,bossDamage=0,playerDamage=0,ordinaryHits=0,dashStarts=0;
+    int acceptedPlans=0,counterAttempts=0,counterSuccesses=0,styleChanges=0,styleMask=0,objectiveMask=0,reversed=0;
+    std::uint64_t pathHash=0;float movement=0,dashUse=0,perimeter=0,offense=0,counterRate=0,responseRate=0;
+    uw::Style style=uw::Style::Predator;uw::Objective objective=uw::Objective::Engage;
+};
+bool sameCore(const CoreOutcome&a,const CoreOutcome&b){
+    return a.ticks==b.ticks&&a.playerHp==b.playerHp&&a.bossHp==b.bossHp&&a.bossDamage==b.bossDamage&&
+        a.playerDamage==b.playerDamage&&a.ordinaryHits==b.ordinaryHits&&a.dashStarts==b.dashStarts&&
+        a.acceptedPlans==b.acceptedPlans&&a.counterAttempts==b.counterAttempts&&a.counterSuccesses==b.counterSuccesses&&
+        a.styleChanges==b.styleChanges&&a.styleMask==b.styleMask&&a.objectiveMask==b.objectiveMask&&a.reversed==b.reversed&&a.pathHash==b.pathHash&&
+        a.movement==b.movement&&a.dashUse==b.dashUse&&a.perimeter==b.perimeter&&a.offense==b.offense&&
+        a.counterRate==b.counterRate&&a.responseRate==b.responseRate&&a.style==b.style&&a.objective==b.objective;
+}
+
+CoreOutcome runRealCore(CorePolicy policy,CoreBuild build,std::uint32_t seed){
+    namespace up=threadlight::upgrades;namespace obs=threadlight::observation;
+    const auto stats=up::derive(coreRanks(build));threadlight::combat::PlayerHealth playerHealth{stats.maxHp,stats.maxHp,0};
+    root::State boss;root::start(boss,{462.f,254.f},kArena,root::Kind::Unweaver);boss.phase=boss.unweaver.progress.phase=2;
+    auto& u=boss.unweaver;u.playerBounds=kCorePlayerBounds;u.playerSpeed=stats.moveSpeed;u.playerDashMultiplier=stats.dashMultiplier;
+    u.silkActiveTicks=static_cast<int>(stats.activeSilkSeconds*120.f);
+    obs::State observations;const float startAngle=seed==0x13579bdfu?.37f:1.19f;const Point center{462.f,254.f};
+    Point player=uw::clamp({center.x+210.f*std::cos(startAngle),center.y+155.f*std::sin(startAngle)},kCorePlayerBounds);
+    Point previousPlayer=player;float dashTime=0.f,dashCooldown=stats.dashCooldownSeconds;
+    std::array<Point,64> silkTrail{};std::array<int,64> silkTick{};int silkCount=1;silkTrail[0]=player;
+    int waypoint=static_cast<int>(seed%4u),responseWindow=0,responseMoved=0;bool reversed=false;
+    const std::array<Point,4> corners{{{kCorePlayerBounds.left+18,kCorePlayerBounds.top+18},
+        {kCorePlayerBounds.right-18,kCorePlayerBounds.top+18},{kCorePlayerBounds.right-18,kCorePlayerBounds.bottom-18},
+        {kCorePlayerBounds.left+18,kCorePlayerBounds.bottom-18}}};
+    CoreOutcome out;out.pathHash=static_cast<std::uint64_t>(seed);uw::Style priorStyle=u.style;
+    for(int tick=0;tick<kCoreStressTicks&&playerHealth.alive()&&!u.progress.defeated;++tick){
+        threadlight::combat::tick(playerHealth);dashCooldown=std::max(0.f,dashCooldown-kCoreDt);previousPlayer=player;
+        auto orbit=[&](int sign){const Point r=uw::sub(player,center);return coreDirection({-r.y*sign,r.x*sign});};
+        Point command{};bool dashPressed=false;
+        switch(policy){
+        case CorePolicy::OrbitCW:command=orbit(1);break;
+        case CorePolicy::OrbitCCW:command=orbit(-1);break;
+        case CorePolicy::PerimeterCW:case CorePolicy::PerimeterCCW:{
+            const int sign=policy==CorePolicy::PerimeterCW?1:-1;const Point target=corners[static_cast<std::size_t>(waypoint)];
+            if(uw::length(uw::sub(target,player))<22.f)waypoint=(waypoint+sign+4)%4;
+            command=coreDirection(uw::sub(corners[static_cast<std::size_t>(waypoint)],player));break;}
+        case CorePolicy::DashSpam:{const float a=static_cast<float>((tick/90+seed%8u)%8u)*uw::kPi*.25f;command=uw::direction(a);dashPressed=true;break;}
+        case CorePolicy::DashConserve:{
+            command=orbit(-1);const Point end=uw::clamp(uw::add(player,uw::scale(command,stats.moveSpeed*.2f)),kCorePlayerBounds);
+            bool danger=root::incomingDamage(boss,player,end,threadlight::layout::kPlayerRadius)>0||
+                ((boss.stage==root::Stage::RootWarning||boss.stage==root::Stage::RootActive)&&boss.remaining<=18);
+            for(const auto& shot:boss.bullets.items())if(shot.state==ranged::SlotState::Flying){
+                const Point future=uw::add(shot.p,uw::scale(shot.velocity,.16f));
+                danger|=threadlight::combat::bodyContact(player,end,threadlight::layout::kPlayerRadius+shot.spec.radius,shot.p,future,0.f);}
+            dashPressed=danger;break;}
+        case CorePolicy::AggressiveSilk:{const Point toBoss=uw::sub(boss.p,player),side{-toBoss.y,toBoss.x};
+            command=coreDirection(uw::add(toBoss,uw::scale(side,.28f*std::sin(tick*.045f))));break;}
+        case CorePolicy::DefensiveMovement:{float best=-1.e30f;
+            for(int d=0;d<8;++d){const Point candidate=uw::direction(d*uw::kPi*.25f);
+                const Point end=uw::clamp(uw::add(player,uw::scale(candidate,stats.moveSpeed*.18f)),kCorePlayerBounds);
+                float score=-std::abs(uw::length(uw::sub(end,boss.p))-245.f);
+                for(const auto& shot:boss.bullets.items())if(shot.state==ranged::SlotState::Flying){
+                    const Point future=uw::add(shot.p,uw::scale(shot.velocity,.18f));
+                    if(threadlight::combat::bodyContact(player,end,threadlight::layout::kPlayerRadius+shot.spec.radius,shot.p,future,0.f))score-=10000.f;}
+                if(score>best){best=score;command=candidate;}}
+            const Point end=uw::clamp(uw::add(player,uw::scale(command,stats.moveSpeed*.18f)),kCorePlayerBounds);
+            dashPressed=root::incomingDamage(boss,player,end,threadlight::layout::kPlayerRadius)>0;break;}
+        case CorePolicy::ReverseAfterCounter:{command=orbit(reversed?-1:1);
+            dashPressed=u.planCommitted&&u.safeUsesDash&&u.clock%4==0&&u.clock>=u.warningTicks-12&&u.clock<u.warningTicks+120;break;}
+        }
+        if(dashPressed&&uw::length(command)>.01f&&dashCooldown<=0.f){dashTime=threadlight::kDashDurationSeconds;
+            dashCooldown=stats.dashCooldownSeconds;++out.dashStarts;}
+        const bool dashActive=threadlight::dashProtectsCollisionThisFrame(dashTime);
+        player=uw::clamp(uw::add(player,uw::scale(command,stats.moveSpeed*(dashActive?stats.dashMultiplier:1.f)*kCoreDt)),kCorePlayerBounds);
+        u.playerVelocity=uw::scale(uw::sub(player,previousPlayer),120.f);
+        observations.observe(previousPlayer,player,dashActive,dashPressed&&dashActive,
+            {kCorePlayerBounds.left,kCorePlayerBounds.top,kCorePlayerBounds.right,kCorePlayerBounds.bottom});
+        u.profile=observations.summary();const int plansBefore=u.plans;
+        const auto events=root::tick(boss,player,kArena);
+        if(events.warning&&u.planCommitted){responseWindow=36;responseMoved=0;}
+        if(responseWindow>0){if(dashActive||uw::length(uw::sub(player,previousPlayer))>.75f)responseMoved=1;
+            if(--responseWindow==0)observations.onThreatResponse(responseMoved!=0);}
+        if(u.plans!=plansBefore){const int obj=static_cast<int>(u.objective);if(obj>=0&&obj<5)out.objectiveMask|=1<<obj;
+            const int style=static_cast<int>(u.style);if(style>=0&&style<3)out.styleMask|=1<<style;
+            if(u.style!=priorStyle)++out.styleChanges;priorStyle=u.style;}
+
+        silkCount=std::min(static_cast<int>(silkTrail.size()),silkCount+1);
+        for(int i=silkCount-1;i>0;--i){silkTrail[static_cast<std::size_t>(i)]=silkTrail[static_cast<std::size_t>(i-1)];
+            silkTick[static_cast<std::size_t>(i)]=silkTick[static_cast<std::size_t>(i-1)];}
+        silkTrail[0]=player;silkTick[0]=tick;bool hitBoss=false;
+        for(int i=1;i<silkCount;++i){if(tick-silkTick[static_cast<std::size_t>(i)]>static_cast<int>(stats.activeSilkSeconds*120.f))break;
+            if(!root::silkContact(boss,silkTrail[static_cast<std::size_t>(i)],silkTrail[static_cast<std::size_t>(i-1)],stats.silkHalfWidth))continue;
+            const auto hit=root::applySilk(boss,stats.silkDamage);if(hit.hit!=threadlight::combat::SilkHit::None){hitBoss=true;observations.onOffense(obs::OffenseTarget::Other);}break;}
+        out.ordinaryHits+=hitBoss?1:0;
+
+        threadlight::combat::IncomingHit incoming;
+        if(!dashActive&&threadlight::combat::canReceiveIncoming(playerHealth,false))
+            incoming.consider(root::incomingDamage(boss,previousPlayer,player,threadlight::layout::kPlayerRadius),1);
+        const auto impacts=root::projectileTick(boss,previousPlayer,player,threadlight::layout::kPlayerRadius,kArena);
+        for(int i=0;i<impacts.count;++i)incoming.consider(impacts.items[static_cast<std::size_t>(i)].damage,
+                                                         impacts.items[static_cast<std::size_t>(i)].sourceId);
+        const int damage=threadlight::combat::applyIncoming(playerHealth,incoming,dashActive,nullptr,stats.damageReductionPercent);
+        if(damage){observations.onIncoming(damage,dashActive);boss.metrics.playerDamage+=damage;out.playerDamage+=damage;
+            if(u.planCommitted)u.hitDuringSequence=1;}
+        if(u.resultPending){const bool success=u.hitDuringSequence==0;observations.onCounterResult(success);
+            ++out.counterAttempts;out.counterSuccesses+=success?1:0;
+            if(policy==CorePolicy::ReverseAfterCounter&&success)reversed=true;
+            u.resultPending=false;}
+        u.profile=observations.summary();
+        (void)uw::finish(boss);
+        if(dashActive)dashTime=std::max(0.f,dashTime-kCoreDt);
+
+        CHECK(std::isfinite(player.x)&&std::isfinite(player.y)&&player.x>=kCorePlayerBounds.left&&player.x<=kCorePlayerBounds.right&&
+              player.y>=kCorePlayerBounds.top&&player.y<=kCorePlayerBounds.bottom);
+        CHECK(u.rayCount>=0&&u.rayCount<=static_cast<int>(u.rays.size()));
+        CHECK(boss.bullets.flyingCount()<=ranged::kProjectileCapacity&&boss.bullets.reservedCount()<=ranged::kProjectileCapacity);
+        for(int i=0;i<u.rayCount;++i){const auto&r=u.rays[static_cast<std::size_t>(i)];CHECK(std::isfinite(r.origin.x)&&std::isfinite(r.origin.y)&&
+            std::isfinite(r.direction.x)&&std::isfinite(r.direction.y));}
+        for(const auto&p:boss.bullets.items())if(p.state!=ranged::SlotState::Empty)
+            CHECK(std::isfinite(p.p.x)&&std::isfinite(p.p.y)&&std::isfinite(p.velocity.x)&&std::isfinite(p.velocity.y));
+        out.ticks=tick+1;
+    }
+    out.playerHp=playerHealth.hp;out.bossHp=boss.health.hp;out.bossDamage=boss.health.maxHp-boss.health.hp;
+    out.style=u.style;out.objective=u.objective;
+    out.acceptedPlans=static_cast<int>(boss.warnings);out.reversed=reversed?1:0;
+    if(out.acceptedPlans==0)
+        std::cerr<<"core scenario ended before a plan policy="<<policyName(policy)<<" build="<<buildName(build)<<" seed="<<seed
+                 <<" ticks="<<out.ticks<<" player_hp="<<out.playerHp<<'\n';
+    out.pathHash^=static_cast<std::uint64_t>(std::lround((player.x+player.y)*1000.f));
+    const auto finalProfile=observations.summary();
+    out.movement=finalProfile.movement;out.dashUse=finalProfile.dashUse;out.perimeter=finalProfile.perimeter;
+    out.offense=finalProfile.offense;out.counterRate=finalProfile.counterSuccess;out.responseRate=finalProfile.responseRate;
+    observations.reset();CHECK(observations.movementCount()==0&&observations.summary().confidence==0.f&&observations.summary().offense==0.f);
+    return out;
+}
+
+void deterministicRealCorePolicyStress(){
+    constexpr std::array<CorePolicy,9> policies{{CorePolicy::OrbitCW,CorePolicy::OrbitCCW,CorePolicy::PerimeterCW,
+        CorePolicy::PerimeterCCW,CorePolicy::DashSpam,CorePolicy::DashConserve,CorePolicy::AggressiveSilk,
+        CorePolicy::DefensiveMovement,CorePolicy::ReverseAfterCounter}};
+    constexpr std::array<CoreBuild,4> builds{{CoreBuild::Baseline,CoreBuild::Offense,CoreBuild::Mobility,CoreBuild::Defense}};
+    constexpr std::array<std::uint32_t,2> seeds{{0x13579bdfu,0x2468ace0u}};
+    int runs=0,ticks=0,plans=0,noPlanRuns=0,bossDamage=0,playerDamage=0,counters=0,styles=0,styleMask=0,reversals=0,objectives=0;
+    for(const auto p:policies)for(const auto b:builds)for(const auto seed:seeds){
+        const auto first=runRealCore(p,b,seed),again=runRealCore(p,b,seed);
+        if(!sameCore(first,again))std::cerr<<"core nondeterminism policy="<<policyName(p)<<" build="<<buildName(b)<<" seed="<<seed<<'\n';
+        CHECK(sameCore(first,again));++runs;ticks+=first.ticks;plans+=first.acceptedPlans;bossDamage+=first.bossDamage;
+        playerDamage+=first.playerDamage;counters+=first.counterAttempts;styles+=first.styleChanges;styleMask|=first.styleMask;
+        reversals+=first.reversed;objectives|=first.objectiveMask;
+        noPlanRuns+=first.acceptedPlans==0?1:0;
+    }
+    CHECK(plans>0&&counters>0&&styleMask!=0&&objectives!=0);
+    std::cout<<"real_core_policy_stress seconds=10 policies="<<policies.size()<<" builds="<<builds.size()
+        <<" seeds="<<seeds.size()<<" repeated_runs="<<runs<<" ticks="<<ticks<<" accepted_plans="<<plans<<" no_plan_runs="<<noPlanRuns
+        <<" boss_damage="<<bossDamage<<" player_damage="<<playerDamage<<" counter_results="<<counters
+        <<" style_changes="<<styles<<" styles_seen_mask="<<styleMask<<" objective_mask="<<objectives<<" reversal_events="<<reversals
+        <<" victory_claim=none\n";
+}
 }
 
 int main() {
@@ -516,6 +698,7 @@ int main() {
     deterministicStyleSelection();
     admissionAndActualReplayMatrix();
     syntheticDashWindowValidatorStress();
+    deterministicRealCorePolicyStress();
     std::cout << "Unweaver headless integration passed: ticks=" << gTicks
               << " attack_families=5 peak_rays=" << gPeakRays << '\n';
 }

@@ -9,11 +9,12 @@ New-Item -ItemType Directory -Path $OutputRoot | Out-Null
 $root = (Resolve-Path -LiteralPath $OutputRoot).Path
 $cases = @(
     @{ Name='hunt'; Args=@('--unweaver-fixture','mixed','--unweaver-phase','1') },
-    @{ Name='deceiver'; Args=@('--unweaver-fixture','mixed','--unweaver-phase','2') },
+    @{ Name='deceiver'; Args=@('--unweaver-fixture','mixed','--unweaver-phase','2','--dev-autoplay') },
     @{ Name='seal'; Args=@('--unweaver-fixture','mixed','--unweaver-phase','3') },
     @{ Name='unbound-minimum'; Args=@('--unweaver-fixture','mixed','--unweaver-phase','4','--m7-min-window') },
     @{ Name='severance'; Args=@('--unweaver-fixture','mixed','--unweaver-phase','3','--unweaver-mechanic','2','--dev-autoplay') },
     @{ Name='corruption'; Args=@('--unweaver-fixture','mixed','--unweaver-phase','3','--unweaver-mechanic','3','--dev-autoplay') },
+    @{ Name='thorn-dominion'; Args=@('--unweaver-fixture','defense','--unweaver-phase','3','--unweaver-formation','2','--dev-autoplay','--dev-capture','--dev-ticks','2400') },
     @{ Name='dancer'; Args=@('--m5-dancer-fixture','defense','--dev-autoplay','--dev-capture','--dev-ticks','1200') },
     @{ Name='conductor'; Args=@('--m5-conductor-fixture','defense','--dev-autoplay','--dev-capture','--dev-ticks','1200') },
     @{ Name='hollow'; Args=@('--m6-hollow-fixture','defense','--dev-autoplay','--dev-capture','--dev-ticks','1200') },

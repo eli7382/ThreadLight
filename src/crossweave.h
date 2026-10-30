@@ -25,6 +25,7 @@ struct Segment {
     foundation::Point a{};
     foundation::Point b{};
     int ageTicks = 0;
+    bool available = true; // Keep disabled IDs in history so consumed claims survive corruption.
 };
 
 struct PendingCrossing {
@@ -115,7 +116,7 @@ inline bool properCrossing(foundation::Point previousPlayer,
 }
 
 inline bool eligible(const Segment& segment) {
-    return segment.id != 0 && segment.ageTicks >= kMinimumSegmentAgeTicks &&
+    return segment.available && segment.id != 0 && segment.ageTicks >= kMinimumSegmentAgeTicks &&
            segment.ageTicks <= kMaximumSegmentAgeTicks;
 }
 

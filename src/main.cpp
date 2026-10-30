@@ -90,7 +90,7 @@ int main(int argc, char** argv){
  int waveFixture=-1;
  int waveFixtureWave=7;
  int bossFixtureWave=6;
- int devPhase=1,devAttack=-1,devMechanic=-1,devTicks=0;bool devAutoplay=false,devCapture=false,devFast=false;int directorStyle=0;
+ int devPhase=1,devAttack=-1,devMechanic=-1,devFormation=-1,devTicks=0;bool devAutoplay=false,devCapture=false,devFast=false;int directorStyle=0;
  int fixtureOptions=0;
  int rewardFixture=0;bool utilityFixture=false,minimumQaWindow=false;
  std::uint32_t spawnSeed=7382;
@@ -98,12 +98,13 @@ int main(int argc, char** argv){
  for(int i=1;i<argc;i++){
   const std::string_view arg=argv[i];
    if(arg=="--perf-log"&&i+1<argc){if(!perfLogPath.empty())return 2;perfLogPath=argv[++i];if(perfLogPath.empty())return 2;}
-   else if((arg=="--unweaver-phase"||arg=="--unweaver-attack"||arg=="--unweaver-mechanic"||arg=="--dev-ticks")&&i+1<argc){
+   else if((arg=="--unweaver-phase"||arg=="--unweaver-attack"||arg=="--unweaver-mechanic"||arg=="--unweaver-formation"||arg=="--dev-ticks")&&i+1<argc){
      const std::string_view value=argv[++i];int parsed=-1;const auto r=std::from_chars(value.data(),value.data()+value.size(),parsed);
      if(r.ec!=std::errc{}||r.ptr!=value.data()+value.size())return 2;
      if(arg=="--unweaver-phase"){if(parsed<1||parsed>4)return 2;devPhase=parsed;}
      else if(arg=="--unweaver-attack"){if(parsed<0||parsed>4)return 2;devAttack=parsed;}
      else if(arg=="--unweaver-mechanic"){if(parsed<0||parsed>4)return 2;devMechanic=parsed;}
+     else if(arg=="--unweaver-formation"){if(parsed<0||parsed>3)return 2;devFormation=parsed;}
      else{if(parsed<1||parsed>120000)return 2;devTicks=parsed;}
     }else if(arg=="--dev-autoplay")devAutoplay=true;
     else if(arg=="--dev-capture")devCapture=true;
@@ -176,9 +177,9 @@ int main(int argc, char** argv){
   }else return 2;
  }
  if(bossFixture>=0&&waveFixture>=0)return 2;
- if((devPhase!=1||devAttack>=0||devMechanic>=0)&&(bossFixture<0||bossFixtureWave!=34))return 2;
+ if((devPhase!=1||devAttack>=0||devMechanic>=0||devFormation>=0)&&(bossFixture<0||bossFixtureWave!=34))return 2;
  if(devCapture)m6RenderCheck=true;
- if((devAutoplay||devCapture||devFast||devTicks||devPhase!=1||devAttack>=0||devMechanic>=0)&&bossFixture<0&&waveFixture<0)return 2;
+ if((devAutoplay||devCapture||devFast||devTicks||devPhase!=1||devAttack>=0||devMechanic>=0||devFormation>=0)&&bossFixture<0&&waveFixture<0)return 2;
  if(m6RenderCheck&&rewardFixture==0&&!utilityFixture&&bossFixture<0&&!(waveFixture>=0&&waveFixtureWave>=28))return 2;
  if(minimumQaWindow&&!m6RenderCheck)return 2;
  if((pacingVsync!=-1&&!pacingCheck)||(pacingCheck&&m6RenderCheck))return 2;
@@ -384,7 +385,10 @@ int main(int argc, char** argv){
    boss.experimentalSupports=wave==13||wave==20||wave==27;
    if(boss.kind==root::Kind::Unweaver){boss.unweaver.profile=observations.summary();boss.unweaver.forcedAttack=devAttack;boss.unweaver.forcedMechanic=devMechanic;
     if(bossFixture>=0){boss.phase=devPhase;boss.unweaver.progress.phase=devPhase;boss.unweaver.progress.generation=devPhase;
-     boss.unweaver.progress.credited=(devPhase-1)*boss.health.maxHp/4;boss.health.hp=boss.unweaver.progress.vitality();}}
+     boss.unweaver.progress.credited=(devPhase-1)*boss.health.maxHp/4;boss.health.hp=boss.unweaver.progress.vitality();
+     if(devFormation>=0){boss.unweaver.formationKind=devFormation;boss.unweaver.formationEvents=1;
+      supportQueued=support_formations::configure((support_formations::Kind)devFormation,8,4).memberCount;}
+    }}
    unlockCodex(6+static_cast<int>(boss.kind==root::Kind::Unweaver?root::Kind::Heart:boss.kind));
    bossRewardId=rewards.registerEnemy(root::kCoreValue,250);boss.hazardOwner=bossRewardId;traceBoss("start");
   }
@@ -952,8 +956,8 @@ int main(int argc, char** argv){
        loom::tick(loomState,true,loomReward.owned);
        std::array<cross::Segment,520> loopHistory{};size_t loopCount=0;
        if(cocoonReward.owned&&!thread.empty()){
-        for(size_t i=1;i<thread.size();++i)if(!thread[i].severed&&thread[i].corruptedTicks==0)loopHistory[loopCount++]={thread[i].id,{thread[i-1].p.x,thread[i-1].p.y},{thread[i].p.x,thread[i].p.y},(int)std::lround(thread[i].age*120.f)+1};
-        if(dist(thread.back().p,previousPlayer)>.05f&&loopCount<loopHistory.size())loopHistory[loopCount++]={nextThreadId+1,{thread.back().p.x,thread.back().p.y},{previousPlayer.x,previousPlayer.y},0};
+        for(size_t i=1;i<thread.size();++i)loopHistory[loopCount++]={thread[i].id,{thread[i-1].p.x,thread[i-1].p.y},{thread[i].p.x,thread[i].p.y},(int)std::lround(thread[i].age*120.f)+1,!thread[i].severed&&thread[i].corruptedTicks==0};
+        if(dist(thread.back().p,previousPlayer)>.05f&&loopCount<loopHistory.size())loopHistory[loopCount++]={nextThreadId+1,{thread.back().p.x,thread.back().p.y},{previousPlayer.x,previousPlayer.y},0,true};
        }
        const auto formation=cocoon::tick(cocoonState,{previousPlayer.x,previousPlayer.y},{player.x,player.y},std::span<const cross::Segment>(loopHistory.data(),loopCount),true,cocoonReward.owned);
        if(formation.formed){++cocoonsFormed;burst(player,C(208,241,193),12,100);sfx.play(threadlight::audio::Event::Afterimage);traceM1("cocoon_formed",formation.segmentId,(int)formation.area);}
@@ -963,8 +967,8 @@ int main(int argc, char** argv){
        while(!thread.empty()&&(thread.front().age>threadlight::visual::kSilkLifetimeSeconds||thread.size()>520))thread.erase(thread.begin());
        const size_t firstActiveSilk=threadlight::silk::firstActiveSegment(std::span<const Thread>(thread),stats.activeSilkSeconds);
        std::array<cross::Segment,520> history{};size_t historyCount=0;
-       if(crossReward.owned)for(size_t i=1;i<thread.size();++i)if(!thread[i].severed&&thread[i].corruptedTicks==0)
-        history[historyCount++]={thread[i].id,{thread[i-1].p.x,thread[i-1].p.y},{thread[i].p.x,thread[i].p.y},(int)std::lround(thread[i].age*120.f)};
+       if(crossReward.owned)for(size_t i=1;i<thread.size();++i)
+        history[historyCount++]={thread[i].id,{thread[i-1].p.x,thread[i-1].p.y},{thread[i].p.x,thread[i].p.y},(int)std::lround(thread[i].age*120.f),!thread[i].severed&&thread[i].corruptedTicks==0};
        crossPulse=cross::tick(crossState,{previousPlayer.x,previousPlayer.y},{player.x,player.y},std::span<const cross::Segment>(history.data(),historyCount),true,crossReward.owned);
        if(crossPulse.triggered){pulseCenter=crossPulse.center;pulseRadius=cross::kPulseRadius;pulseTicks=24;++crossPulses;sfx.play(threadlight::audio::Event::Afterimage);burst({pulseCenter.x,pulseCenter.y},C(170,237,226),12,110);traceM1("crossweave_pulse",crossPulses);}
        const bool bossEncounter=chapter::encounter(wave).boss;

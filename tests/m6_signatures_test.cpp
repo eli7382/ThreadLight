@@ -50,6 +50,26 @@ co::Formation trigger(co::State& state, const LoopFixture& fixture,
     return co::tick(state, fixture.previous, fixture.current, fixture.history, combat, owned);
 }
 
+void disabledSilkRetainsClaimsAndBreaksLoops(){
+    cw::State crossing;crossing.travelDistance=cw::kTravelDistance;
+    std::array<cw::Segment,1> segment{{{900,{0,-50},{0,50},100}}};
+    CHECK(cw::tick(crossing,{-10,0},{10,0},segment,true,true).triggered);
+    segment[0].available=false;
+    CHECK(!cw::tick(crossing,{10,0},{10,0},segment,true,true).triggered);
+    CHECK(cw::claimed(crossing,900));
+    segment[0].available=true;crossing.cooldownTicks=0;crossing.travelDistance=cw::kTravelDistance;
+    CHECK(!cw::tick(crossing,{10,0},{-10,0},segment,true,true).triggered);
+    auto loop=rectangle(910,100,100);co::State intact;
+    CHECK(trigger(intact,loop).formed);
+    loop.history[1].available=false;co::State broken;
+    CHECK(!trigger(broken,loop).formed);
+    loop.history[1].available=true;loop.history[0].available=false;
+    CHECK(!trigger(intact,loop).formed);
+    CHECK(cw::claimed(intact.detector,910));
+    loop.history[0].available=true;intact.barrierCenti=intact.remainingTicks=intact.cooldownTicks=0;
+    CHECK(!trigger(intact,loop).formed);
+}
+
 void cocoonAreaAndPathBoundaries() {
     co::State areaBoundary;
     const LoopFixture areaFixture = rectangle(100, 35.0f, 100.0f);
@@ -330,6 +350,7 @@ void loomSelectionAndDamageRounding() {
 } // namespace
 
 int main() {
+    disabledSilkRetainsClaimsAndBreaksLoops();
     cocoonAreaAndPathBoundaries();
     cocoonRejectsSmallLoopsButConsumesTheirCrossings();
     cocoonRejectsIneligibleAndEndpointCrossings();

@@ -125,7 +125,7 @@ inline bool closedPathMetrics(foundation::Point crossing,
     int previousAge = oldSegment.ageTicks;
     for (std::size_t i = segmentIndex + 1; i < segments.size(); ++i) {
         const crossweave::Segment& segment = segments[i];
-        if (segment.id <= previousId || segment.ageTicks > previousAge ||
+        if (!segment.available || segment.id <= previousId || segment.ageTicks > previousAge ||
             !crossweave::finite(segment.a) || !crossweave::finite(segment.b) ||
             !samePoint(previous, segment.a, kHistoryJoinTolerance)) return false;
         if (!append(segment.b, previous, length, result)) return false;
