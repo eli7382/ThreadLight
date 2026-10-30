@@ -1,0 +1,149 @@
+#include "campaign_director.h"
+#include <array>
+#include <cmath>
+#include <cstdlib>
+#include <iostream>
+
+using namespace threadlight;
+
+#define CHECK(condition) do { if (!(condition)) { \
+    std::cerr << "CHECK failed: " #condition " at " << __FILE__ << ':' << __LINE__ << '\n'; \
+    std::abort(); } } while (false)
+
+namespace {
+using KindCounts = std::array<int, 6>;
+int kindIndex(combat::EnemyKind kind) { return static_cast<int>(kind); }
+
+KindCounts counts(const chapter::Schedule& value) {
+    KindCounts result{};
+    for (int i = 0; i < value.count; ++i) ++result[static_cast<std::size_t>(kindIndex(value.items[i].kind))];
+    return result;
+}
+int sparkTotal(const chapter::Schedule& value) {
+    int sum = 0;
+    for (int i = 0; i < value.count; ++i) sum += combat::definition(value.items[i].kind, 5).sparkValue;
+    return sum;
+}
+int scoreTotal(const chapter::Schedule& value) {
+    int sum = 0;
+    for (int i = 0; i < value.count; ++i) sum += combat::definition(value.items[i].kind, 5).killScore;
+    return sum;
+}
+int weightedThreat(const chapter::Schedule& value) {
+    int sum = 0;
+    for (int i = 0; i < value.count; ++i) {
+        const auto stats = combat::definition(value.items[i].kind, 5);
+        sum += stats.contactDamage + 2 * stats.killScore + 3 * stats.sparkValue;
+    }
+    return sum;
+}
+int peakWindowThreat(const chapter::Schedule& value, int windowTicks) {
+    int peak = 0;
+    for (int i = 0; i < value.count; ++i) {
+        int load = 0;
+        const int start = value.items[i].tick;
+        for (int j = 0; j < value.count; ++j) {
+            if (value.items[j].tick >= start && value.items[j].tick < start + windowTicks) {
+                const auto stats = combat::definition(value.items[j].kind, 5);
+                load += stats.contactDamage + 2 * stats.killScore + 3 * stats.sparkValue;
+            }
+        }
+        peak = std::max(peak, load);
+    }
+    return peak;
+}
+bool sameArrangement(const chapter::Schedule& a, const chapter::Schedule& b) {
+    if (a.count != b.count) return false;
+    for (int i = 0; i < a.count; ++i) {
+        if (a.items[i].tick != b.items[i].tick || a.items[i].kind != b.items[i].kind ||
+            std::abs(a.items[i].angle - b.items[i].angle) > .00001f) return false;
+    }
+    return true;
+}
+observation::Summary stationaryStyle() {
+    observation::State state;
+    for (int i = 0; i < 260; ++i) state.observe({500.f, 400.f}, {500.f, 400.f}, false, false, {0, 0, 1000, 800});
+    for (int i = 0; i < 12; ++i) state.onThreatResponse(false);
+    return state.summary();
+}
+observation::Summary mobileStyle() {
+    observation::State state;
+    foundation::Point p{500.f, 400.f};
+    for (int i = 0; i < 260; ++i) {
+        foundation::Point next{p.x + 7.f, p.y + (i % 2 ? 2.f : -2.f)};
+        state.observe(p, next, i % 3 == 0, i % 3 == 0, {0, 0, 1000, 800});
+        p = next;
+    }
+    for (int i = 0; i < 12; ++i) { state.onThreatResponse(true); state.onCounterResult(i % 2 == 0); }
+    return state.summary();
+}
+void checkInvariants(int wave) {
+    const auto base = chapter::schedule(wave, 13579u);
+    const auto stationary = campaign::schedule(wave, 13579u, stationaryStyle());
+    const auto mobile = campaign::schedule(wave, 13579u, mobileStyle());
+    const int deadline = chapter::encounter(wave).seconds * 120 - 240;
+    CHECK(base.count > 0 && base.count <= static_cast<int>(base.items.size()));
+    CHECK(stationary.count == base.count && mobile.count == base.count);
+    CHECK(counts(stationary) == counts(base));
+    CHECK(counts(mobile) == counts(base));
+    CHECK(sparkTotal(stationary) == sparkTotal(base));
+    CHECK(sparkTotal(mobile) == sparkTotal(base));
+    CHECK(scoreTotal(stationary) == scoreTotal(base));
+    CHECK(scoreTotal(mobile) == scoreTotal(base));
+    CHECK(weightedThreat(stationary) == weightedThreat(base));
+    CHECK(weightedThreat(mobile) == weightedThreat(base));
+    CHECK(peakWindowThreat(stationary, 240) <= peakWindowThreat(base, 240) * 5 / 4);
+    CHECK(peakWindowThreat(mobile, 240) <= peakWindowThreat(base, 240) * 5 / 4);
+    const auto directed = campaign::direct(wave, 13579u, mobileStyle());
+    CHECK(directed.durationSeconds == chapter::encounter(wave).seconds);
+    CHECK(directed.timingShiftTicks <= campaign::kMaximumTimingAdjustmentTicks);
+    for (const auto* schedule : {&base, &stationary, &mobile}) {
+        int prior = -1;
+        for (int i = 0; i < schedule->count; ++i) {
+            CHECK(schedule->items[i].tick >= 0 && schedule->items[i].tick <= deadline);
+            CHECK(schedule->items[i].tick >= prior);
+            prior = schedule->items[i].tick;
+        }
+    }
+    for (const auto* directedSchedule : {&stationary, &mobile}) {
+        for (int i = 0; i < directedSchedule->count; ++i) {
+            int nearest = deadline;
+            for (int j = 0; j < base.count; ++j) {
+                if (directedSchedule->items[i].kind == base.items[j].kind)
+                    nearest = std::min(nearest, std::abs(directedSchedule->items[i].tick - base.items[j].tick));
+            }
+            CHECK(nearest <= campaign::kMaximumTimingAdjustmentTicks);
+        }
+    }
+    CHECK(!sameArrangement(stationary, mobile));
+    const auto alternateSeed = campaign::schedule(wave, 24680u, mobileStyle());
+    CHECK(!sameArrangement(mobile, alternateSeed));
+    CHECK(campaign::direct(wave, 13579u, mobileStyle()).durationSeconds ==
+          campaign::direct(wave, 24680u, mobileStyle()).durationSeconds);
+}
+}
+
+int main() {
+    observation::State state;
+    CHECK(state.summary().confidence == 0.f);
+    state.observe({100, 100}, {110, 100}, true, true, {0, 0, 800, 600});
+    state.onOffense(combat::EnemyKind::Brute);
+    state.onIncoming(100, true);
+    state.onCounterResult(true);
+    state.onThreatResponse(true);
+    CHECK(state.movementCount() == 1);
+    CHECK(state.summary().confidence > 0.f);
+    CHECK(state.summary().counterSuccess > .99f);
+    CHECK(state.summary().responseRate > .99f);
+    for (int i = 0; i < 100; ++i) state.observe({0, 0}, {1, 0}, false, false, {0, 0, 100, 100});
+    CHECK(state.movementCount() == observation::State::kMovementCapacity);
+    state.reset();
+    CHECK(state.movementCount() == 0);
+    CHECK(state.summary().confidence == 0.f);
+    CHECK(state.summary().offense == 0.f);
+
+    for (int wave = campaign::kFirstAdaptiveWave; wave <= campaign::kLastAdaptiveWave; ++wave) checkInvariants(wave);
+    const auto outside = campaign::schedule(27, 1u, mobileStyle());
+    CHECK(sameArrangement(outside, chapter::schedule(27, 1u)));
+    std::cout << "adaptive director invariants passed\n";
+}
