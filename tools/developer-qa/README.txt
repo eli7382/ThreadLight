@@ -13,9 +13,15 @@ start with full player health and boss vitality at the selected phase boundary.
 F5 restarts the current wave with its selected fixture build; direct Unweaver
 fixtures restart the current phase. Restart reinitializes observation history.
 P pauses; normal movement/dash and reward-choice controls remain unchanged.
-Overlay: FPS, wave, phase, centi-HP, tactical style, radial family, named attack
-stage. The family is the selected
-radial family, not necessarily the currently executing unique mechanic.
+Overlay: FPS, wave, phase, centi-HP, tactical style, selected tactical action,
+attack stage, last radial family, radial occupancy, charge count and forecast
+error. Late waves show Director review and changed deployment counts.
+Start-Unweaver.cmd and Start-Phase-IV.cmd are direct shortcuts.
+Each launcher saves unique diagnostic logs and seed/argument records under Logs.
+Add -Performance to QA.ps1 to record frame timings alongside those logs.
+Radial occupancy counts complete major warning/emission/projectile-residency
+sequences divided by active boss ticks, including movement/recovery but excluding
+phase transitions. Early phase samples can be dominated by mandatory experiences.
 
 PowerShell examples from this folder:
  ./QA.ps1 -Wave 35 -Phase 4 -Build defense -Seed 9
@@ -29,7 +35,10 @@ No public practice menu is added. This separate Debug binary includes QA
 instrumentation and a PDB. It is not the trusted Release game and its performance
 is not representative of Release. No extra assets/DLLs are required.
 
-Validation: 42/42 Debug CTest suites passed. Packaged launcher smoke runs cover
+Validation: 43/43 Debug CTest suites passed. Packaged launcher smoke runs cover
 every requested starting wave and all four Unweaver phases with real gameplay.
 These short automated launches verify startup/stepping, not full survival through
 Waves 29–35 or human menu/input acceptance. Interactive QA remains yours.
+
+Revision details and before/after evidence: UNWEAVER-REPERTOIRE-QA.md.
+Earlier experimental packages remain available for comparison. No merge authorized.

@@ -85,6 +85,7 @@ bool runToExperiencePair(root::State& boss, Point player, int maximumTicks = 360
         if (boss.unweaver.progress.experiences == 3u) return true;
         uw::finish(boss);
     }
+    if(boss.unweaver.progress.experiences!=3u)std::cerr<<"experience timeout phase="<<boss.phase<<" bits="<<boss.unweaver.progress.experiences<<" stage="<<(int)boss.stage<<" dist="<<uw::length(uw::sub(boss.p,player))<<" plans="<<boss.unweaver.plans<<" rejected="<<boss.unweaver.rejected<<" hunt="<<boss.unweaver.huntExecuted<<"\n";
     return boss.unweaver.progress.experiences == 3u;
 }
 
@@ -99,9 +100,9 @@ void familyAdmissionAndExecution(uw::Attack attack) {
     CHECK(state.planCommitted);
     CHECK(state.rayCount > 0 && state.rayCount <= static_cast<int>(state.rays.size()));
     gPeakRays = std::max(gPeakRays, state.rayCount);
-    CHECK(state.rayCount == (attack == uw::Attack::FinalConvergence ? 54 : 36));
+    CHECK(state.rayCount == (attack==uw::Attack::ShatteredHalo||attack==uw::Attack::FracturedRhythm?18:attack==uw::Attack::PredictedEscape?36:54));
     CHECK(state.warningTicks == 102);
-    CHECK(state.sequenceTicks <= state.warningTicks + 54 * 2 + 320);
+    CHECK(state.sequenceTicks <= state.warningTicks + 200 + 320);
     CHECK(boss.p.x >= kArena.left + root::vulnerableRadius(boss));
     CHECK(boss.p.x <= kArena.right - root::vulnerableRadius(boss));
     CHECK(boss.p.y >= kArena.top + root::vulnerableRadius(boss));
@@ -109,8 +110,8 @@ void familyAdmissionAndExecution(uw::Attack attack) {
 
     bool foundUnprotectedRoute = false, foundDashRoute = false;
     for (int route = 0; route < 8; ++route) {
-        foundUnprotectedRoute |= uw::witness(state, kPlayer, 16.f, route, false);
-        foundDashRoute |= uw::witness(state, kPlayer, 16.f, route, true);
+        foundUnprotectedRoute |= uw::witness(state, kPlayer, threadlight::layout::kPlayerRadius, route, false);
+        foundDashRoute |= uw::witness(state, kPlayer, threadlight::layout::kPlayerRadius, route, true);
     }
     CHECK(foundUnprotectedRoute || foundDashRoute); // Same bounded geometry used by admission.
     for (int i = 0; i < state.rayCount; ++i) {
@@ -531,7 +532,9 @@ Point coreDirection(Point delta){
 struct CoreOutcome {
     int ticks=0,playerHp=0,bossHp=0,bossDamage=0,playerDamage=0,ordinaryHits=0,dashStarts=0;
     int acceptedPlans=0,counterAttempts=0,counterSuccesses=0,styleChanges=0,styleMask=0,objectiveMask=0,reversed=0;
-    std::uint64_t pathHash=0;float movement=0,dashUse=0,perimeter=0,offense=0,counterRate=0,responseRate=0;
+    std::array<int,8> stageTicks{};
+    int committedRadialTicks=0,bodyContactAttempts=0;
+    std::uint64_t pathHash=1469598103934665603ull;float movement=0,dashUse=0,perimeter=0,offense=0,counterRate=0,responseRate=0;
     uw::Style style=uw::Style::Predator;uw::Objective objective=uw::Objective::Engage;
 };
 bool sameCore(const CoreOutcome&a,const CoreOutcome&b){
@@ -539,11 +542,12 @@ bool sameCore(const CoreOutcome&a,const CoreOutcome&b){
         a.playerDamage==b.playerDamage&&a.ordinaryHits==b.ordinaryHits&&a.dashStarts==b.dashStarts&&
         a.acceptedPlans==b.acceptedPlans&&a.counterAttempts==b.counterAttempts&&a.counterSuccesses==b.counterSuccesses&&
         a.styleChanges==b.styleChanges&&a.styleMask==b.styleMask&&a.objectiveMask==b.objectiveMask&&a.reversed==b.reversed&&a.pathHash==b.pathHash&&
+        a.stageTicks==b.stageTicks&&a.committedRadialTicks==b.committedRadialTicks&&a.bodyContactAttempts==b.bodyContactAttempts&&
         a.movement==b.movement&&a.dashUse==b.dashUse&&a.perimeter==b.perimeter&&a.offense==b.offense&&
         a.counterRate==b.counterRate&&a.responseRate==b.responseRate&&a.style==b.style&&a.objective==b.objective;
 }
 
-CoreOutcome runRealCore(CorePolicy policy,CoreBuild build,std::uint32_t seed){
+CoreOutcome runRealCore(CorePolicy policy,CoreBuild build,std::uint32_t seed,int maximumTicks=kCoreStressTicks){
     namespace up=threadlight::upgrades;namespace obs=threadlight::observation;
     const auto stats=up::derive(coreRanks(build));threadlight::combat::PlayerHealth playerHealth{stats.maxHp,stats.maxHp,0};
     root::State boss;root::start(boss,{462.f,254.f},kArena,root::Kind::Unweaver);boss.phase=boss.unweaver.progress.phase=2;
@@ -557,9 +561,13 @@ CoreOutcome runRealCore(CorePolicy policy,CoreBuild build,std::uint32_t seed){
     const std::array<Point,4> corners{{{kCorePlayerBounds.left+18,kCorePlayerBounds.top+18},
         {kCorePlayerBounds.right-18,kCorePlayerBounds.top+18},{kCorePlayerBounds.right-18,kCorePlayerBounds.bottom-18},
         {kCorePlayerBounds.left+18,kCorePlayerBounds.bottom-18}}};
-    CoreOutcome out;out.pathHash=static_cast<std::uint64_t>(seed);uw::Style priorStyle=u.style;
-    for(int tick=0;tick<kCoreStressTicks&&playerHealth.alive()&&!u.progress.defeated;++tick){
+    CoreOutcome out;out.pathHash^=static_cast<std::uint64_t>(seed);uw::Style priorStyle=u.style;
+    for(int tick=0;tick<maximumTicks&&playerHealth.alive()&&!u.progress.defeated;++tick){
         threadlight::combat::tick(playerHealth);dashCooldown=std::max(0.f,dashCooldown-kCoreDt);previousPlayer=player;
+        const auto stageIndex=static_cast<std::size_t>(boss.stage);
+        CHECK(stageIndex<out.stageTicks.size());++out.stageTicks[stageIndex];
+        if(u.planCommitted&&u.sealTicks==0&&!u.focused&&!u.unique&&(boss.stage==root::Stage::RootWarning||boss.stage==root::Stage::RootActive))
+            ++out.committedRadialTicks;
         auto orbit=[&](int sign){const Point r=uw::sub(player,center);return coreDirection({-r.y*sign,r.x*sign});};
         Point command{};bool dashPressed=false;
         switch(policy){
@@ -597,11 +605,16 @@ CoreOutcome runRealCore(CorePolicy policy,CoreBuild build,std::uint32_t seed){
             dashCooldown=stats.dashCooldownSeconds;++out.dashStarts;}
         const bool dashActive=threadlight::dashProtectsCollisionThisFrame(dashTime);
         player=uw::clamp(uw::add(player,uw::scale(command,stats.moveSpeed*(dashActive?stats.dashMultiplier:1.f)*kCoreDt)),kCorePlayerBounds);
+        const auto pathX=static_cast<std::uint64_t>(static_cast<std::uint32_t>(std::lround(player.x*1000.f)));
+        const auto pathY=static_cast<std::uint64_t>(static_cast<std::uint32_t>(std::lround(player.y*1000.f)));
+        out.pathHash^=pathX;out.pathHash*=1099511628211ull;out.pathHash^=pathY;out.pathHash*=1099511628211ull;
         u.playerVelocity=uw::scale(uw::sub(player,previousPlayer),120.f);
         observations.observe(previousPlayer,player,dashActive,dashPressed&&dashActive,
             {kCorePlayerBounds.left,kCorePlayerBounds.top,kCorePlayerBounds.right,kCorePlayerBounds.bottom});
         u.profile=observations.summary();const int plansBefore=u.plans;
         const auto events=root::tick(boss,player,kArena);
+        if(threadlight::combat::bodyContact(previousPlayer,player,threadlight::layout::kPlayerRadius,boss.previousP,boss.p,32.f))
+            ++out.bodyContactAttempts;
         if(events.warning&&u.planCommitted){responseWindow=36;responseMoved=0;}
         if(responseWindow>0){if(dashActive||uw::length(uw::sub(player,previousPlayer))>.75f)responseMoved=1;
             if(--responseWindow==0)observations.onThreatResponse(responseMoved!=0);}
@@ -627,9 +640,9 @@ CoreOutcome runRealCore(CorePolicy policy,CoreBuild build,std::uint32_t seed){
         const int damage=threadlight::combat::applyIncoming(playerHealth,incoming,dashActive,nullptr,stats.damageReductionPercent);
         if(damage){observations.onIncoming(damage,dashActive);boss.metrics.playerDamage+=damage;out.playerDamage+=damage;
             if(u.planCommitted)u.hitDuringSequence=1;}
-        if(u.resultPending){const bool success=u.hitDuringSequence==0;observations.onCounterResult(success);
+        if(u.resultPending){const bool success=u.hitDuringSequence!=0;observations.onCounterResult(success);
             ++out.counterAttempts;out.counterSuccesses+=success?1:0;
-            if(policy==CorePolicy::ReverseAfterCounter&&success)reversed=true;
+            if(policy==CorePolicy::ReverseAfterCounter&&!success)reversed=true;
             u.resultPending=false;}
         u.profile=observations.summary();
         (void)uw::finish(boss);
@@ -651,7 +664,6 @@ CoreOutcome runRealCore(CorePolicy policy,CoreBuild build,std::uint32_t seed){
     if(out.acceptedPlans==0)
         std::cerr<<"core scenario ended before a plan policy="<<policyName(policy)<<" build="<<buildName(build)<<" seed="<<seed
                  <<" ticks="<<out.ticks<<" player_hp="<<out.playerHp<<'\n';
-    out.pathHash^=static_cast<std::uint64_t>(std::lround((player.x+player.y)*1000.f));
     const auto finalProfile=observations.summary();
     out.movement=finalProfile.movement;out.dashUse=finalProfile.dashUse;out.perimeter=finalProfile.perimeter;
     out.offense=finalProfile.offense;out.counterRate=finalProfile.counterSuccess;out.responseRate=finalProfile.responseRate;
@@ -666,6 +678,9 @@ void deterministicRealCorePolicyStress(){
     constexpr std::array<CoreBuild,4> builds{{CoreBuild::Baseline,CoreBuild::Offense,CoreBuild::Mobility,CoreBuild::Defense}};
     constexpr std::array<std::uint32_t,2> seeds{{0x13579bdfu,0x2468ace0u}};
     int runs=0,ticks=0,plans=0,noPlanRuns=0,bossDamage=0,playerDamage=0,counters=0,styles=0,styleMask=0,reversals=0,objectives=0;
+    std::array<std::uint64_t,8> allStageTicks{};int allRadialTicks=0,allBodyContacts=0;
+    std::array<int,9> policyRuns{},policyTicks{},policyPlans{},policyRadials{},policyContacts{};
+    std::array<std::array<std::uint64_t,8>,9> policyStages{};std::array<std::uint64_t,9> policyPathHashes{};
     for(const auto p:policies)for(const auto b:builds)for(const auto seed:seeds){
         const auto first=runRealCore(p,b,seed),again=runRealCore(p,b,seed);
         if(!sameCore(first,again))std::cerr<<"core nondeterminism policy="<<policyName(p)<<" build="<<buildName(b)<<" seed="<<seed<<'\n';
@@ -673,13 +688,28 @@ void deterministicRealCorePolicyStress(){
         playerDamage+=first.playerDamage;counters+=first.counterAttempts;styles+=first.styleChanges;styleMask|=first.styleMask;
         reversals+=first.reversed;objectives|=first.objectiveMask;
         noPlanRuns+=first.acceptedPlans==0?1:0;
+        for(std::size_t i=0;i<allStageTicks.size();++i)allStageTicks[i]+=static_cast<std::uint64_t>(first.stageTicks[i]);
+        allRadialTicks+=first.committedRadialTicks;allBodyContacts+=first.bodyContactAttempts;
+        const auto pi=static_cast<std::size_t>(p);++policyRuns[pi];policyTicks[pi]+=first.ticks;policyPlans[pi]+=first.acceptedPlans;
+        policyRadials[pi]+=first.committedRadialTicks;policyContacts[pi]+=first.bodyContactAttempts;policyPathHashes[pi]^=first.pathHash;
+        for(std::size_t i=0;i<allStageTicks.size();++i)policyStages[pi][i]+=static_cast<std::uint64_t>(first.stageTicks[i]);
     }
     CHECK(plans>0&&counters>0&&styleMask!=0&&objectives!=0);
     std::cout<<"real_core_policy_stress seconds=10 policies="<<policies.size()<<" builds="<<builds.size()
         <<" seeds="<<seeds.size()<<" repeated_runs="<<runs<<" ticks="<<ticks<<" accepted_plans="<<plans<<" no_plan_runs="<<noPlanRuns
         <<" boss_damage="<<bossDamage<<" player_damage="<<playerDamage<<" counter_results="<<counters
         <<" style_changes="<<styles<<" styles_seen_mask="<<styleMask<<" objective_mask="<<objectives<<" reversal_events="<<reversals
-        <<" victory_claim=none\n";
+        <<" committed_radial_ticks="<<allRadialTicks<<" swept_body_contacts="<<allBodyContacts
+        <<" stage_ticks={stalk:"<<allStageTicks[0]<<",root_warning:"<<allStageTicks[1]<<",root_active:"<<allStageTicks[2]
+        <<",step_warning:"<<allStageTicks[3]<<",step_active:"<<allStageTicks[4]<<",recover:"<<allStageTicks[5]
+        <<",transition:"<<allStageTicks[6]<<",defeated:"<<allStageTicks[7]<<"} victory_claim=none\n";
+    for(const auto p:policies){const auto pi=static_cast<std::size_t>(p);
+        std::cout<<"real_core_policy policy="<<policyName(p)<<" runs="<<policyRuns[pi]<<" ticks="<<policyTicks[pi]
+            <<" plans="<<policyPlans[pi]<<" committed_radial_ticks="<<policyRadials[pi]<<" swept_body_contacts="<<policyContacts[pi]
+            <<" stage_ticks={stalk:"<<policyStages[pi][0]<<",root_warning:"<<policyStages[pi][1]<<",root_active:"<<policyStages[pi][2]
+            <<",step_warning:"<<policyStages[pi][3]<<",step_active:"<<policyStages[pi][4]<<",recover:"<<policyStages[pi][5]
+            <<",transition:"<<policyStages[pi][6]<<",defeated:"<<policyStages[pi][7]<<"} path_hash="<<policyPathHashes[pi]<<'\n';
+    }
 }
 }
 
@@ -709,6 +739,7 @@ int main() {
     admissionAndActualReplayMatrix();
     syntheticDashWindowValidatorStress();
     deterministicRealCorePolicyStress();
+    for(auto policy:{CorePolicy::OrbitCW,CorePolicy::DefensiveMovement,CorePolicy::ReverseAfterCounter}){const auto r=runRealCore(policy,CoreBuild::Defense,0x13579bdfu,7200);std::cout<<"extended_mix policy="<<policyName(policy)<<" ticks="<<r.ticks<<" radial="<<r.committedRadialTicks<<" damage="<<r.playerDamage<<" contacts="<<r.bodyContactAttempts<<'\n';}
     std::cout << "Unweaver headless integration passed: ticks=" << gTicks
               << " attack_families=5 peak_rays=" << gPeakRays << '\n';
 }

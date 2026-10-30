@@ -98,17 +98,24 @@ void draw(const Boss& boss, float alpha, float time) {
         const int rayCount = std::clamp(u.rayCount, 0, static_cast<int>(u.rays.size()));
         for (int i = 0; i < rayCount; ++i) {
             const auto& ray = u.rays[i];
-            if (!ray.ticket || ray.fireTick < u.clock) continue;
+            if (!ray.ticket || ray.fireTick < u.clock || ray.fireTick > u.clock + u.warningTicks) continue;
             const Point start = ray.origin;
             const Point end=rootwarden::rayEnd(start,ray.direction,700.f,u.playerBounds);
-            dashed(start, end, 1.8f, withAlpha(gold, static_cast<float>(gold.a) * .82f), 10);
+            const Color cue=u.focused?coral:u.attack==unweaver::Attack::RotatingEclipse?violet:u.attack==unweaver::Attack::FracturedRhythm?mint:gold;
+            const float pulse=.6f+.4f*std::sin(clock*4.f-ray.fireTick*.025f);
+            dashed(start, end, 1.8f, withAlpha(cue, static_cast<float>(cue.a) * (.6f+.22f*pulse)), u.attack==unweaver::Attack::FracturedRhythm?5:10);
             const Point marker = {start.x + ray.direction.x * 58.f,
                                   start.y + ray.direction.y * 58.f};
             DrawPoly(vec(marker), 3, 5.f, std::atan2(ray.direction.y, ray.direction.x) * 57.2957795f,
                      withAlpha(gold, static_cast<float>(gold.a) * .85f));
         }
+        if(u.planCommitted&&boss.stage==State::RootWarning){
+            const char* label=u.focused?"ESCAPE FAN":u.unique?"WEAVE TRAP":unweaver::attackName(u.attack);
+            DrawText(label,(int)boss.p.x-65,(int)boss.p.y+104,10,withAlpha(gold,220.f*fade));
+            if(u.focused){dashed(u.anchor,u.aimTarget,2.f,withAlpha(coral,180.f*fade),8);DrawCircleLines((int)u.aimTarget.x,(int)u.aimTarget.y,12,coral);}
+        }
         // Complete outlines accompany the full-circle committed rays.
-        if (boss.phase >= 4 && u.planCommitted) {
+        if (boss.phase >= 4 && u.planCommitted&&!u.focused&&!u.unique) {
             const float rotation = clock * .72f;
             const Point ringCenter = u.anchor;
             for (int i = 0; i < (u.attack==unweaver::Attack::FinalConvergence?3:2); ++i) {

@@ -60,6 +60,14 @@ bool sameArrangement(const chapter::Schedule& a, const chapter::Schedule& b) {
     }
     return true;
 }
+bool sameCompositionAndReward(const chapter::Schedule& a, const chapter::Schedule& b) {
+    if (a.count != b.count) return false;
+    for (int i = 0; i < a.count; ++i) {
+        if (a.items[i].kind != b.items[i].kind) return false;
+    }
+    return sparkTotal(a) == sparkTotal(b) && scoreTotal(a) == scoreTotal(b) &&
+           weightedThreat(a) == weightedThreat(b);
+}
 observation::Summary stationaryStyle() {
     observation::State state;
     for (int i = 0; i < 260; ++i) state.observe({500.f, 400.f}, {500.f, 400.f}, false, false, {0, 0, 1000, 800});
@@ -121,6 +129,78 @@ void checkInvariants(int wave) {
     CHECK(campaign::direct(wave, 13579u, mobileStyle()).durationSeconds ==
           campaign::direct(wave, 24680u, mobileStyle()).durationSeconds);
 }
+void checkLiveReassessment() {
+    const auto base = chapter::schedule(campaign::kFirstAdaptiveWave, 8128u);
+    auto profile = observation::Summary{};
+    profile.confidence = 1.f;
+    profile.horizontalBias = 1.f;
+    profile.repetition = .9f;
+    profile.perimeter = .95f;
+    profile.offense = .9f;
+    profile.counterSuccess = .8f;
+    profile.responseRate = .9f;
+
+    auto first = base;
+    auto sameInput = base;
+    const int changed = campaign::reassess(first, 3, 400, profile);
+    CHECK(changed > 0);
+    CHECK(campaign::reassess(sameInput, 3, 400, profile) == changed);
+    CHECK(sameArrangement(first, sameInput));
+    CHECK(sameCompositionAndReward(first, base));
+    CHECK(first.items[first.count - 1].tick == base.items[base.count - 1].tick);
+    CHECK(peakWindowThreat(first, 240) <= peakWindowThreat(base, 240) * 5 / 4);
+    int retimed = 0;
+    int priorTick = -1;
+    for (int i = 0; i < base.count; ++i) {
+        const bool eligible = i >= 3 && base.items[i].tick > 520;
+        if (!eligible) CHECK(std::abs(first.items[i].angle - base.items[i].angle) <= 1.e-5f);
+        CHECK(std::abs(std::remainder(first.items[i].angle - base.items[i].angle,
+                                     2.f * chapter::kPi)) <= .50001f);
+        if (!eligible) CHECK(first.items[i].tick == base.items[i].tick);
+        else {
+            CHECK(first.items[i].tick > 520);
+            CHECK(std::abs(first.items[i].tick - base.items[i].tick) <= 24);
+            if (first.items[i].tick != base.items[i].tick) ++retimed;
+        }
+        CHECK(first.items[i].tick >= priorTick);
+        priorTick = first.items[i].tick;
+    }
+    CHECK(retimed > 0);
+
+    auto changedHeading = profile;
+    changedHeading.horizontalBias = 0.f;
+    changedHeading.verticalBias = 1.f;
+    auto headingResult = base;
+    CHECK(campaign::reassess(headingResult, 0, -1000, changedHeading) > 0);
+    CHECK(!sameArrangement(first, headingResult));
+
+    auto changedPerimeter = profile;
+    changedPerimeter.perimeter = .1f;
+    auto perimeterResult = base;
+    CHECK(campaign::reassess(perimeterResult, 0, -1000, changedPerimeter) > 0);
+    CHECK(!sameArrangement(first, perimeterResult));
+
+    auto changedAggression = profile;
+    changedAggression.offense = 0.f;
+    changedAggression.counterSuccess = 0.f;
+    changedAggression.responseRate = 0.f;
+    auto aggressionResult = base;
+    CHECK(campaign::reassess(aggressionResult, 0, -1000, changedAggression) > 0);
+    CHECK(!sameArrangement(first, aggressionResult));
+    CHECK(sameCompositionAndReward(headingResult, base));
+    CHECK(sameCompositionAndReward(perimeterResult, base));
+    CHECK(sameCompositionAndReward(aggressionResult, base));
+    for (const auto* reassessed : {&headingResult, &perimeterResult, &aggressionResult}) {
+        CHECK(reassessed->items[reassessed->count - 1].tick == base.items[base.count - 1].tick);
+        CHECK(peakWindowThreat(*reassessed, 240) <= peakWindowThreat(base, 240) * 5 / 4);
+        for (int i = 1; i < reassessed->count; ++i)
+            CHECK(reassessed->items[i].tick >= reassessed->items[i - 1].tick);
+    }
+
+    auto committedOnly = base;
+    CHECK(campaign::reassess(committedOnly, base.count, 0, profile) == 0);
+    CHECK(sameArrangement(committedOnly, base));
+}
 }
 
 int main() {
@@ -143,6 +223,7 @@ int main() {
     CHECK(state.summary().offense == 0.f);
 
     for (int wave = campaign::kFirstAdaptiveWave; wave <= campaign::kLastAdaptiveWave; ++wave) checkInvariants(wave);
+    checkLiveReassessment();
     const auto outside = campaign::schedule(27, 1u, mobileStyle());
     CHECK(sameArrangement(outside, chapter::schedule(27, 1u)));
     std::cout << "adaptive director invariants passed\n";

@@ -77,4 +77,108 @@ inline chapter::Schedule schedule(int wave, std::uint32_t seed, const observatio
     return direct(wave, seed, player).schedule;
 }
 
+inline int peakThreat(const chapter::Schedule& value) {
+        int peak = 0;
+        for (int i = 0; i < value.count; ++i) {
+            int load = 0;
+            const int start = value.items[static_cast<std::size_t>(i)].tick;
+            for (int j = 0; j < value.count; ++j) {
+                const auto& candidate = value.items[static_cast<std::size_t>(j)];
+                if (candidate.tick >= start && candidate.tick < start + 240) {
+                    const auto stats = combat::definition(candidate.kind, 5);
+                    load += stats.contactDamage + 2 * stats.killScore + 3 * stats.sparkValue;
+                }
+            }
+            peak = std::max(peak, load);
+        }
+        return peak;
+    }
+
+// Re-aim only deployments that are still safely in the future. This keeps the
+// authored encounter clock and its resource budget intact while allowing a
+// live player profile to influence later approach lanes.
+inline int reassess(chapter::Schedule& current, int nextSpawnIndex, int elapsedTick,
+                    const observation::Summary& player) {
+    constexpr int kCommitHorizonTicks = 120;
+    constexpr float kMaximumReviewAngleDelta = .5f;
+    constexpr int kMaximumReviewTimingDeltaTicks = 24;
+    const int begin = std::clamp(nextSpawnIndex, 0, current.count);
+    const float confidence = std::clamp(player.confidence, 0.f, 1.f);
+    if (begin >= current.count || confidence <= 0.f) return 0;
+
+    const chapter::Schedule originalSchedule = current;
+    const int originalDeadline = originalSchedule.items[static_cast<std::size_t>(current.count - 1)].tick;
+
+    const float headingMagnitude = std::sqrt(player.horizontalBias * player.horizontalBias +
+                                             player.verticalBias * player.verticalBias);
+    const float heading = headingMagnitude > .05f
+        ? std::atan2(player.verticalBias, player.horizontalBias) : 0.f;
+    const float headingWeight = std::clamp(headingMagnitude, 0.f, 1.f) *
+                                std::clamp(player.repetition, 0.f, 1.f) * .34f;
+    const float perimeterWeight = std::clamp((player.perimeter - .35f) / .65f, 0.f, 1.f) * .30f;
+    const float aggression = std::clamp((player.offense * .65f + player.counterSuccess * .2f +
+                                         player.responseRate * .15f), 0.f, 1.f);
+    const float timingSignal = (std::clamp(player.movement, 0.f, 1.f) - .5f) * .35f +
+                               (std::clamp(player.perimeter, 0.f, 1.f) - .5f) * .30f +
+                               (aggression - .5f) * .20f +
+                               (std::clamp(player.repetition, 0.f, 1.f) - .5f) * .15f;
+    const int timingDelta = static_cast<int>(std::lround(std::clamp(timingSignal, -.5f, .5f) * confidence *
+                                                         kMaximumReviewTimingDeltaTicks * 2.f));
+    for (int i = begin; i < current.count; ++i) {
+        auto& spawn = current.items[static_cast<std::size_t>(i)];
+        const int originalTick = originalSchedule.items[static_cast<std::size_t>(i)].tick;
+        if (originalTick <= elapsedTick + kCommitHorizonTicks) continue;
+
+        // Shift the uncommitted lane as a unit; preserve the authored end tick
+        // and keep every deployment inside the original encounter deadline.
+        if (originalTick != originalDeadline && timingDelta != 0) {
+            const int firstUncommittedTick = std::max(0, elapsedTick + kCommitHorizonTicks + 1);
+            spawn.tick = std::clamp(originalTick + timingDelta, firstUncommittedTick, originalDeadline);
+        }
+
+        float delta = 0.f;
+        if (headingWeight > 0.f) {
+            // Repeated travel headings pull the next approach away from that lane.
+            delta += std::sin(spawn.angle - heading) * headingWeight;
+        }
+        if (perimeterWeight > 0.f) {
+            // Perimeter-heavy play benefits from alternating approach arcs.
+            delta += ((i & 1) == 0 ? -1.f : 1.f) * perimeterWeight;
+        }
+        if (aggression > 0.f) {
+            // Role-specific lanes balance interception with protection;
+            // enemy counts, threat and damage remain unchanged.
+            float roleGain = .12f;
+            switch (spawn.kind) {
+            case combat::EnemyKind::Brute: roleGain = .20f; break;
+            case combat::EnemyKind::Skitter: roleGain = -.18f; break;
+            case combat::EnemyKind::Spitter: roleGain = .15f; break;
+            case combat::EnemyKind::BriarCaller: roleGain = .08f; break;
+            case combat::EnemyKind::Sower: roleGain = -.08f; break;
+            case combat::EnemyKind::Hunter: roleGain = .12f; break;
+            }
+            delta += roleGain * (aggression - .35f);
+        }
+        delta = std::clamp(delta * confidence, -kMaximumReviewAngleDelta, kMaximumReviewAngleDelta);
+        if (std::abs(delta) > 1.e-5f)
+            spawn.angle = std::remainder(spawn.angle + delta, 2.f * chapter::kPi);
+    }
+
+    if (peakThreat(current) > peakThreat(originalSchedule) * 5 / 4) {
+        for (int i = 0; i < current.count; ++i)
+            current.items[static_cast<std::size_t>(i)].tick = originalSchedule.items[static_cast<std::size_t>(i)].tick;
+    }
+
+    int changed = 0;
+    for (int i = 0; i < current.count; ++i) {
+        const auto& spawn = current.items[static_cast<std::size_t>(i)];
+        const auto& original = originalSchedule.items[static_cast<std::size_t>(i)];
+        if (spawn.tick != original.tick ||
+            std::abs(std::remainder(spawn.angle - original.angle, 2.f * chapter::kPi)) > 1.e-5f) {
+            ++changed;
+        }
+    }
+    return changed;
+}
+
 } // namespace threadlight::campaign

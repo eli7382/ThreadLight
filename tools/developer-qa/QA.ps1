@@ -4,6 +4,7 @@ param(
  [ValidateRange(1,4)][int]$Phase=1,
  [uint32]$Seed=7382,
  [switch]$Menu,
+ [switch]$Performance,
  [switch]$Smoke
 )
 $ErrorActionPreference='Stop'
@@ -24,5 +25,12 @@ else {
  if($Wave -eq 35){$arguments+=@('--unweaver-phase',"$Phase")}
 }
 if($Smoke){$arguments+=@('--dev-autoplay','--dev-fast','--dev-ticks','360')}
-$run=Start-Process -FilePath $game -ArgumentList $arguments -WorkingDirectory $PSScriptRoot -PassThru -Wait
+$logRoot=Join-Path $PSScriptRoot 'Logs'
+New-Item -ItemType Directory -Path $logRoot -Force | Out-Null
+$prefix=Join-Path $logRoot ("wave{0}-phase{1}-{2}-seed{3}-{4}-{5}" -f $Wave,$Phase,$Build,$Seed,(Get-Date -Format 'yyyyMMdd-HHmmss-fff'),$PID)
+if($Performance){$arguments+=@('--perf-log',('Logs/'+[IO.Path]::GetFileName($prefix)+'.csv'))}
+$arguments | ConvertTo-Json | Set-Content -LiteralPath "$prefix.args.json" -Encoding utf8
+$windowStyle=if($Smoke){'Hidden'}else{'Normal'}
+$run=Start-Process -WindowStyle $windowStyle -FilePath $game -ArgumentList $arguments -WorkingDirectory $PSScriptRoot -PassThru -Wait -RedirectStandardOutput "$prefix.log" -RedirectStandardError "$prefix.error.log"
+Write-Host "Diagnostic logs: $prefix.log"
 if($run.ExitCode -ne 0){throw "Game failed: $($run.ExitCode)"}
