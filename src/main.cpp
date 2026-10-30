@@ -87,6 +87,7 @@ int main(int argc, char** argv){
  bool violetCelebrationRenderCheck=false; // Isolated victory presentation capture; never persisted.
  int pacingRate=60,pacingVsync=-1;
  int bossFixture=-1; // Explicit development-only CLI fixture; never a campaign checkpoint.
+ int qaBuild=4;
  int waveFixture=-1;
  int waveFixtureWave=7;
  int bossFixtureWave=6;
@@ -111,6 +112,8 @@ int main(int argc, char** argv){
     else if(arg=="--dev-fast")devFast=true;
     else if(arg=="--director-style"&&i+1<argc){const std::string_view value=argv[++i];
      directorStyle=value=="runner"?0:value=="aggressive"?1:value=="dasher"?2:value=="defensive"?3:-1;if(directorStyle<0)return 2;
+    }else if(arg=="--qa-build"&&i+1<argc){
+     const std::string_view b=argv[++i];qaBuild=b=="offense"?1:b=="defense"?2:b=="mobility"?3:b=="mixed"?4:-1;if(qaBuild<0)return 2;
     }else if(arg=="--director-fixture"&&i+1<argc){
      if(++fixtureOptions>1)return 2;const std::string_view value=argv[++i];int n=0;
      const auto r=std::from_chars(value.data(),value.data()+value.size(),n);if(r.ec!=std::errc{}||r.ptr!=value.data()+value.size()||n<29||n>34)return 2;
@@ -176,6 +179,9 @@ int main(int argc, char** argv){
    bossFixtureWave=arg=="--m5-dancer-fixture"?13:arg=="--m5-conductor-fixture"?20:arg=="--m6-hollow-fixture"?27:34;
   }else return 2;
  }
+#ifdef THREADLIGHT_DEVELOPER_QA
+ if(bossFixture<0&&waveFixture<0){waveFixture=4;waveFixtureWave=28;} // Even direct executable launch is profile-isolated.
+#endif
  if(bossFixture>=0&&waveFixture>=0)return 2;
  if((devPhase!=1||devAttack>=0||devMechanic>=0||devFormation>=0)&&(bossFixture<0||bossFixtureWave!=34))return 2;
  if(devCapture)m6RenderCheck=true;
@@ -430,7 +436,7 @@ int main(int argc, char** argv){
     constexpr std::array<int,upgrades::kPermanentCount> builds[]={
      {5,3,3,2,1,0,0,0,1,1,0}, {1,2,0,0,0,5,0,5,0,0,3},
      {0,2,1,5,3,0,0,0,3,2,0}, {3,2,2,2,1,2,0,1,1,1,1}};
-    ranks.value=builds[waveFixture>=0?3:std::clamp(bossFixture-1,0,3)];
+    ranks.value=builds[waveFixture>=0?qaBuild-1:std::clamp(bossFixture-1,0,3)];
    }
    if(utilityFixture){ranks={};ranks.value[upgrades::index(upgrades::Id::Needlecatch)]=3;ranks.value[upgrades::index(upgrades::Id::Bloodstitch)]=3;ranks.value[upgrades::index(upgrades::Id::Razor)]=1;ranks.value[upgrades::index(upgrades::Id::Living)]=1;}
   stats=upgrades::derive(ranks);health.hp=health.maxHp=stats.maxHp;offers={};offers.rng=spawnSeed^0x9e3779b9u;
@@ -594,6 +600,9 @@ int main(int argc, char** argv){
   const cosmetics::Palette* playerPalette=&cosmetics::palette(cosmetics::normalizePalette(
       static_cast<int>(appSettings.selectedPalette),appSettings.violetAscendantUnlocked));
   auto applyMenuAction=[&](threadlight::menu::Action action){threadlight::menu::apply(mode,settingsReturn,exitRequested,exitSelection,action);};
+#ifdef THREADLIGHT_DEVELOPER_QA
+  if((bossFixture>=0||waveFixture>=0)&&IsKeyPressed(KEY_F5)){if(waveFixture>=0)waveFixtureWave=wave;else {bossFixtureWave=wave;devPhase=boss.kind==root::Kind::Unweaver?boss.phase:1;}reset();}
+#endif
   auto changeFrameLimit=[&](int value){if(!threadlight::settings::validFrameRateLimit(value)||value==appSettings.frameRateLimit)return;appSettings.frameRateLimit=value;settingsEdits.dirty=true;saveSettings();};
   auto changeShowFps=[&](){appSettings.showFps=!appSettings.showFps;if(appSettings.showFps)measuredFps=threadlight::timing::initialMeasuredFps(lastFrameSeconds);settingsEdits.dirty=true;saveSettings();};
   auto changeVsync=[&](){appSettings.vsync=!appSettings.vsync;applyVsync();settingsEdits.dirty=true;saveSettings();};
@@ -1760,7 +1769,11 @@ int main(int argc, char** argv){
    DrawRectangle(0,0,SW,(int)hudHeight,C(5,10,24,235));
    DrawLine(0,(int)hudHeight,SW,(int)hudHeight,C(60,152,156,80));
    drawText("THREADLIGHT",26,22,titleSize,C(200,255,243));
-   if(bossFixture>=0||waveFixture>=0)drawText("DEV FIXTURE",26,49,10,C(255,213,131));
+   if(bossFixture>=0||waveFixture>=0){drawText("DEVELOPER QA / F5 RESTART",26,49,10,C(255,213,131));
+#ifdef THREADLIGHT_DEVELOPER_QA
+    drawText(TextFormat("FPS %d | WAVE %d | PHASE %d | HP %d/%d | %s | %s | STATE %s",GetFPS(),wave+1,boss.phase,boss.health.hp,boss.health.maxHp,threadlight::unweaver::styleName(boss.unweaver.style),threadlight::unweaver::attackName(boss.unweaver.attack),root::stageName(boss.stage)),26,72,10,C(255,213,131));
+#endif
+   }
    else if(SW>=1180)drawText("THE BRIAR CIRCUIT",214,31,13,C(91,167,179));
    DrawText(TextFormat("VITALITY %.0f / %d",health.hp/100.f,health.maxHp/100),(int)hud.healthX,17,11,C(120,164,178));
    DrawRectangle((int)hud.healthX,38,(int)hud.healthWidth,10,C(34,49,67));

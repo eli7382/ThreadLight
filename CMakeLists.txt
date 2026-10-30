@@ -6,6 +6,7 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
 include(CTest)
+option(THREADLIGHT_DEVELOPER_QA "Enable private QA diagnostics" OFF)
 option(THREADLIGHT_BUILD_GAME "Build the raylib game" ON)
 option(THREADLIGHT_BUILD_BENCHMARKS "Build standalone CPU microbenchmarks" OFF)
 option(THREADLIGHT_USE_PINNED_RAYLIB "Use an explicitly supplied MSVC raylib installation" OFF)
@@ -48,6 +49,9 @@ if(THREADLIGHT_BUILD_GAME)
     add_executable(Threadlight WIN32 src/windows_entry.cpp src/main.cpp src/performance_metrics.cpp)
   else()
     add_executable(Threadlight src/main.cpp src/performance_metrics.cpp)
+  endif()
+  if(THREADLIGHT_DEVELOPER_QA)
+    target_compile_definitions(Threadlight PRIVATE THREADLIGHT_DEVELOPER_QA=1)
   endif()
   # Prefer the actual library path when available. Some pkg-config based
   # raylib config packages expose Unix -L/-l flags as one imported link item,
