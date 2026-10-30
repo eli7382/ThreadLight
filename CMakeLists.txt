@@ -78,6 +78,9 @@ if(THREADLIGHT_BUILD_BENCHMARKS)
 endif()
 
 if(BUILD_TESTING)
+  add_executable(ThreadlightUnweaverPhaseTests tests/unweaver_phase_test.cpp)
+  target_include_directories(ThreadlightUnweaverPhaseTests PRIVATE src)
+  add_test(NAME ThreadlightUnweaverPhaseTests COMMAND ThreadlightUnweaverPhaseTests)
   if(THREADLIGHT_BUILD_GAME)
     # Mock raylib's audio boundary to check borrowed waveform ownership without
     # requiring an audio device or modifying the existing sound data.
