@@ -33,6 +33,7 @@ struct Thread {
     V p; float age;
     float previousAge=age;
     std::uint64_t id=0;
+    bool severed=false;int corruptedTicks=0;
     void capture(){previousAge=age;}
 };
 inline V silkPoint(const Thread& knot,bool newest,V shownPlayer) {
@@ -49,6 +50,7 @@ struct Foe {
     float previousPhase=phase,previousHitFlash=hitFlash;
     foundation::RewardId rewardId = 0;
     std::uint64_t projectileTicket = 0;
+    bool tacticalSupport=false;
     briar_caller::State briarCaller{};
     briar_caller::SpeedBoost callerSpeedBoost{};
     sower::State sowerState{};

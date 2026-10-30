@@ -14,7 +14,7 @@ inline constexpr std::array<Entry, 11> entries{{
     {"THE NEEDLE DANCER", "A swift guardian that commits to strikes and steps.", "A marked lane warns of its next movement.", "Leave the lane early and approach during recovery."},
     {"THE THORN CONDUCTOR", "A guardian that combines firing patterns and buds.", "Firing lines and buds reveal incoming pressure.", "Move between firing lanes and cut buds when safe."},
     {"THE HOLLOW WEAVER", "A guardian that fills the arena with spatial patterns.", "Watch marked paths and spreading fields.", "Use the open lanes; attack during recovery."},
-    {"THE BRIAR HEART", "The final guardian uses multi-stage arena patterns.", "Markers show where its next sequence will reach.", "Keep moving through safe gaps and watch its phase."},
+    {"THE UNWEAVER", "An adaptive hunter learns your movement and weaves radial shrapnel, echoes and silk traps.", "Locked spokes, broken path warnings and anchor links reveal each commitment.", "Change habits, thread the openings and break seals. Four phases must unravel."},
 }};
 inline bool unlocked(int mask, int index) { return index >= 0 && index < static_cast<int>(entries.size()) && (mask & (1 << index)); }
 } // namespace threadlight::bestiary

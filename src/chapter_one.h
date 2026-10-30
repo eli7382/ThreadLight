@@ -30,7 +30,7 @@ inline Encounter encounter(int index) {
         {"NEW PATTERN",30,false,5},{"TENSION",32,false,5},
         {"ROTATING FIRE",34,false,5},{"NEEDLE RUSH",30,false,5},
         {"REVERSAL",32,false,5},{"CIRCUIT REHEARSAL",34,false,5},
-        {"THE BRIAR HEART",0,true,5}};
+        {"THE UNWEAVER",0,true,5}};
     return definitions[std::clamp(index,0,kEncounterCount-1)];
 }
 struct Spawn { int tick; combat::EnemyKind kind; float angle; };

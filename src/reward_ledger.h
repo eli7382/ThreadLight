@@ -1,6 +1,7 @@
 #pragma once
 
 #include "wave_foundation.h"
+#include <algorithm>
 #include <cstdint>
 #include <optional>
 #include <vector>
@@ -32,9 +33,17 @@ public:
         return enemies_.size();
     }
 
+    // Encounter-capped reinforcements still need stable combat identities when
+    // their shared currency budget is exhausted. Ordinary enemy API stays strict.
+    RewardId registerSupportEnemy(int sparkValue,int killScore){
+        if(sparkValue<0||killScore<0)return 0;
+        enemies_.push_back({State::Alive,sparkValue,killScore});++counters_.spawned;return enemies_.size();
+    }
+
     std::optional<KillReward> defeatEnemy(RewardId id) {
         auto* enemy = find(id);
         if (!enemy || enemy->state != State::Alive) return {};
+        if(enemy->value==0){enemy->state=State::Defeated;++counters_.killed;score_+=enemy->score;return KillReward{id,0};}
         enemy->state = State::Pickup;
         ++counters_.killed;
         ++counters_.pickupsCreated;
@@ -54,6 +63,15 @@ public:
     // Combine two living actors into one reward owner. The surviving ID keeps
     // its identity while the absorbed ID closes as a despawn, so terminal
     // accounting still resolves every original spawn exactly once.
+    bool mergeSupportEnemies(RewardId keeperId,RewardId absorbedId){
+        if(!keeperId||!absorbedId||keeperId==absorbedId)return false;
+        auto* keeper=find(keeperId);auto* absorbed=find(absorbedId);
+        if(!keeper||!absorbed||keeper->state!=State::Alive||absorbed->state!=State::Alive)return false;
+        keeper->value=static_cast<int>(std::min<std::int64_t>(2147483647,static_cast<std::int64_t>(keeper->value)+absorbed->value));
+        keeper->score=static_cast<int>(std::min<std::int64_t>(2147483647,static_cast<std::int64_t>(keeper->score)+absorbed->score));
+        absorbed->state=State::Despawned;++counters_.despawned;return true;
+    }
+
     bool mergeAliveEnemies(RewardId keeperId, RewardId absorbedId,
                            int sparkValue, int killScore) {
         if (!keeperId || !absorbedId || keeperId == absorbedId ||

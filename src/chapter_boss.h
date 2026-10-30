@@ -3,6 +3,8 @@
 #include "rootwarden.h"
 #include "ranged_combat.h"
 #include "area_hazards.h"
+#include "unweaver.h"
+#include "support_formations.h"
 #include <array>
 #include <cstdint>
 
@@ -18,7 +20,7 @@ constexpr int kCoreValue=10;
 constexpr float kVulnerableRadius=legacy::kVulnerableRadius;
 constexpr float kContactRadius=legacy::kContactRadius,kRootHalfWidth=legacy::kRootHalfWidth;
 constexpr float kPi=3.14159265359f;
-enum class Kind {Rootwarden, Dancer, Conductor, Hollow, Heart};
+enum class Kind {Rootwarden, Dancer, Conductor, Hollow, Heart, Unweaver};
 enum class Pattern {Fold, Ring, Spokes, Pulse, Lunge, Lane, Fork};
 struct Bud {Point p{};combat::EnemyHealth health{200,200};std::uint64_t id=0;};
 struct ScoredShot {Point p{},direction{};ranged::Pool::Ticket ticket=0;int bud=-1;};
@@ -26,6 +28,7 @@ struct ScoredShot {Point p{},direction{};ranged::Pool::Ticket ticket=0;int bud=-
 // delegation. Advanced fields belong only to the two new encounter machines.
 struct State:legacy::State {
     Kind kind=Kind::Rootwarden;
+    unweaver::State unweaver{};bool experimentalSupports=false;
     int chain=0,pattern=0,shotCursor=0,shotCount=0,budCount=0;
     int strikeTicks=34;bool strikeThisTick=false;
     bool counterstepping=false,counterThisTick=false;Point counterStart{},counterEnd{};
@@ -41,11 +44,13 @@ struct State:legacy::State {
     int activePatternTicks=0;Point patternOrigin{},relocateEnd{},patternAxis{1,0};
 };
 inline bool spatial(const State& s){return s.kind==Kind::Hollow||s.kind==Kind::Heart;}
-inline int maxHp(Kind kind){return kind==Kind::Heart?36000:kind==Kind::Hollow?28500:kind==Kind::Dancer?13500:kind==Kind::Conductor?21000:7000;}
-inline float vulnerableRadius(const State& s){return s.kind==Kind::Heart?78.f:s.kind==Kind::Hollow?74.f:s.kind==Kind::Conductor?66.f:s.kind==Kind::Dancer?52.f:54.f;}
-inline float contactRadius(const State& s){return s.kind==Kind::Heart?30.f:s.kind==Kind::Hollow?28.f:s.kind==Kind::Conductor?28.f:s.kind==Kind::Dancer?22.f:26.f;}
-inline const char* name(const State& s){return s.kind==Kind::Heart?"THE BRIAR HEART":s.kind==Kind::Hollow?"THE HOLLOW WEAVER":s.kind==Kind::Dancer?"THE NEEDLE DANCER":s.kind==Kind::Conductor?"THE THORN CONDUCTOR":"THE ROOTWARDEN";}
+inline int maxHp(Kind kind){return kind==Kind::Unweaver?84000:kind==Kind::Heart?36000:kind==Kind::Hollow?28500:kind==Kind::Dancer?13500:kind==Kind::Conductor?21000:7000;}
+inline float vulnerableRadius(const State& s){return s.kind==Kind::Unweaver?76.f:s.kind==Kind::Heart?78.f:s.kind==Kind::Hollow?74.f:s.kind==Kind::Conductor?66.f:s.kind==Kind::Dancer?52.f:54.f;}
+inline float contactRadius(const State& s){return s.kind==Kind::Unweaver?32.f:s.kind==Kind::Heart?30.f:s.kind==Kind::Hollow?28.f:s.kind==Kind::Conductor?28.f:s.kind==Kind::Dancer?22.f:26.f;}
+inline const char* name(const State& s){return s.kind==Kind::Unweaver?"THE UNWEAVER":s.kind==Kind::Heart?"THE BRIAR HEART":s.kind==Kind::Hollow?"THE HOLLOW WEAVER":s.kind==Kind::Dancer?"THE NEEDLE DANCER":s.kind==Kind::Conductor?"THE THORN CONDUCTOR":"THE ROOTWARDEN";}
 inline combat::EnemyKind supportKind(const State& s,int ordinal){
+    if(s.experimentalSupports){const auto config=support_formations::earlierBossWave(s.kind==Kind::Dancer?14:s.kind==Kind::Conductor?21:28);
+        if(const auto* member=support_formations::memberForOrdinal(config,ordinal))return member->kind;}
     if(s.kind==Kind::Rootwarden)return ordinal>=2?combat::EnemyKind::Skitter:combat::EnemyKind::Hunter;
     if(s.kind==Kind::Hollow)return ordinal>=4?combat::EnemyKind::Sower:combat::EnemyKind::Hunter;
     if(s.kind==Kind::Heart)return ordinal>=6?combat::EnemyKind::Spitter:ordinal>=4?combat::EnemyKind::Skitter:combat::EnemyKind::Hunter;
@@ -61,22 +66,24 @@ inline void visitSupportBatch(const State& s,int count,Visitor visitor){
         visitor(supportKind(s,ordinal),offset,ordinal);
     }
 }
-inline int supportCapacity(const State& s){return spatial(s)?3:s.kind==Kind::Dancer?2:6;}
+inline int supportCapacity(const State& s){return s.kind==Kind::Unweaver||s.experimentalSupports?4:spatial(s)?3:s.kind==Kind::Dancer?2:6;}
 inline int supportSlots(const State& s){
+    if(s.kind==Kind::Unweaver)return s.stage==Stage::Recover?1:2;
     if(s.kind==Kind::Rootwarden)return 0;
     const bool priority=s.stage==Stage::Stalk&&s.remaining<=30;
     if(s.kind==Kind::Dancer)return(priority||s.counterstepping||s.stage==Stage::StepWarning||s.stage==Stage::StepActive)?1:0;
     return(priority||s.stage==Stage::RootWarning||s.stage==Stage::RootActive||s.stage==Stage::StepWarning||s.stage==Stage::StepActive||s.stage==Stage::Transition)?2:0;
 }
 inline void waitForSupports(State& s,int committed,std::size_t flying){
+    if(s.kind==Kind::Unweaver)return;
     if(s.kind==Kind::Rootwarden||s.stage!=Stage::Stalk||s.counterstepping||s.remaining>1)return;
     const bool blocked=s.kind==Kind::Dancer?committed>1:committed>0||flying>0;
     if(blocked)s.remaining=2;
 }
-inline bool alive(const State& s){return legacy::alive(s);}
-inline bool exposed(const State& s){return legacy::exposed(s);}
+inline bool alive(const State& s){return s.kind==Kind::Unweaver?!s.unweaver.progress.defeated&&s.stage!=Stage::Defeated:legacy::alive(s);}
+inline bool exposed(const State& s){return alive(s)&&s.stage==Stage::Recover;}
 inline void enter(State& s,Stage stage,int ticks){legacy::enter(s,stage,ticks);}
-inline void clearThreats(State& s){s.bullets.clear();s.fields.clear();s.corridor={};s.shotCount=s.shotCursor=s.budCount=0;s.branchCount=0;s.strikeThisTick=false;s.counterstepping=s.counterThisTick=false;}
+inline void clearThreats(State& s){if(s.kind==Kind::Unweaver)unweaver::clear(s.unweaver);s.bullets.clear();s.fields.clear();s.corridor={};s.shotCount=s.shotCursor=s.budCount=0;s.branchCount=0;s.strikeThisTick=false;s.counterstepping=s.counterThisTick=false;}
 inline void cancel(State& s){clearThreats(s);legacy::cancel(s);}
 inline void start(State& s,Point position,Arena arena,Kind kind=Kind::Rootwarden){
     s=State{};s.kind=kind;
@@ -86,6 +93,7 @@ inline void start(State& s,Point position,Arena arena,Kind kind=Kind::Rootwarden
 }
 inline DamageResult applyBossDamage(State& s,int damage,bool ordinary){
     if(s.kind==Kind::Rootwarden)return legacy::applyBossDamage(s,damage,ordinary);
+    if(s.kind==Kind::Unweaver)return unweaver::damage(s,damage,ordinary);
     DamageResult result;if(!alive(s)||damage<=0)return result;
     result.exposed=ordinary&&exposed(s);const int before=s.health.hp;
     result.hit=ordinary?combat::applySilk(s.health,damage+(result.exposed?100:0)):combat::applyDamage(s.health,damage);
@@ -99,7 +107,7 @@ inline DamageResult applyBossDamage(State& s,int damage,bool ordinary){
     if(phase>s.phase){
         const int crossed=phase-s.phase;s.phase=phase;clearThreats(s);s.chain=0;
         enter(s,Stage::Transition,spatial(s)?120:108);result.events.phaseChanged=true;
-        const int budget=s.kind==Kind::Heart?8:s.kind==Kind::Dancer?4:6;
+        const int budget=s.experimentalSupports?8:s.kind==Kind::Heart?8:s.kind==Kind::Dancer?4:6;
         result.events.supports=std::min(crossed*2,budget-s.supportsReleased);
         s.supportsReleased+=result.events.supports;
     }
@@ -250,6 +258,7 @@ inline Events tickSpatial(State& s,Point player,Arena arena,float externalArea){
     return events;
 }
 inline Events tick(State& s,Point player,Arena arena,float externalArea=0){
+    if(s.kind==Kind::Unweaver)return unweaver::tick(s,player,arena);
     if(s.kind==Kind::Rootwarden)return legacy::tick(s,player,arena);
     if(spatial(s))return tickSpatial(s,player,arena,externalArea);
     Events events;if(!alive(s))return events;
@@ -295,7 +304,7 @@ inline Events tick(State& s,Point player,Arena arena,float externalArea=0){
         break;
     case Stage::Recover:
         ++s.metrics.cycles;
-        if(s.kind==Kind::Conductor&&!s.firstCycleReleased){
+        if((s.kind==Kind::Conductor||s.experimentalSupports)&&!s.firstCycleReleased){
             s.firstCycleReleased=true;events.supports=2;s.supportsReleased+=2;
         }
         enter(s,Stage::Stalk,90);break;
@@ -305,6 +314,7 @@ inline Events tick(State& s,Point player,Arena arena,float externalArea=0){
     return events;
 }
 inline int incomingDamage(const State& s,Point previous,Point player,float radius){
+    if(s.kind==Kind::Unweaver)return unweaver::hostileDamage(s,previous,player,radius);
     if(s.kind==Kind::Rootwarden)return legacy::incomingDamage(s,previous,player,radius);
     if(!alive(s)||s.stage==Stage::Transition)return 0;
     if(spatial(s))return combat::bodyContact(previous,player,radius,s.previousP,s.p,contactRadius(s))?(s.kind==Kind::Heart?(s.strikeThisTick?3200:2600):2400):0;
@@ -332,6 +342,7 @@ inline void remap(State& s,Arena from,Arena to,float externalArea=0){
     auto map=[&](Point p){return Point{to.left+(p.x-from.left)/(from.right-from.left)*(to.right-to.left),to.top+(p.y-from.top)/(from.bottom-from.top)*(to.bottom-to.top)};};
     const float progress=s.stage==Stage::StepActive?1.f-s.remaining/static_cast<float>(s.strikeTicks):0.f;
     s.p=s.previousP=clamp(map(s.p),to,vulnerableRadius(s));
+    if(s.kind==Kind::Unweaver){clearThreats(s);s.stage=Stage::Transition;s.remaining=108;s.unweaver.historyCount=0;return;}
     s.stepStart=clamp(map(s.stepStart),to,vulnerableRadius(s));s.stepEnd=clamp(map(s.stepEnd),to,vulnerableRadius(s));
     s.counterStart=clamp(map(s.counterStart),to,vulnerableRadius(s));s.counterEnd=clamp(map(s.counterEnd),to,vulnerableRadius(s));
     if(s.counterstepping)s.p=s.previousP=interpolate(s.counterStart,s.counterEnd,(48-s.remaining)/48.f);

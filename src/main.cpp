@@ -20,6 +20,9 @@
 #include "signature_reward.h"
 #include "attack_coordinator.h"
 #include "chapter_boss.h"
+#include "campaign_director.h"
+#include "encounter_cleanup.h"
+#include "unweaver_render.h"
 #include "briar_caller.h"
 #include "crossweave.h"
 #include "cocoon.h"
@@ -87,6 +90,7 @@ int main(int argc, char** argv){
  int waveFixture=-1;
  int waveFixtureWave=7;
  int bossFixtureWave=6;
+ int devPhase=1,devAttack=-1,devMechanic=-1,devTicks=0;bool devAutoplay=false,devCapture=false,devFast=false;int directorStyle=0;
  int fixtureOptions=0;
  int rewardFixture=0;bool utilityFixture=false,minimumQaWindow=false;
  std::uint32_t spawnSeed=7382;
@@ -94,7 +98,23 @@ int main(int argc, char** argv){
  for(int i=1;i<argc;i++){
   const std::string_view arg=argv[i];
    if(arg=="--perf-log"&&i+1<argc){if(!perfLogPath.empty())return 2;perfLogPath=argv[++i];if(perfLogPath.empty())return 2;}
-   else if(arg=="--settings-render-check"){
+   else if((arg=="--unweaver-phase"||arg=="--unweaver-attack"||arg=="--unweaver-mechanic"||arg=="--dev-ticks")&&i+1<argc){
+     const std::string_view value=argv[++i];int parsed=-1;const auto r=std::from_chars(value.data(),value.data()+value.size(),parsed);
+     if(r.ec!=std::errc{}||r.ptr!=value.data()+value.size())return 2;
+     if(arg=="--unweaver-phase"){if(parsed<1||parsed>4)return 2;devPhase=parsed;}
+     else if(arg=="--unweaver-attack"){if(parsed<0||parsed>4)return 2;devAttack=parsed;}
+     else if(arg=="--unweaver-mechanic"){if(parsed<0||parsed>4)return 2;devMechanic=parsed;}
+     else{if(parsed<1||parsed>120000)return 2;devTicks=parsed;}
+    }else if(arg=="--dev-autoplay")devAutoplay=true;
+    else if(arg=="--dev-capture")devCapture=true;
+    else if(arg=="--dev-fast")devFast=true;
+    else if(arg=="--director-style"&&i+1<argc){const std::string_view value=argv[++i];
+     directorStyle=value=="runner"?0:value=="aggressive"?1:value=="dasher"?2:value=="defensive"?3:-1;if(directorStyle<0)return 2;
+    }else if(arg=="--director-fixture"&&i+1<argc){
+     if(++fixtureOptions>1)return 2;const std::string_view value=argv[++i];int n=0;
+     const auto r=std::from_chars(value.data(),value.data()+value.size(),n);if(r.ec!=std::errc{}||r.ptr!=value.data()+value.size()||n<29||n>34)return 2;
+     waveFixture=4;waveFixtureWave=n-1;
+    }else if(arg=="--settings-render-check"){
     if(++fixtureOptions>1)return 2;
     settingsRenderCheck=true;m6RenderCheck=true;utilityFixture=true;waveFixture=4;waveFixtureWave=7;
    }else if(arg=="--personalization-render-check"&&i+1<argc){
@@ -147,7 +167,7 @@ int main(int argc, char** argv){
    int selected=-1;for(int j=0;j<5;++j)if(build==builds[j])selected=j;
    if(selected<0)return 2;
    if(arg=="--m4-wave-fixture"||arg=="--m6-sower-fixture"){waveFixture=selected;waveFixtureWave=arg=="--m6-sower-fixture"?21:7;}else bossFixture=selected;
-  }else if((arg=="--m5-dancer-fixture"||arg=="--m5-conductor-fixture"||arg=="--m6-hollow-fixture"||arg=="--m6-heart-fixture")&&i+1<argc){
+  }else if((arg=="--unweaver-fixture"||arg=="--m5-dancer-fixture"||arg=="--m5-conductor-fixture"||arg=="--m6-hollow-fixture"||arg=="--m6-heart-fixture")&&i+1<argc){
    if(++fixtureOptions>1)return 2;
    const std::string_view build=argv[++i];constexpr std::string_view builds[]={"zero","offense","defense","mobility","mixed"};
    bossFixture=-1;for(int j=0;j<5;++j)if(build==builds[j])bossFixture=j;
@@ -156,7 +176,10 @@ int main(int argc, char** argv){
   }else return 2;
  }
  if(bossFixture>=0&&waveFixture>=0)return 2;
- if(m6RenderCheck&&rewardFixture==0&&!utilityFixture&&(bossFixture<0||bossFixtureWave<27))return 2;
+ if((devPhase!=1||devAttack>=0||devMechanic>=0)&&(bossFixture<0||bossFixtureWave!=34))return 2;
+ if(devCapture)m6RenderCheck=true;
+ if((devAutoplay||devCapture||devFast||devTicks||devPhase!=1||devAttack>=0||devMechanic>=0)&&bossFixture<0&&waveFixture<0)return 2;
+ if(m6RenderCheck&&rewardFixture==0&&!utilityFixture&&bossFixture<0&&!(waveFixture>=0&&waveFixtureWave>=28))return 2;
  if(minimumQaWindow&&!m6RenderCheck)return 2;
  if((pacingVsync!=-1&&!pacingCheck)||(pacingCheck&&m6RenderCheck))return 2;
  std::unique_ptr<threadlight::performance::Recorder> perf;
@@ -211,6 +234,9 @@ int main(int argc, char** argv){
  float tutorialSkipHold=0.f, bossPhaseNotice=0.f;
  int pauseConfirm=0,confirmSelection=1,tutorialSpawnStart=-1;
  threadlight::settings::PendingEdits settingsEdits;
+ namespace observation=threadlight::observation;
+ namespace campaign=threadlight::campaign;
+ namespace support_formations=threadlight::support_formations;
  namespace foundation=threadlight::foundation;
  namespace cosmetics=threadlight::cosmetics;
  namespace battle=threadlight::combat;
@@ -234,6 +260,7 @@ int main(int argc, char** argv){
  namespace effects=threadlight::signature_effects;
  namespace utilities=threadlight::silk_utilities;
  namespace needle=threadlight::needle_interception;
+ observation::State observations;
  foundation::WaveLifecycle lifecycle;
  foundation::RewardLedger rewards;
  chapter::Schedule spawnSchedule;int spawnCursor=0;
@@ -260,7 +287,7 @@ int main(int argc, char** argv){
  float pulseRadius=cross::kPulseRadius;
  std::uint64_t cocoonsFormed=0,loomBursts=0;int barrierAbsorbed=0,loomDamage=0;
  std::uint64_t nextThreadId=0,crossPulses=0,crossHits=0;int crossDamage=0;
- int supportQueued=0,supportSpawned=0;
+ int supportQueued=0,supportSpawned=0;support_formations::RewardBudget supportRewards{};
  afterimage::State offensiveEcho;
  ranged::Pool projectiles;
  attacks::Coordinator attackCoordinator;
@@ -302,7 +329,7 @@ int main(int argc, char** argv){
  float measuredFps=60.0f,lastFrameSeconds=0.0f;
  upgradeUI::OfferTextCache offerTextCache;
  auto saveSettings=[&](){
-  if(pacingCheck)return; // A diagnostic run never writes the owner's profile.
+  if(pacingCheck||bossFixture>=0||waveFixture>=0)return; // A diagnostic run never writes the owner's profile.
   sfx.setMasterVolume(appSettings.sfxVolumePercent/100.0f);
   if(!settingsEdits.flush([&](){return threadlight::settings::save(settingsPath,appSettings);}))
    TraceLog(LOG_WARNING,"Could not save ThreadLight settings to the user config directory.");
@@ -346,21 +373,25 @@ int main(int argc, char** argv){
   const auto encounter=chapter::encounter(wave);
   giftReward={};anchorState={};bossSlow={};bloodstitch={};needlecatch={};needleFlashTicks=0;
   lifecycle.start({std::max(1,encounter.seconds*foundation::kTicksPerSecond),encounter.boss});
-  spawnSchedule=chapter::schedule(wave,spawnSeed);spawnCursor=0;
+  spawnSchedule=campaign::schedule(wave,spawnSeed,observations.summary());spawnCursor=0;
   thread.clear();cross::clear(crossState);cocoon::clear(cocoonState);loom::clear(loomState);loomPending=false;ground.clear();crossPulse={};pulseTicks=0;afterimage::clear(offensiveEcho);projectiles.clear();attackCoordinator.clear();dashTime=0;dashVisualActive=false;dashEchoCount=0;dashEchoFade=0;
   if(encounter.boss){
    const V center{(playArea.left+playArea.right)*.5f,(playArea.top+playArea.bottom)*.5f};
    const V direction=len(center-player)>1?norm(center-player):V{1,0};
    const V start=dist(center,player)>220?center:player+direction*230.f;
-   supportQueued=supportSpawned=0;
-   root::start(boss,{start.x,start.y},bossArena(),wave==13?root::Kind::Dancer:wave==20?root::Kind::Conductor:wave==27?root::Kind::Hollow:wave==34?root::Kind::Heart:root::Kind::Rootwarden);
-   unlockCodex(6+static_cast<int>(boss.kind));
+   supportQueued=supportSpawned=0;supportRewards=support_formations::rewardBudget(wave+1);
+   root::start(boss,{start.x,start.y},bossArena(),wave==13?root::Kind::Dancer:wave==20?root::Kind::Conductor:wave==27?root::Kind::Hollow:wave==34?root::Kind::Unweaver:root::Kind::Rootwarden);
+   boss.experimentalSupports=wave==13||wave==20||wave==27;
+   if(boss.kind==root::Kind::Unweaver){boss.unweaver.profile=observations.summary();boss.unweaver.forcedAttack=devAttack;boss.unweaver.forcedMechanic=devMechanic;
+    if(bossFixture>=0){boss.phase=devPhase;boss.unweaver.progress.phase=devPhase;boss.unweaver.progress.generation=devPhase;
+     boss.unweaver.progress.credited=(devPhase-1)*boss.health.maxHp/4;boss.health.hp=boss.unweaver.progress.vitality();}}
+   unlockCodex(6+static_cast<int>(boss.kind==root::Kind::Unweaver?root::Kind::Heart:boss.kind));
    bossRewardId=rewards.registerEnemy(root::kCoreValue,250);boss.hazardOwner=bossRewardId;traceBoss("start");
   }
   traceM1("encounter_start");
  };
  auto reset=[&](){
-  violetUnlockedThisRun=false;
+  violetUnlockedThisRun=false;observations.reset();
   tutorial=false;inventoryOpen=false;pauseConfirm=0;bossPhaseNotice=0;runDamageTaken={};
   player={(playArea.left+playArea.right)*.5f,(playArea.top+playArea.bottom)*.5f};
   health={};playerWasMoving=false;ranks={};
@@ -391,7 +422,13 @@ int main(int argc, char** argv){
     else while(remaining&&value<upgrades::maximum(id)){++value;--remaining;}
    }
   }
-  if(utilityFixture){ranks={};ranks.value[upgrades::index(upgrades::Id::Needlecatch)]=3;ranks.value[upgrades::index(upgrades::Id::Bloodstitch)]=3;ranks.value[upgrades::index(upgrades::Id::Razor)]=1;ranks.value[upgrades::index(upgrades::Id::Living)]=1;}
+  if((bossFixture>=1&&bossFixtureWave==34)||(waveFixture>=0&&waveFixtureWave>=28)){
+    constexpr std::array<int,upgrades::kPermanentCount> builds[]={
+     {5,3,3,2,1,0,0,0,1,1,0}, {1,2,0,0,0,5,0,5,0,0,3},
+     {0,2,1,5,3,0,0,0,3,2,0}, {3,2,2,2,1,2,0,1,1,1,1}};
+    ranks.value=builds[waveFixture>=0?3:std::clamp(bossFixture-1,0,3)];
+   }
+   if(utilityFixture){ranks={};ranks.value[upgrades::index(upgrades::Id::Needlecatch)]=3;ranks.value[upgrades::index(upgrades::Id::Bloodstitch)]=3;ranks.value[upgrades::index(upgrades::Id::Razor)]=1;ranks.value[upgrades::index(upgrades::Id::Living)]=1;}
   stats=upgrades::derive(ranks);health.hp=health.maxHp=stats.maxHp;offers={};offers.rng=spawnSeed^0x9e3779b9u;
   if(utilityFixture)health.hp=5500; // Explicit injured utility QA fixture only.
   dashCd=dashTime=shake=pulse=damageFeedback=0;wave=waveFixture>=0?waveFixtureWave:bossFixture<0?0:bossFixtureWave;choice=0;simulationTick=0;
@@ -401,8 +438,8 @@ int main(int argc, char** argv){
   cocoonReward={};loomReward={};cocoonState={};loomState={};loomPending=finalBossDefeated=false;ground.clear();cocoonsFormed=loomBursts=0;barrierAbsorbed=loomDamage=0;
   if(bossFixture>=0&&bossFixtureWave>=13)signatureReward.owned=true;
   if(bossFixture>=0&&bossFixtureWave>=20)crossReward.owned=true;
-  if((bossFixture>=0&&bossFixtureWave>=27)||(waveFixture>=0&&waveFixtureWave==21)){signatureReward.owned=crossReward.owned=cocoonReward.owned=true;}
-  if(bossFixture>=0&&bossFixtureWave==34)loomReward.owned=true;
+  if((bossFixture>=0&&bossFixtureWave>=27)||(waveFixture>=0&&waveFixtureWave>=21)){signatureReward.owned=crossReward.owned=cocoonReward.owned=true;}
+  if((bossFixture>=0&&bossFixtureWave==34)||(waveFixture>=0&&waveFixtureWave>=28))loomReward.owned=true;
   signatureCatalog.owned[catalog::index(catalog::Id::Afterimage)]=signatureReward.owned;
   signatureCatalog.owned[catalog::index(catalog::Id::Crossweave)]=crossReward.owned;
   signatureCatalog.owned[catalog::index(catalog::Id::Cocoon)]=cocoonReward.owned;
@@ -410,7 +447,18 @@ int main(int argc, char** argv){
   needleCatches=anchorProcs=0;bloodHealing=0;
   dashEchoTimer=dashEchoFade=0;dashEchoCount=0;dashEcho.fill(player);
   thread.clear();foes.clear();sparks.clear();particles.clear();deathEffects.clear();
-  stepClock.clear();dashPressPending=collectionContinuePending=false;mode=Mode::Play;startEncounter();
+  stepClock.clear();dashPressPending=collectionContinuePending=false;mode=Mode::Play;
+  if(waveFixture>=0&&waveFixtureWave>=28){
+   // Synthetic prior for developer reproduction only. Normal campaigns learn
+   // exclusively from their own actual combat observations since Wave 1.
+   for(int i=0;i<360;++i){const float a=i*.018f;const foundation::Point p{(playArea.left+playArea.right)*.5f+std::cos(a)*(playArea.right-playArea.left)*.4f,
+     (playArea.top+playArea.bottom)*.5f+std::sin(a)*(playArea.bottom-playArea.top)*.4f};
+    const foundation::Point old=directorStyle==3?p:foundation::Point{p.x-std::cos(a+.5f)*2.5f,p.y-std::sin(a+.5f)*2.5f};
+    observations.observe(old,p,directorStyle==2&&i%200<23,directorStyle==2&&i%200==0,{playArea.left,playArea.top,playArea.right,playArea.bottom});
+    if(directorStyle==1&&i%10==0)observations.onOffense(battle::EnemyKind::Brute);
+   }
+  }
+  startEncounter();
   if(rewardFixture){
    // Isolated reward/UI fixture, not an earned boss victory or checkpoint.
    root::clearThreats(boss);boss.health.hp=0;lifecycle.start({1,true,0});
@@ -426,10 +474,12 @@ int main(int argc, char** argv){
   auto spawn=threadlight::chooseSafeSpawn(a,player.x-playArea.left,player.y-playArea.top,playWidth,playHeight,padding,std::max(padding,playWidth*.53f),std::max(padding,playHeight*.53f),radius+r+70.f);
   V p{spawn.x+playArea.left,spawn.y+playArea.top};
   foes.push_back({p,{},r,{def.hp,def.hp},def.speed,a,0,kind});
-  auto& foe=foes.back();foe.rewardId=rewards.registerEnemy(def.sparkValue,def.killScore);
+  auto& foe=foes.back();foe.tacticalSupport=(chapter::encounter(wave).boss&&wave>=13)||wave>=28;int registeredSparkValue=def.sparkValue;
+  if(chapter::encounter(wave).boss){const auto allocated=support_formations::allocateReward(supportRewards,def);registeredSparkValue=allocated.sparks;foe.rewardId=rewards.registerSupportEnemy(allocated.sparks,allocated.score);}
+  else foe.rewardId=rewards.registerEnemy(def.sparkValue,def.killScore);
   if(kind==battle::EnemyKind::Sower)sower::start(foe.sowerState,foe.rewardId,sower::configForChapter(chapter::encounter(wave).chapter));
   foe.skitterState.side=(foe.rewardId%2)?1:-1;
-  traceM1("spawn",foe.rewardId,def.sparkValue);
+  traceM1("spawn",foe.rewardId,registeredSparkValue);
   if(m1Telemetry)TraceLog(LOG_INFO,"M3 enemy id=%llu kind=%d hp=%d x=%.1f y=%.1f",(unsigned long long)foe.rewardId,(int)kind,def.hp,p.x,p.y);
  };
  auto mergeBriarCallers=[&](){
@@ -446,8 +496,9 @@ int main(int argc, char** argv){
     const auto definition=battle::definition(battle::EnemyKind::BriarCaller,chapterNumber);
     const int rewardSparkValue=definition.sparkValue*members;
     const int rewardScore=caller::scale(definition.killScore,members);
-    if(!rewards.mergeAliveEnemies(keeper.rewardId,absorbed.rewardId,
-                                  rewardSparkValue,rewardScore))continue;
+    const bool merged=chapter::encounter(wave).boss?rewards.mergeSupportEnemies(keeper.rewardId,absorbed.rewardId):
+       rewards.mergeAliveEnemies(keeper.rewardId,absorbed.rewardId,rewardSparkValue,rewardScore);
+     if(!merged)continue;
 
     const int maxHp=caller::scale(definition.hp,members);
     const int hp=caller::fusedHealth(keeper.health.hp,keeper.health.maxHp,keeper.briarCaller,
@@ -480,6 +531,7 @@ int main(int argc, char** argv){
  };
  auto foeHit=[&](Foe& f,battle::SilkHit hit,bool echo){
   if(hit==battle::SilkHit::None)return;
+  observations.onOffense(f.kind);
   if(!echo&&loom::onHit(loomState,loomReward.owned,true,loom::HitKind::OrdinarySilk)){
    loomPending=true;loomSource={f.rewardId,{f.p.x,f.p.y},0,0};
   }
@@ -495,7 +547,7 @@ int main(int argc, char** argv){
      if(healed){bloodHealing+=healed;burst(player,C(224,163,176),6,65);traceM1("bloodstitch_heal",drop->id,healed);}
     }
     V p{threadlight::layout::clampPlayerX(f.p.x,playArea),threadlight::layout::clampPlayerY(f.p.y,playArea)};
-    Spark spark{p,0};spark.pickup.id=drop->id;sparks.push_back(spark);
+    if(drop->sparkValue>0){Spark spark{p,0};spark.pickup.id=drop->id;sparks.push_back(spark);}
     addDeathEffect(f);shake=std::max(shake,(f.kind==battle::EnemyKind::Brute||
      (f.kind==battle::EnemyKind::BriarCaller&&f.briarCaller.members>=4))?.105f:.045f);
     sfx.play(threadlight::audio::Event::EnemyDeath);traceM1("kill",drop->id,drop->sparkValue);
@@ -504,6 +556,7 @@ int main(int argc, char** argv){
  };
  auto bossHit=[&](const root::DamageResult& hit,bool ordinary=false){
   if(hit.hit==battle::SilkHit::None)return;
+  observations.onOffense(observation::OffenseTarget::Other);
   burst({boss.p.x,boss.p.y},C(194,255,227),4,80);traceBoss("silk_or_echo_hit");
   if(hit.events.phaseChanged){bossPhaseNotice=2.5f;sfx.play(threadlight::audio::Event::BossPhase);releaseSupports(hit.events.supports);traceBoss("phase_two");}
   if(hit.events.defeated){
@@ -570,7 +623,7 @@ int main(int argc, char** argv){
    auto lastMemorySample=PerfClock::time_point{};
    threadlight::performance::MemorySample memorySample{};
    std::uint64_t perfFrameNumber=0;
-  if(m6RenderCheck||pacingCheck)reset();
+  if(m6RenderCheck||pacingCheck||bossFixture>=0||waveFixture>=0)reset();
   if(settingsRenderCheck)mode=Mode::Settings;
   if(personalizationRenderCheck>=0){mode=Mode::Settings;settingsTab=2;}
   if(violetCelebrationRenderCheck){mode=Mode::Won;wave=34;violetUnlockedThisRun=true;}
@@ -615,6 +668,7 @@ int main(int argc, char** argv){
     {V p{needleFlash.x,needleFlash.y};remapWorldPoint(p);needleFlash={p.x,p.y};}
     ground.remap({playArea.left,playArea.right,playArea.top,playArea.bottom},{nextPlayArea.left,nextPlayArea.right,nextPlayArea.top,nextPlayArea.bottom},boss.fields.areaOccupied({playArea.left,playArea.right,playArea.top,playArea.bottom}));
     if(chapter::encounter(wave).boss)root::remap(boss,bossArena(),{nextPlayArea.left,nextPlayArea.right,nextPlayArea.top,nextPlayArea.bottom},ground.areaOccupied({nextPlayArea.left,nextPlayArea.right,nextPlayArea.top,nextPlayArea.bottom}));
+    if(boss.kind==root::Kind::Unweaver&&root::alive(boss))threadlight::encounter_cleanup::cancelHostiles(boss,foes,projectiles,ground,attackCoordinator,rewards,supportQueued,std::span<Thread>(thread));
     if(root::alive(boss)&&boss.corridor.enabled)ground.cancelUnsafeCorridors(boss.corridor);
     afterimage::remap(offensiveEcho,{playArea.left,playArea.right,playArea.top,playArea.bottom},
      {nextPlayArea.left,nextPlayArea.right,nextPlayArea.top,nextPlayArea.bottom});
@@ -689,7 +743,7 @@ int main(int argc, char** argv){
        IsWindowFocused(),IsMouseButtonDown(MOUSE_BUTTON_LEFT),menuKey))saveSettings();
 
    const bool focused=IsWindowFocused(),minimized=IsWindowMinimized();
-   if(threadlight::menu::shouldAutoPause(screenAtFrameStart,focused,minimized,m6RenderCheck||pacingCheck)){
+   if(threadlight::menu::shouldAutoPause(screenAtFrameStart,focused,minimized,m6RenderCheck||pacingCheck||devAutoplay)){
     applyMenuAction(threadlight::menu::Action::Pause);
    }else if(screenAtFrameStart==Mode::Pause&&!m6RenderCheck&&(!focused||minimized)){
     // Wait for focus and an intentional resume; do not consume stale input.
@@ -812,7 +866,7 @@ int main(int argc, char** argv){
      if(lifecycle.phase()==foundation::Phase::Collection)
       collectionContinuePending=collectionContinuePending||IsKeyPressed(KEY_ENTER);
      const auto simulationStart=perf?PerfClock::now():PerfClock::time_point{};
-     const int steps=stepClock.advance(frameSeconds);
+     const int steps=stepClock.advance(devFast?threadlight::timing::kFixedStepSeconds*8:frameSeconds);
      if(perf)discardedMs=stepClock.discardedSeconds()*1000.0;
      for(int tick=0;tick<steps&&mode==Mode::Play;tick++){
       if(perf)++frameSteps;
@@ -833,9 +887,45 @@ int main(int argc, char** argv){
       battle::tick(health);dashCd=std::max(0.f,dashCd-dt);pulse=std::max(0.f,pulse-dt);damageFeedback=std::max(0.f,damageFeedback-dt);shake=std::max(0.f,shake-dt);dashVisualActive=dashTime>0;dashEchoTimer=std::max(0.f,dashEchoTimer-dt);
       const unsigned pressedDirections=movementPressPending.consume();
       V mv{(float)(IsKeyDown(KEY_D)||IsKeyDown(KEY_RIGHT)||(pressedDirections&2))-(float)(IsKeyDown(KEY_A)||IsKeyDown(KEY_LEFT)||(pressedDirections&1)),(float)(IsKeyDown(KEY_S)||IsKeyDown(KEY_DOWN)||(pressedDirections&8))-(float)(IsKeyDown(KEY_W)||IsKeyDown(KEY_UP)||(pressedDirections&4))}; if(len(mv)>0)mv=norm(mv);playerWasMoving=len(mv)>0;
-      if(pacingCheck){const float angle=static_cast<float>(simulationTick)*dt*1.5f;mv={std::cos(angle),std::sin(angle)};playerWasMoving=true;}
+      bool devDash=false;
+       if(devAutoplay){
+        V target{(playArea.left+playArea.right)*.5f,(playArea.top+playArea.bottom)*.5f};
+        if(boss.kind==root::Kind::Unweaver){const auto& u=boss.unweaver;const float a=threadlight::unweaver::angleOf(u.gap);
+         const bool attack=boss.stage==root::Stage::RootWarning||boss.stage==root::Stage::RootActive;
+         if(attack&&u.planCommitted&&u.sealTicks==0){const auto d=threadlight::unweaver::responseDirection(u,{player.x,player.y},u.clock,u.safeRoute,threadlight::unweaver::length(u.playerVelocity)>.01f?threadlight::unweaver::unit(u.playerVelocity):foundation::Point{});
+          target=player+V{d.x,d.y}*100;devDash=u.safeUsesDash&&u.clock%4==0&&dashTime<=0&&dashCd<=0&&u.clock>=u.warningTicks-12&&u.clock<u.warningTicks+120;}
+         else if(boss.stage==root::Stage::StepWarning||boss.stage==root::Stage::StepActive){const auto d=threadlight::unweaver::unit(threadlight::unweaver::sub(boss.stepEnd,boss.stepStart));const V side{-d.y,d.x};
+          const V relative=player-V{boss.stepStart.x,boss.stepStart.y};const float sign=relative.x*side.x+relative.y*side.y<0?-1.f:1.f;target=player+side*(sign*120);}
+         else if(u.sealTicks>0&&boss.budCount>0){int anchor=0;for(int i=0;i<boss.budCount;++i)if(boss.buds[i].health.alive()){anchor=i;break;}const auto& bud=boss.buds[anchor];target={bud.p.x+std::cos((float)simulationTick*.018f)*20,bud.p.y+std::sin((float)simulationTick*.018f)*20};}
+         else{const float a=(float)simulationTick*.025f;target={boss.p.x+std::cos(a)*64,boss.p.y+std::sin(a)*64};}}
+        mv=norm(target-player);if(len(mv)>.01f){const float a=std::round(std::atan2(mv.y,mv.x)/(.25f*chapter::kPi))*.25f*chapter::kPi;mv={std::cos(a),std::sin(a)};}
+        // Fixture player uses only visible velocities/geometry for local threat
+        // avoidance outside the committed response. It changes no game rules.
+        if(boss.kind!=root::Kind::Unweaver||!boss.unweaver.planCommitted||boss.unweaver.sealTicks>0){
+         float best=-1e30f;V chosen=mv;
+         for(int option=0;option<8;++option){const float a=option*chapter::kPi*.25f;const V d{std::cos(a),std::sin(a)};
+          V end=player+d*(stats.moveSpeed*.3f);end.x=threadlight::layout::clampPlayerX(end.x,playArea);end.y=threadlight::layout::clampPlayerY(end.y,playArea);
+          float score=-dist(end,target);bool risk=false;
+          for(const auto& shot:projectiles.items())if(shot.state==ranged::SlotState::Flying){
+           const foundation::Point future{shot.p.x+shot.velocity.x*.3f,shot.p.y+shot.velocity.y*.3f};
+           if(battle::bodyContact({player.x,player.y},{end.x,end.y},radius+7,shot.p,future,shot.spec.radius))risk=true;
+          }
+          for(const auto& f:foes)if(f.health.alive()){
+           const foundation::Point future{f.p.x+f.vel.x*.3f,f.p.y+f.vel.y*.3f};
+           if(battle::bodyContact({player.x,player.y},{end.x,end.y},radius+6,{f.p.x,f.p.y},future,f.r))risk=true;
+          }
+          for(const auto& patch:ground.items())if(patch.state==field::SlotState::Active&&battle::silkContact({player.x,player.y},{end.x,end.y},radius,
+           patch.spec.shape==field::Shape::Capsule?patch.spec.a:patch.spec.center,patch.spec.shape==field::Shape::Capsule?patch.spec.b:patch.spec.center,
+           patch.spec.shape==field::Shape::Capsule?patch.spec.halfWidth:patch.spec.radius))risk=true;
+          if(risk)score-=10000;
+          if(score>best){best=score;chosen=d;}
+         }
+         mv=chosen;if(best<-9000&&dashCd<=0)devDash=true;
+        }
+       }
+       if(pacingCheck){const float angle=static_cast<float>(simulationTick)*dt*1.5f;mv={std::cos(angle),std::sin(angle)};playerWasMoving=true;}
       if(tutorial&&playerWasMoving)tutorialMoved=true;
-      const bool dashPressed=pacingCheck?simulationTick%180==60:dashPressPending;dashPressPending=false;
+      const bool dashPressed=devAutoplay?devDash:pacingCheck?simulationTick%180==60:dashPressPending;dashPressPending=false;
       if(dashPressed&&dashCd<=0&&len(mv)>0){afterimage::beginDash(offensiveEcho,{player.x,player.y},combat,signatureReward.owned);dashTime=threadlight::kDashDurationSeconds;dashCd=stats.dashCooldownSeconds;dashCycleDuration=dashCd;dashEcho.fill(player);dashEchoCount=0;dashEchoFade=.22f;dashEchoTimer=0;dashVisualActive=true;burst(player,C(132,244,255),10,150);sfx.play(threadlight::audio::Event::Dash);}
       if(tutorial&&dashTime>0&&!tutorialDashed){tutorialDashed=true;tutorialSpawnStart=phaseElapsedAtStart;}
       bossPhaseNotice=std::max(0.f,bossPhaseNotice-dt);
@@ -849,18 +939,20 @@ int main(int argc, char** argv){
       }
       if(dashActiveThisFrame&&dashEchoTimer<=0){const size_t last=std::min(dashEchoCount,dashEcho.size()-1);for(size_t i=last;i>0;i--)dashEcho[i]=dashEcho[i-1];dashEcho[0]=player;dashEchoCount=std::min(dashEchoCount+1,dashEcho.size());dashEchoTimer=.028f;dashEchoFade=std::max(dashEchoFade,.22f);}
       if(combat){
-       utilities::tick(needlecatch,true);if(needleFlashTicks>0)--needleFlashTicks;
+       observations.observe({previousPlayer.x,previousPlayer.y},{player.x,player.y},dashActiveThisFrame,dashPressed&&dashActiveThisFrame,{playArea.left,playArea.top,playArea.right,playArea.bottom});
+        for(auto& t:thread)if(t.corruptedTicks>0)--t.corruptedTicks;
+        utilities::tick(needlecatch,true);if(needleFlashTicks>0)--needleFlashTicks;
        const float bossPursuitFactor=effects::factor(bossSlow,true);
        effects::tick(anchorState,true);effects::tick(bossSlow,true);
        // Interception can use only strands already present at tick start.
        // A strand laid during this movement must not block a shot in its past.
        std::array<needle::Segment,520> blockingSilk{};size_t blockingCount=0;
-       for(size_t i=1;utilities::ready(needlecatch,upgrades::rank(ranks,upgrades::Id::Needlecatch))&&i<thread.size();++i)if(thread[i].age+dt<=stats.activeSilkSeconds)
+       for(size_t i=1;utilities::ready(needlecatch,upgrades::rank(ranks,upgrades::Id::Needlecatch))&&i<thread.size();++i)if(!thread[i].severed&&thread[i].corruptedTicks==0&&thread[i].age+dt<=stats.activeSilkSeconds&&(boss.kind!=root::Kind::Unweaver||threadlight::unweaver::friendly(boss.unweaver,thread[i].id)))
         blockingSilk[blockingCount++]={{thread[i-1].p.x,thread[i-1].p.y},{thread[i].p.x,thread[i].p.y}};
        loom::tick(loomState,true,loomReward.owned);
        std::array<cross::Segment,520> loopHistory{};size_t loopCount=0;
        if(cocoonReward.owned&&!thread.empty()){
-        for(size_t i=1;i<thread.size();++i)loopHistory[loopCount++]={thread[i].id,{thread[i-1].p.x,thread[i-1].p.y},{thread[i].p.x,thread[i].p.y},(int)std::lround(thread[i].age*120.f)+1};
+        for(size_t i=1;i<thread.size();++i)if(!thread[i].severed&&thread[i].corruptedTicks==0)loopHistory[loopCount++]={thread[i].id,{thread[i-1].p.x,thread[i-1].p.y},{thread[i].p.x,thread[i].p.y},(int)std::lround(thread[i].age*120.f)+1};
         if(dist(thread.back().p,previousPlayer)>.05f&&loopCount<loopHistory.size())loopHistory[loopCount++]={nextThreadId+1,{thread.back().p.x,thread.back().p.y},{previousPlayer.x,previousPlayer.y},0};
        }
        const auto formation=cocoon::tick(cocoonState,{previousPlayer.x,previousPlayer.y},{player.x,player.y},std::span<const cross::Segment>(loopHistory.data(),loopCount),true,cocoonReward.owned);
@@ -871,7 +963,7 @@ int main(int argc, char** argv){
        while(!thread.empty()&&(thread.front().age>threadlight::visual::kSilkLifetimeSeconds||thread.size()>520))thread.erase(thread.begin());
        const size_t firstActiveSilk=threadlight::silk::firstActiveSegment(std::span<const Thread>(thread),stats.activeSilkSeconds);
        std::array<cross::Segment,520> history{};size_t historyCount=0;
-       if(crossReward.owned)for(size_t i=1;i<thread.size();++i)
+       if(crossReward.owned)for(size_t i=1;i<thread.size();++i)if(!thread[i].severed&&thread[i].corruptedTicks==0)
         history[historyCount++]={thread[i].id,{thread[i-1].p.x,thread[i-1].p.y},{thread[i].p.x,thread[i].p.y},(int)std::lround(thread[i].age*120.f)};
        crossPulse=cross::tick(crossState,{previousPlayer.x,previousPlayer.y},{player.x,player.y},std::span<const cross::Segment>(history.data(),historyCount),true,crossReward.owned);
        if(crossPulse.triggered){pulseCenter=crossPulse.center;pulseRadius=cross::kPulseRadius;pulseTicks=24;++crossPulses;sfx.play(threadlight::audio::Event::Afterimage);burst({pulseCenter.x,pulseCenter.y},C(170,237,226),12,110);traceM1("crossweave_pulse",crossPulses);}
@@ -886,14 +978,45 @@ int main(int argc, char** argv){
          int supportCommits=0;for(const auto& f:foes)if((f.kind==battle::EnemyKind::Skitter&&skitter::committed(f.skitterState))||(f.kind==battle::EnemyKind::Spitter&&ranged::committed(f.rangedState))||(f.kind==battle::EnemyKind::Sower&&sower::committed(f.sowerState)))++supportCommits;
          root::waitForSupports(boss,supportCommits,projectiles.flyingCount());
         }
+        if(boss.kind==root::Kind::Unweaver){auto& u=boss.unweaver;u.profile=observations.summary();
+         u.playerVelocity={(player.x-previousPlayer.x)*120,(player.y-previousPlayer.y)*120};u.playerSpeed=stats.moveSpeed;u.playerDashMultiplier=stats.dashMultiplier;
+         u.silkActiveTicks=(int)(stats.activeSilkSeconds*120);u.dashCooldown=dashCd;u.dashRemaining=dashTime;u.playerBounds={playArea.playerMinX,playArea.playerMaxX,playArea.playerMinY,playArea.playerMaxY};
+         if(u.responseTicks>0&&--u.responseTicks==0){const auto a=threadlight::unweaver::unit(u.responseDirection),b=threadlight::unweaver::unit(u.playerVelocity);
+          observations.onThreatResponse(dashActiveThisFrame||a.x*b.x+a.y*b.y<.7f);}
+         u.externalShotCount=u.externalFieldCount=u.bodyCount=0;
+         for(const auto& x:projectiles.items())if(x.state==ranged::SlotState::Flying&&u.externalShotCount<(int)u.externalShots.size())u.externalShots[u.externalShotCount++]={x.p,x.velocity,x.spec.radius,0,x.remainingTicks};
+         for(const auto& x:ground.items())if(x.state==field::SlotState::Warning||x.state==field::SlotState::Active){
+          if(u.externalFieldCount<(int)u.externalFields.size())u.externalFields[u.externalFieldCount++]={x.spec.shape==field::Shape::Capsule?x.spec.a:x.spec.center,x.spec.shape==field::Shape::Capsule?x.spec.b:x.spec.center,
+           x.spec.shape==field::Shape::Capsule?x.spec.halfWidth:x.spec.radius,x.warningRemaining,x.warningRemaining+x.activeRemaining};}
+         int committed=0;for(const auto& f:foes)if(f.health.alive()){
+          if(u.bodyCount<(int)u.bodies.size())u.bodies[u.bodyCount++]={{f.p.x,f.p.y},{},f.r,0,600};
+          committed+=skitter::committed(f.skitterState)||ranged::committed(f.rangedState)||sower::committed(f.sowerState);}
+         if(boss.stage==root::Stage::Stalk&&boss.remaining<=1&&committed)boss.remaining=2;
+        }
         const auto stageBefore=boss.stage;const bool bossWasStalking=stageBefore==root::Stage::Stalk&&!boss.counterstepping;
+        const auto shotsBefore=boss.shotsFired;
         const auto bossEvents=root::tick(boss,{player.x,player.y},bossArena(),ground.areaOccupied({playArea.left,playArea.right,playArea.top,playArea.bottom}));
         if(bossWasStalking&&boss.stage==root::Stage::Stalk&&!boss.counterstepping)
          boss.p=root::add(boss.previousP,root::scale(root::sub(boss.p,boss.previousP),bossPursuitFactor));
+        if(boss.kind==root::Kind::Unweaver&&boss.shotsFired!=shotsBefore)sfx.play(threadlight::audio::Event::SpitterShot);
         releaseSupports(bossEvents.supports);
-        if(bossEvents.warning){if(boss.corridor.enabled)ground.cancelUnsafeCorridors(boss.corridor);sfx.play(threadlight::audio::Event::BossWarning);traceBoss("warning");}
+        if(boss.kind==root::Kind::Unweaver){auto& u=boss.unweaver;
+         if(u.resultPending){observations.onCounterResult(u.hitDuringSequence!=0);u.resultPending=false;}
+         if(u.needsStrands){std::array<cross::Segment,520> candidates{};size_t n=0;for(size_t i=1;i<thread.size();++i)if(!thread[i].severed&&thread[i].age<=stats.activeSilkSeconds)
+          candidates[n++]={thread[i].id,{thread[i-1].p.x,thread[i-1].p.y},{thread[i].p.x,thread[i].p.y},(int)(thread[i].age*120)};
+          threadlight::unweaver::selectStrands(u,std::span<const cross::Segment>(candidates.data(),n),{player.x,player.y});
+          bool safe=false;for(int route=0;route<8&&!safe;++route){
+           if(threadlight::unweaver::witness(u,{player.x,player.y},radius,route,false)){safe=true;u.safeRoute=route;u.safeUsesDash=false;}
+           else if(threadlight::unweaver::witness(u,{player.x,player.y},radius,route,true)){safe=true;u.safeRoute=route;u.safeUsesDash=true;}}
+          if(!safe){u.strands={};++u.rejected;}}
+         for(const auto& strand:u.strands)if(strand.id&&strand.warning==0)for(auto& t:thread)if(t.id==strand.id){if(strand.sever)t.severed=true;else t.corruptedTicks=strand.active;}
+         if(u.formationRequest>=0){u.formationKind=u.formationRequest;u.formationReleased=0;supportQueued+=u.formationRequest==2?3:2;u.formationRequest=-1;}
+        }
+        if(bossEvents.warning){if(boss.kind==root::Kind::Unweaver){boss.unweaver.responseTicks=36;boss.unweaver.responseDirection={player.x-previousPlayer.x,player.y-previousPlayer.y};}
+         if(boss.corridor.enabled)ground.cancelUnsafeCorridors(boss.corridor);sfx.play(threadlight::audio::Event::BossWarning);traceBoss("warning");}
         bool touched=false;
         for(size_t i=firstActiveSilk;i<thread.size();++i){
+         if(thread[i].severed||thread[i].corruptedTicks>0)continue;
          if(!root::silkContact(boss,{thread[i-1].p.x,thread[i-1].p.y},{thread[i].p.x,thread[i].p.y},stats.silkHalfWidth))continue;
          touched=true;const auto hit=root::applySilk(boss,stats.silkDamage);
          if(hit.hit==battle::SilkHit::None)break;
@@ -912,7 +1035,7 @@ int main(int argc, char** argv){
         }
         for(int i=0;i<boss.budCount;++i)if(boss.buds[i].health.alive()){
          const auto& bud=boss.buds[i];
-         for(size_t t=firstActiveSilk;t<thread.size();++t)if(battle::silkContact(bud.p,bud.p,16,{thread[t-1].p.x,thread[t-1].p.y},{thread[t].p.x,thread[t].p.y},stats.silkHalfWidth)){
+         for(size_t t=firstActiveSilk;t<thread.size();++t)if(!thread[t].severed&&thread[t].corruptedTicks==0&&battle::silkContact(bud.p,bud.p,16,{thread[t-1].p.x,thread[t-1].p.y},{thread[t].p.x,thread[t].p.y},stats.silkHalfWidth)){
           budHit(i,stats.silkDamage,true);break;
          }
          if(bud.health.alive()&&afterimage::claimContact(offensiveEcho,bud.id,bud.p,bud.p,16)){
@@ -920,11 +1043,16 @@ int main(int argc, char** argv){
          }
         }
        }
-       if(bossEncounter&&root::alive(boss)&&supportQueued){
+       if(bossEncounter&&root::alive(boss)&&supportQueued&&(boss.kind!=root::Kind::Unweaver||!boss.unweaver.planCommitted||boss.unweaver.sealTicks>0)){
         int available=std::max(0,root::supportCapacity(boss)-(int)foes.size());
         while(supportQueued&&available--){
-         const auto kind=root::supportKind(boss,supportSpawned);
-         addFoe(kind,chapter::kPi*.25f+supportSpawned*chapter::kPi*.5f);--supportQueued;++supportSpawned;
+         const auto config=boss.kind==root::Kind::Unweaver?support_formations::configure((support_formations::Kind)boss.unweaver.formationKind,8,4):support_formations::earlierBossWave(wave+1);
+         const auto* member=support_formations::memberForOrdinal(config,boss.kind==root::Kind::Unweaver?boss.unweaver.formationReleased++:supportSpawned%8);
+         const auto kind=member?member->kind:root::supportKind(boss,supportSpawned);
+         addFoe(kind,chapter::kPi*.25f+supportSpawned*chapter::kPi*.5f);
+         if(member){const auto desired=support_formations::desiredPosition(*member,boss.p,{player.x,player.y});const auto pos=support_formations::safePlacement(desired,{playArea.left,playArea.top,playArea.right,playArea.bottom},{player.x,player.y},foes.back().r+8,180);
+          if(pos.valid)foes.back().p=foes.back().previousP={pos.point.x,pos.point.y};}
+         --supportQueued;++supportSpawned;
         }
        }
        mergeBriarCallers();
@@ -1012,6 +1140,8 @@ int main(int argc, char** argv){
          if(event.warningStarted){traceM1("sower_warning",f.rewardId,(int)event.ticket);sfx.play(threadlight::audio::Event::BossWarning);}
         }else{
          V target=player;
+          if(f.tacticalSupport&&f.kind==battle::EnemyKind::Brute){for(const auto& ally:foes)if(ally.health.alive()&&ally.kind==battle::EnemyKind::BriarCaller){target=ally.p+norm(player-ally.p)*70.f;break;}}
+          else if(f.tacticalSupport&&f.kind==battle::EnemyKind::Hunter)target=player+V{(player.x-previousPlayer.x)*35,(player.y-previousPlayer.y)*35};
          float movementSpeed=caller::boostedSpeed(f.speed,f.callerSpeedBoost);
          if(f.kind==battle::EnemyKind::BriarCaller){
           const auto targetPoint=caller::movementTarget({f.p.x,f.p.y},{player.x,player.y},foes,&f,
@@ -1027,8 +1157,10 @@ int main(int argc, char** argv){
         }
         const bool nowCommitted=f.kind==battle::EnemyKind::Skitter?skitter::committed(f.skitterState):f.kind==battle::EnemyKind::Sower?sower::committed(f.sowerState):f.kind==battle::EnemyKind::Spitter&&ranged::committed(f.rangedState);
         if(!wasCommitted&&!nowCommitted)f.p=oldPosition+(f.p-oldPosition)*pursuitFactor;
+        if(boss.kind==root::Kind::Unweaver&&boss.unweaver.planCommitted&&boss.unweaver.sealTicks==0){f.p=oldPosition;f.vel={};}
         commitments+=(nowCommitted?1:0)-(wasCommitted?1:0);
         if(f.health.silkCooldownTicks==0)for(size_t i=firstActiveSilk;i<thread.size();i++){
+         if(thread[i].severed||thread[i].corruptedTicks>0)continue;
          if(!battle::silkContact({oldPosition.x,oldPosition.y},{f.p.x,f.p.y},f.r,
              {thread[i-1].p.x,thread[i-1].p.y},{thread[i].p.x,thread[i].p.y},stats.silkHalfWidth))continue;
          const int hpBefore=f.health.hp;
@@ -1129,13 +1261,27 @@ int main(int argc, char** argv){
        const int damage=battle::applyIncoming(health,incoming,dashActiveThisFrame,cocoon::barrierActive(cocoonState)?&cocoonState.barrierCenti:nullptr,stats.damageReductionPercent);
        if(barrierBefore>cocoonState.barrierCenti){barrierAbsorbed+=barrierBefore-cocoonState.barrierCenti;burst(player,C(221,239,185),8,90);traceM1("cocoon_absorbed",incoming.sourceId,barrierBefore-cocoonState.barrierCenti);}
        if(damage){
+        observations.onIncoming(damage,dashActiveThisFrame);if(boss.kind==root::Kind::Unweaver)boss.unweaver.hitDuringSequence=1;
         runDamageTaken[incomingKind]+=damage;
         if(bossEncounter)boss.metrics.playerDamage+=damage;
         traceM1("player_damage",incoming.sourceId,damage);
         damageFeedback=threadlight::visual::kDamageFeedbackDuration;shake=threadlight::visual::kDamageShakeSeconds;
         sfx.play(threadlight::audio::Event::PlayerDamage);burst(player,C(255,92,119),13,170);
        }
-       foes.erase(std::remove_if(foes.begin(),foes.end(),[](const Foe& f){return !f.health.alive();}),foes.end());
+       const size_t livingBefore=foes.size();
+        foes.erase(std::remove_if(foes.begin(),foes.end(),[](const Foe& f){return !f.health.alive();}),foes.end());
+        if(boss.kind==root::Kind::Unweaver&&livingBefore>0&&foes.empty()){
+         boss.unweaver.formationBreakPending=true;
+         if(boss.stage==root::Stage::Recover)threadlight::unweaver::opening(boss,300,160,1);
+        }
+        if(boss.kind==root::Kind::Unweaver){const auto boundary=threadlight::unweaver::finish(boss);
+         if(boundary.phaseChanged||boundary.defeated){
+          threadlight::encounter_cleanup::cancelHostiles(boss,foes,projectiles,ground,attackCoordinator,rewards,supportQueued,std::span<Thread>(thread));
+          if(anchorState.targetId!=bossRewardId){anchorState.targetId=0;anchorState.windowTicks=0;}
+          if(boundary.phaseChanged){bossPhaseNotice=2.5f;sfx.play(threadlight::audio::Event::BossPhase);traceBoss("unweaver_phase");}
+          if(boundary.defeated){root::DamageResult defeated;defeated.hit=battle::SilkHit::Killed;defeated.events.defeated=true;bossHit(defeated,boss.unweaver.lastDamageOrdinary);}
+         }
+        }
       }
       for(auto &s:sparks){
        s.t+=dt;foundation::Point position{s.p.x,s.p.y};
@@ -1151,7 +1297,8 @@ int main(int argc, char** argv){
       const float particleDamping=threadlight::timing::dampingMultiplier(.96f,60.f,dt);
       for(auto &p:particles){p.life-=dt;p.p=p.p+p.v*dt;p.v=p.v*particleDamping;}particles.erase(std::remove_if(particles.begin(),particles.end(),[](const Particle& p){return p.life<=0;}),particles.end());
       for(auto &effect:deathEffects)effect.age+=dt;deathEffects.erase(std::remove_if(deathEffects.begin(),deathEffects.end(),[](const DeathEffect& e){return e.age>=(e.kind?threadlight::visual::kHeavyDeathSeconds:threadlight::visual::kSmallDeathSeconds);}),deathEffects.end());
-      const auto events=lifecycle.tick(foes.size(),chapter::encounter(wave).boss&&!root::alive(boss),continueCollection,!sparks.empty());
+      if(devTicks>0&&simulationTick>=(std::uint64_t)devTicks)exitRequested=true;
+       const auto events=lifecycle.tick(foes.size(),chapter::encounter(wave).boss&&!root::alive(boss),continueCollection,!sparks.empty());
       if(events.timeoutDespawn){
        for(const auto& foe:foes)if(rewards.despawnEnemy(foe.rewardId))traceM1("timeout_removal",foe.rewardId);
        foes.clear();traceM1("cleanup_timeout",0,foundation::kCleanupTicks);
@@ -1181,7 +1328,8 @@ int main(int argc, char** argv){
       }
      }
      if(perf)simulationMs=std::chrono::duration<double,std::milli>(PerfClock::now()-simulationStart).count();
-     if(mode!=Mode::Play)stepClock.clear();
+     if(devTicks>0&&(mode==Mode::Lost||mode==Mode::Won))exitRequested=true;
+      if(mode!=Mode::Play)stepClock.clear();
     }
    }else if(screenAtFrameStart==Mode::Upgrade){
     const auto cards=upgradeUI::layout(SW,SH,offers.current.count);
@@ -1320,7 +1468,8 @@ int main(int argc, char** argv){
   auto silkAge=[&](size_t i){return threadlight::presentation::blend(thread[i].previousAge,thread[i].age,alpha);};
   if(thread.size()>1){
    for(size_t i=1;i<thread.size();i++){
-    const V p0=silkPoint(i>1?i-2:i-1),p1=silkPoint(i-1),p2=silkPoint(i),p3=silkPoint(i+1<thread.size()?i+1:i);
+    if(thread[i].severed||thread[i].corruptedTicks>0)continue;
+     const V p0=silkPoint(i>1?i-2:i-1),p1=silkPoint(i-1),p2=silkPoint(i),p3=silkPoint(i+1<thread.size()?i+1:i);
     V a=catmullRom(p0,p1,p2,p3,0.f);
     const float age0=silkAge(i-1),age1=silkAge(i);
     for(int step=1;step<=3;step++){
@@ -1471,7 +1620,8 @@ int main(int argc, char** argv){
     const auto q=root::interpolate(shot.previousP,shot.p,alpha);DrawPoly({q.x,q.y},3,shot.spec.radius,20,C(255,175,128));DrawCircleV({q.x,q.y},2,C(255,232,193));
    }
   }
-  if(chapter::encounter(wave).boss&&root::alive(boss)&&anchorState.targetId==bossRewardId&&anchorState.windowTicks>0){
+  if(chapter::encounter(wave).boss&&root::alive(boss)&&boss.kind==root::Kind::Unweaver)threadlight::unweaver_render::draw(boss,alpha,time);
+   if(chapter::encounter(wave).boss&&root::alive(boss)&&anchorState.targetId==bossRewardId&&anchorState.windowTicks>0){
    const auto marked=root::interpolate(boss.previousP,boss.p,alpha);
    DrawPolyLinesEx({marked.x,marked.y},4,root::vulnerableRadius(boss)+8,45,1.4f,C(239,214,148,210));
   }
@@ -1526,10 +1676,15 @@ int main(int argc, char** argv){
    DrawText(TextFormat("%s / PHASE %d",root::name(boss),boss.phase),(int)barX,(int)barY-14,10,C(239,216,192));
    DrawRectangle((int)barX,(int)barY,(int)barWidth,5,C(61,45,62));
    DrawRectangle((int)barX,(int)barY,(int)(barWidth*std::clamp((float)boss.health.hp/boss.health.maxHp,0.f,1.f)),5,open?C(255,218,141):C(225,121,151));
-   const float threshold1=boss.kind==root::Kind::Rootwarden?.55f:boss.kind==root::Kind::Heart?.75f:boss.kind==root::Kind::Dancer?.70f:.65f;
-   const float threshold2=boss.kind==root::Kind::Heart?.50f:boss.kind==root::Kind::Dancer?.35f:.30f;
+   const float threshold1=boss.kind==root::Kind::Unweaver?.75f:boss.kind==root::Kind::Rootwarden?.55f:boss.kind==root::Kind::Heart?.75f:boss.kind==root::Kind::Dancer?.70f:.65f;
+   const float threshold2=boss.kind==root::Kind::Unweaver?.50f:boss.kind==root::Kind::Heart?.50f:boss.kind==root::Kind::Dancer?.35f:.30f;
    DrawRectangle((int)(barX+barWidth*threshold1)-1,(int)barY,2,5,C(255,239,210));
    if(boss.kind!=root::Kind::Rootwarden)DrawRectangle((int)(barX+barWidth*threshold2)-1,(int)barY,2,5,C(255,239,210));
+   if(boss.kind==root::Kind::Unweaver){
+     for(int i=1;i<4;++i)DrawRectangle((int)(barX+barWidth*i/4.f)-1,(int)barY,2,5,C(255,239,210));
+     const char* opportunity=boss.unweaver.opening==1?"FORMATION BREAK":boss.unweaver.opening==2?"COUNTER WINDOW":boss.unweaver.opening==3?"BINDING COLLAPSE":boss.unweaver.opening==4?"OVEREXTENDED":"OPENING";
+     DrawText(boss.health.hp==0?"UNRAVELING / SEQUENCES REMAIN":boss.stage==root::Stage::Recover?opportunity:threadlight::unweaver::styleName(boss.unweaver.style),(int)barX,(int)barY+10,10,C(240,195,171));
+    }
    if(boss.kind==root::Kind::Heart)DrawRectangle((int)(barX+barWidth*.25f)-1,(int)barY,2,5,C(255,239,210));
   }
   for(const auto& f:foes){const auto shown=f.present(alpha);
@@ -1678,7 +1833,7 @@ int main(int argc, char** argv){
    return bounds;
   };
   if(mode==Mode::Title&&titleView==0){
-   const Rectangle bounds=panel(waveFixture>=0?(waveFixtureWave==21?"M7 / SOWER FIXTURE":"M7 / WAVE 8 FIXTURE"):bossFixture<0?"M7 / 35-WAVE DEVELOPMENT CAMPAIGN":bossFixtureWave==34?"M7 / BRIAR HEART FIXTURE":bossFixtureWave==27?"M7 / HOLLOW WEAVER FIXTURE":bossFixtureWave==13?"M7 / NEEDLE DANCER FIXTURE":bossFixtureWave==20?"M7 / THORN CONDUCTOR FIXTURE":"M7 / ROOTWARDEN FIXTURE","THREADLIGHT",waveFixture>=0?"Isolated encounter fixture; no campaign checkpoint.":bossFixture<0?"Weave through five chapters. Complete the Briar Circuit.":"Isolated boss test; no campaign progress or checkpoint.");
+   const Rectangle bounds=panel(waveFixture>=0?(waveFixtureWave==21?"M7 / SOWER FIXTURE":"M7 / WAVE 8 FIXTURE"):bossFixture<0?"M7 / 35-WAVE DEVELOPMENT CAMPAIGN":bossFixtureWave==34?"UNWEAVER / DEVELOPMENT FIXTURE":bossFixtureWave==27?"M7 / HOLLOW WEAVER FIXTURE":bossFixtureWave==13?"M7 / NEEDLE DANCER FIXTURE":bossFixtureWave==20?"M7 / THORN CONDUCTOR FIXTURE":"M7 / ROOTWARDEN FIXTURE","THREADLIGHT",waveFixture>=0?"Isolated encounter fixture; no campaign checkpoint.":bossFixture<0?"Weave through five chapters. Complete the Briar Circuit.":"Isolated boss test; no campaign progress or checkpoint.");
    DrawText("Move to weave a fading thread. Circle the hunters; let silk do the cutting.",(int)bounds.x+52,(int)bounds.y+153,15,C(175,211,213));
    DrawText("WASD / arrows move     SPACE dash     P pauses",(int)bounds.x+52,(int)bounds.y+181,15,C(121,196,197));
    const char* labels[]={"START GAME","ENEMY CODEX","BEST RUN","SETTINGS","EXIT GAME"};
@@ -1898,7 +2053,7 @@ int main(int argc, char** argv){
    DrawText("A / D OR ARROWS MOVE    S MIDDLE    1 / 2 / 3 SELECT    ENTER CONFIRMS",(int)ui.panel.x+28,(int)(ui.panel.y+ui.panel.height-20),11,C(146,191,198));
   }
   if((mode==Mode::Lost||mode==Mode::Won)&&!inventoryOpen){
-   panel(mode==Mode::Won?"VICTORY":"RUN COMPLETE",mode==Mode::Won?"THE BRIAR HEART FALLS":"LOST TO THE BRIAR","Your run at a glance.");
+   panel(mode==Mode::Won?"VICTORY":"RUN COMPLETE",mode==Mode::Won?"THE UNWEAVER FALLS":"LOST TO THE BRIAR","Your run at a glance.");
    if(mode==Mode::Won&&violetUnlockedThisRun){
     const Rectangle award{SW*.5f-220.f,SH*.5f-86.f,440.f,40.f};
     const float reveal=std::clamp((float)GetTime()*.7f,0.f,1.f);
@@ -1938,13 +2093,14 @@ int main(int argc, char** argv){
    if(paletteRenderCheck>=0&&simulationTick>=240){capture(paletteRenderCheck==0?"palette-gameplay-cyan.png":"palette-gameplay-violet.png");exitRequested=true;}
    if(violetCelebrationRenderCheck&&renderCheckFrames>=90){capture("violet-celebration.png");exitRequested=true;}
    if(utilityFixture&&paletteRenderCheck<0&&!violetCelebrationRenderCheck&&simulationTick>=240){capture("m7-utilities.png");exitRequested=true;}
+   if(devCapture&&simulationTick>=(std::uint64_t)(devTicks>0?devTicks:360)){capture("unweaver-inspection.png");exitRequested=true;}
    if(!capturedWarning&&(boss.stage==root::Stage::RootWarning||boss.stage==root::Stage::StepWarning)){
     capture("m6-warning.png");capturedWarning=true;
    }
    if(!capturedActive&&(boss.stage==root::Stage::RootActive||boss.stage==root::Stage::StepActive)){
     capture("m6-active.png");capturedActive=true;
    }
-   if((capturedWarning&&capturedActive)||renderCheckFrames>=1200)exitRequested=true;
+   if((!devCapture&&capturedWarning&&capturedActive)||renderCheckFrames>=1200)exitRequested=true;
   }
   const int effectiveFrameRateLimit=pacingCheck?pacingRate:threadlight::timing::effectiveFrameRateLimit(
    appSettings.frameRateLimit,mode==Mode::Play,IsWindowFocused(),IsWindowMinimized(),m6RenderCheck);
@@ -1987,5 +2143,8 @@ int main(int argc, char** argv){
  }
  sfx.shutdown();
  if(audioReady)CloseAudioDevice();
+ if(bossFixture>=0||waveFixture>=0)std::printf("UNWEAVER_QA mode=%s ticks=%llu phase=%d vitality=%d player_hp=%d plans=%llu rejected=%llu shots=%llu echoes=%llu cuts=%llu corruptions=%llu formations=%d\n",
+  modeName(mode),(unsigned long long)simulationTick,boss.phase,boss.health.hp,health.hp,(unsigned long long)boss.unweaver.plans,(unsigned long long)boss.unweaver.rejected,
+  (unsigned long long)boss.unweaver.shots,(unsigned long long)boss.unweaver.echoes,(unsigned long long)boss.unweaver.cuts,(unsigned long long)boss.unweaver.corruptions,boss.unweaver.formationEvents);
  CloseWindow();return 0;
 }

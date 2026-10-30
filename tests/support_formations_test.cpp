@@ -1,4 +1,5 @@
 #include "../src/support_formations.h"
+#include "reward_ledger.h"
 
 #include <cmath>
 #include <cstdlib>
@@ -156,6 +157,22 @@ void testSafePlacementHonorsBoundsAndSeparation() {
 } // namespace
 
 int main() {
+    {
+        threadlight::foundation::RewardLedger ledger;const auto a=ledger.registerSupportEnemy(2,30),b=ledger.registerSupportEnemy(0,0);
+        if(!ledger.mergeSupportEnemies(a,b)||ledger.mergeSupportEnemies(a,b))return 1;
+        const auto drop=ledger.defeatEnemy(a);if(!drop||drop->sparkValue!=2||ledger.score()!=30||ledger.counters().despawned!=1)return 1;
+    }
+    for(int wave:{14,21,28,35}){
+        auto remaining=threadlight::support_formations::rewardBudget(wave);const auto initial=remaining;
+        threadlight::foundation::RewardLedger ledger;int sparks=0,score=0;
+        for(int i=0;i<16;++i){const auto allocation=threadlight::support_formations::allocateReward(remaining,threadlight::combat::definition(threadlight::combat::EnemyKind::BriarCaller,5));
+            sparks+=allocation.sparks;score+=allocation.score;const auto id=ledger.registerSupportEnemy(allocation.sparks,allocation.score);
+            const auto drop=ledger.defeatEnemy(id);if(!drop||drop->sparkValue!=allocation.sparks||ledger.defeatEnemy(id))return 1;
+            if(allocation.sparks==0&&ledger.collectPickup(id))return 1;
+        }
+        if(sparks!=initial.sparks||score!=initial.score||remaining.sparks||remaining.score||ledger.counters().killed!=16)return 1;
+    }
+
     testTemplateIdentitiesRolesAndTiming();
     testEarlierBossWaveOverridesAreFiniteAndOrdered();
     testDesiredPositionsKeepGuardBetweenCallerAndPlayer();

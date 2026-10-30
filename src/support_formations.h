@@ -37,6 +37,19 @@ struct Config {
 };
 struct Placement { Point point{}; bool valid{}; };
 
+// A boss reinforcement group shares the original encounter's reward ceiling.
+// Additional tactical bodies are legitimate kills but cannot inflate campaign
+// upgrade currency/score by changing their composition or being requeued.
+struct RewardBudget {int sparks=0,score=0;};
+inline RewardBudget rewardBudget(int wave){
+    return wave==14?RewardBudget{4,60}:wave==21||wave==28?RewardBudget{8,100}:
+           wave==35?RewardBudget{10,130}:RewardBudget{4,50};
+}
+inline RewardBudget allocateReward(RewardBudget& remaining,combat::EnemyDefinition enemy){
+    RewardBudget result{std::min(remaining.sparks,enemy.sparkValue),std::min(remaining.score,enemy.killScore)};
+    remaining.sparks-=result.sparks;remaining.score-=result.score;return result;
+}
+
 inline Config configure(Kind kind, int budget, int capacity) {
     Config result;
     result.kind = kind;

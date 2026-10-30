@@ -6,7 +6,7 @@ namespace threadlight::unweaver {
 // Vitality and encounter liveness are intentionally separate. This ledger is
 // the sole owner of carried damage; entering a phase never reapplies a hit.
 struct Progress {
-    int maximum=60000;
+    int maximum=84000;
     std::int64_t credited=0;
     int phase=1;
     unsigned experiences=0;

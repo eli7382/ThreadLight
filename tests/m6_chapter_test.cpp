@@ -44,7 +44,7 @@ constexpr std::array<Expected,14> expected{{
     {"NEEDLE RUSH",30,false,5,{8,2,22,0,2,2},44},
     {"REVERSAL",32,false,5,{12,10,10,4,2,2},60},
     {"CIRCUIT REHEARSAL",34,false,5,{9,10,8,6,3,4},66},
-    {"THE BRIAR HEART",0,true,5,{0,0,0,0,0,0},0}
+    {"THE UNWEAVER",0,true,5,{0,0,0,0,0,0},0}
 }};
 constexpr std::array<EnemyKind,6> kinds{{EnemyKind::Hunter,EnemyKind::Brute,
     EnemyKind::Skitter,EnemyKind::Spitter,EnemyKind::BriarCaller,EnemyKind::Sower}};
