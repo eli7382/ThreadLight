@@ -179,4 +179,15 @@ inline Placement safePlacement(Point desired, Bounds bounds, Point player,
     return result;
 }
 
+// Additional Unweaver body clearance; earlier encounters keep their authored placement.
+inline Placement unweaverPlacement(Point desired,Bounds bounds,Point player,Point boss,float radius){
+ for(int i=0;i<32;++i){const float a=i*6.28318530718f/32;
+  const Point candidate=i==0?desired:Point{boss.x+std::cos(a)*(radius+125),boss.y+std::sin(a)*(radius+125)};
+  const auto p=safePlacement(candidate,bounds,player,radius+8,180);
+  if(p.valid){const float dx=p.point.x-boss.x,dy=p.point.y-boss.y;
+   if(dx*dx+dy*dy>=(radius+92)*(radius+92))return p;}
+ }
+ return {};
+}
+
 } // namespace threadlight::support_formations

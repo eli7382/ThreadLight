@@ -25,18 +25,19 @@ struct CapsuleThreat {Point a{},b{};float width=0;int warning=0,lifetime=0;};
 struct State {
     Progress progress{};Style style=Style::Predator;Attack attack=Attack::ShatteredHalo;Mechanic mechanic=Mechanic::Hunt;
     observation::Summary profile{};Objective objective=Objective::Intercept;
-    std::array<Ray,48> rays{};int rayCount=0,clock=0,warningTicks=102,sequenceTicks=0;
+    std::array<Ray,54> rays{};int rayCount=0,clock=0,warningTicks=102,sequenceTicks=0;
     std::array<Point,360> history{};int historyHead=0,historyCount=0;
     Echo echo{};std::array<Strand,4> strands{};
     std::array<MovingThreat,72> externalShots{};int externalShotCount=0;
     std::array<CapsuleThreat,12> externalFields{};int externalFieldCount=0;
     std::array<MovingThreat,8> bodies{};int bodyCount=0;
+    std::array<std::array<Point,2>,32> silkObstacles{};int silkObstacleCount=0;
     Point playerVelocity{},commitVelocity{},goal{},gap{1,0},anchor{};int safeRoute=0;bool safeUsesDash=false;
     float playerSpeed=255,playerDashMultiplier=3.7f,dashCooldown=0,dashRemaining=0;
     Arena playerBounds{};
     std::array<float,3> success{},attempts{},styleScores{};
     int cycles=0,styleCycles=0,think=0,sealTicks=0,sealBroken=0,silkActiveTicks=144;
-    bool followup=false,resultPending=false,formationBreakPending=false,lastDamageOrdinary=false;int consecutiveRejects=0,responseTicks=0;Point responseDirection{};
+    bool interceptUsed=false,followup=false,resultPending=false,formationBreakPending=false,lastDamageOrdinary=false;int consecutiveRejects=0,responseTicks=0;Point responseDirection{};
     int recoveryBonus=0,formationEvents=0,formationRequest=-1,formationKind=0,formationReleased=0,hitDuringSequence=0,opening=0;
     std::uint64_t plans=0,rejected=0,shots=0,echoes=0,cuts=0,corruptions=0;
     bool planCommitted=false,mechanicExecuted=false,radialExecuted=false,needsStrands=false,huntExecuted=false;
@@ -77,9 +78,9 @@ inline void chooseStyle(State& u,int phase){
     const auto& p=u.profile;
     u.objective=p.confidence<.4f?Objective::Engage:p.dashUse>.12f?Objective::CounterDash:
         p.perimeter>.6f?Objective::Intercept:p.offense>1.f?Objective::Displace:phase>=3?Objective::Protect:Objective::Engage;
-    u.styleScores={1.f+p.movement+p.dashUse*2.f,1.f+p.offense*.3f+p.responseRate,
-                   phase>=3?1.1f+p.offense*.4f+(1-p.movement)*.5f:.2f};
-    for(int i=0;i<3;++i)u.styleScores[i]+=.5f*u.success[i]/(u.attempts[i]+1.f);
+    u.styleScores={1.f+p.repetition*.5f+p.dashUse,1.f+p.offense*.7f+p.perimeter*.7f+p.responseRate,
+                   phase>=3?1.4f+p.offense*.5f+(1-p.movement)*.5f:.2f};
+    for(int i=0;i<3;++i)u.styleScores[i]+= .7f*(2*u.success[i]-u.attempts[i])/(u.attempts[i]+1.f);
     const int best=static_cast<int>(std::max_element(u.styleScores.begin(),u.styleScores.end())-u.styleScores.begin());
     if(u.styleCycles>=2&&u.styleScores[best]>u.styleScores[(int)u.style]+.15f){u.style=(Style)best;u.styleCycles=0;}
     ++u.styleCycles;
@@ -89,10 +90,9 @@ inline void makeRays(State& u,Point anchor,Attack attack,float bearing){
     const int rings=attack==Attack::FinalConvergence?3:2;
     for(int ring=0;ring<rings;++ring){
         const float rotation=attack==Attack::RotatingEclipse?ring*.52f:attack==Attack::PredictedEscape?-ring*.27f:0;
-        const float gapAngle=bearing+rotation;
         for(int ray=0;ray<18;++ray){
             const float a=bearing+ray*2*kPi/18.f+rotation;
-            if(angleDistance(a,gapAngle)<.38f||angleDistance(a,gapAngle+kPi)<.38f)continue;
+            // Every angular slot is populated; defense uses expanding inter-shot spacing.
             auto& shot=u.rays[u.rayCount++];shot={anchor,direction(a),u.warningTicks+ring*54,0};
             if(attack==Attack::FracturedRhythm)shot.fireTick+=(ray%3)*16;
         }
@@ -107,7 +107,7 @@ inline Point responseDirection(const State& u,Point p,int tick,int route,Point h
     Point wanted;
     if(tick<24)wanted=length(u.commitVelocity)>.01f?unit(u.commitVelocity):Point{};
     else if(route<4){
-        const float bearing=angleOf(u.gap)+(route%2?kPi:0)+(u.attack==Attack::RotatingEclipse&&tick>u.warningTicks+35?.52f:0);
+        const float bearing=angleOf(u.gap)+kPi/18.f+(route%2?kPi:0)+(u.attack==Attack::RotatingEclipse&&tick>u.warningTicks+35?.52f:0);
         wanted=sub(add(u.anchor,scale(direction(bearing),std::clamp(length(sub(p,u.anchor)),130.f,260.f))),p);
     }else wanted=direction((route-4)*kPi*.5f);
     return length(wanted)>.1f?direction(std::round(angleOf(wanted)/(kPi*.25f))*kPi*.25f):Point{};
@@ -149,7 +149,7 @@ template<class Boss> bool commit(Boss& s,Point player,Arena arena){
     auto& u=s.unweaver;chooseStyle(u,s.phase);++u.plans;
     u.warningTicks=102;u.commitVelocity=u.playerVelocity;u.mechanicExecuted=false;u.radialExecuted=false;u.hitDuringSequence=0;
     u.mechanic=s.phase==1?Mechanic::Hunt:s.phase==2?Mechanic::Echo:s.phase==3?Mechanic::Seal:Mechanic::Echo;
-    if(s.phase>=3&&u.progress.experiences==3){const Mechanic choices[]={Mechanic::Sever,Mechanic::Corrupt,Mechanic::Seal,Mechanic::Echo};u.mechanic=choices[u.cycles%4];}
+    if(s.phase>=3&&u.progress.experiences==3){u.mechanic=u.profile.offense>1.f?Mechanic::Corrupt:u.profile.repetition>.35f?Mechanic::Echo:u.style==Style::Puppeteer?Mechanic::Seal:Mechanic::Sever;}
     if(u.forcedMechanic>=0)u.mechanic=(Mechanic)u.forcedMechanic;
     // Once a seal has executed, the next mandatory action is its radial exchange.
     if(u.mechanic==Mechanic::Seal&&(u.progress.experiences&2)&&!(u.progress.experiences&1))u.mechanic=Mechanic::Corrupt;
@@ -159,7 +159,7 @@ template<class Boss> bool commit(Boss& s,Point player,Arena arena){
         for(int i=0;i<s.budCount;++i)s.buds[i]={clamp(add(s.p,scale(direction(axis+(i?1.f:-1.f)*1.2f),150)),arena,22),{450,450},s.nextBud++};
         s.stage=rootwarden::Stage::RootWarning;s.remaining=102;u.clock=0;u.planCommitted=true;return true;
     }
-    if(u.mechanic==Mechanic::Seal||s.bullets.freeSlots()<48)return false;
+    if(u.mechanic==Mechanic::Seal||s.bullets.freeSlots()<54)return false;
     Attack chosen=s.phase==4&&!(u.progress.experiences&1)?Attack::FinalConvergence:(Attack)(u.cycles%4);
     if(u.objective==Objective::CounterDash||u.objective==Objective::Intercept)chosen=Attack::PredictedEscape;
     else if(u.objective==Objective::Displace)chosen=Attack::RotatingEclipse;
@@ -202,6 +202,30 @@ template<class Boss> void opening(Boss& s,int ticks,int bonus,int reason){
     if(s.unweaver.formationBreakPending&&reason!=3){ticks=std::max(ticks,300);bonus=std::max(bonus,160);reason=1;}
     s.unweaver.formationBreakPending=false;s.unweaver.opening=reason;s.unweaver.recoveryBonus=bonus;s.stage=rootwarden::Stage::Recover;s.remaining=ticks;
 }
+// Eight reachable local goals, scored at 5 Hz. No hidden player inputs or future retargeting.
+template<class Boss> void position(Boss& s,Point player,Arena arena,bool recovering){
+ auto& u=s.unweaver;
+ if(--u.think<=0){u.think=24;if(s.metrics.ticks%240<24)chooseStyle(u,s.phase);
+  const Point toward=unit(sub(player,s.p));const float distance=length(sub(player,s.p));
+  const float closing=-(u.playerVelocity.x*toward.x+u.playerVelocity.y*toward.y);
+  const Point prediction=clamp(add(player,scale(u.playerVelocity,.25f+.35f*u.profile.repetition)),arena,32);
+  float best=-1e20f;
+  for(int i=0;i<8;++i){const Point candidate=clamp(add(s.p,scale(direction(i*kPi/4),110)),arena,82);
+   const float desired=recovering?125.f:closing>50?205.f:u.style==Style::Predator?150.f:190.f;
+   float score=-std::abs(length(sub(candidate,prediction))-desired);
+   // Favor cutting across an orbit rather than trailing the player's current location.
+   score+=u.profile.perimeter*.18f*(length(sub(s.p,prediction))-length(sub(candidate,prediction)));
+   for(int n=0;n<u.silkObstacleCount;++n){const auto& edge=u.silkObstacles[n];
+    const float clearance=std::sqrt(foundation::segmentDistanceSquared(candidate,edge[0],edge[1]));
+    score-=std::max(0.f,90-clearance)*2.f;
+    if(combat::silkContact(s.p,candidate,76,edge[0],edge[1],4))score-=100;
+   }
+   if(distance<100&&length(sub(candidate,player))<distance)score-=150;
+   if(score>best){best=score;u.goal=candidate;}
+  }
+ }
+ const Point delta=sub(u.goal,s.p);s.p=clamp(add(s.p,scale(unit(delta),std::min(length(delta),155.f/120))),arena,82);
+}
 template<class Boss> rootwarden::Events tick(Boss& s,Point player,Arena arena){
     rootwarden::Events events;auto& u=s.unweaver;if(u.progress.defeated)return events;
     s.previousP=s.p;++s.metrics.ticks;combat::tick(s.health);record(u,player);
@@ -222,7 +246,8 @@ template<class Boss> rootwarden::Events tick(Boss& s,Point player,Arena arena){
         return events;
     }
     if(s.stage==rootwarden::Stage::Recover){
-        if(--s.remaining<=0){s.stage=rootwarden::Stage::Stalk;s.remaining=72;u.planCommitted=false;++u.cycles;++s.metrics.cycles;
+        position(s,player,arena,true);
+        if(--s.remaining<=0){s.stage=rootwarden::Stage::Stalk;s.remaining=72;u.planCommitted=false;u.interceptUsed=false;++u.cycles;++s.metrics.cycles;
             if(s.phase>=3&&u.formationEvents<(s.phase-2)*2){const auto& profile=u.profile;
                 const auto callerIndex=static_cast<std::size_t>(observation::OffenseTarget::Caller);
                 const auto rangedIndex=static_cast<std::size_t>(observation::OffenseTarget::Ranged);
@@ -239,16 +264,10 @@ template<class Boss> rootwarden::Events tick(Boss& s,Point player,Arena arena){
         return events;
     }
     if(s.stage==rootwarden::Stage::Stalk){
-        if(--u.think<=0){
-            u.think=24;const Point delta=sub(player,s.p),toward=unit(delta),side{-toward.y,toward.x};
-            const float distance=length(delta),sign=u.cycles%2?1.f:-1.f;const Point predicted=add(player,scale(u.playerVelocity,.38f));
-            u.goal=u.style==Style::Puppeteer?add(player,scale(toward,-190.f)):distance<105?add(s.p,scale(toward,-85.f)):
-                   add(add(predicted,scale(toward,-135.f)),scale(side,sign*(u.style==Style::Predator?85.f:130.f)));
-            u.goal=clamp(u.goal,arena,82);
-        }
-        const Point delta=sub(u.goal,s.p);s.p=clamp(add(s.p,scale(unit(delta),std::min(length(delta),155.f/120))),arena,82);
+        position(s,player,arena,false);
         if(--s.remaining<=0){
-            if(s.phase==1&&!u.huntExecuted){s.stepStart=s.p;s.stepEnd=rootwarden::rayEnd(s.p,unit(sub(add(player,scale(u.playerVelocity,.2f)),s.p)),180,arena,82);
+            if((s.phase==1&&!u.huntExecuted)||(!u.interceptUsed&&length(sub(player,s.p))<180&&
+                -(u.playerVelocity.x*unit(sub(player,s.p)).x+u.playerVelocity.y*unit(sub(player,s.p)).y)>60)){u.interceptUsed=true;s.stepStart=s.p;s.stepEnd=rootwarden::rayEnd(s.p,unit(sub(add(player,scale(u.playerVelocity,.2f)),s.p)),180,arena,82);
                 s.stage=rootwarden::Stage::StepWarning;s.remaining=66;events.warning=true;}
             else if(commit(s,player,arena))events.warning=true;
             else{u.think=0;

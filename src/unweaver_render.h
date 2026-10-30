@@ -107,14 +107,14 @@ void draw(const Boss& boss, float alpha, float time) {
             DrawPoly(vec(marker), 3, 5.f, std::atan2(ray.direction.y, ray.direction.x) * 57.2957795f,
                      withAlpha(gold, static_cast<float>(gold.a) * .85f));
         }
-        // Split, rotating outlines keep the phase-four escape gaps legible.
+        // Complete outlines accompany the full-circle committed rays.
         if (boss.phase >= 4 && u.planCommitted) {
             const float rotation = clock * .72f;
             const Point ringCenter = u.anchor;
             for (int i = 0; i < (u.attack==unweaver::Attack::FinalConvergence?3:2); ++i) {
                 const float pulse = .5f + .5f * std::sin(clock * 1.65f - i * .9f);
                 const float radius = 116.f + i * 55.f + pulse * 15.f;
-                const float gap = i == 0 ? .40f : .31f;
+                const float gap = 0.f;
                 float attackRotation = 0.f;
                 if (u.attack == unweaver::Attack::RotatingEclipse) attackRotation = i * .52f;
                 else if (u.attack == unweaver::Attack::PredictedEscape) attackRotation = -i * .27f;
@@ -129,13 +129,7 @@ void draw(const Boss& boss, float alpha, float time) {
                              withAlpha(i == 1 ? gold : pale, 140.f * fade));
                 }
             }
-            float gapRotation = 0.f;
-            if (u.attack == unweaver::Attack::RotatingEclipse) gapRotation = 2 * .52f;
-            else if (u.attack == unweaver::Attack::PredictedEscape) gapRotation = -2 * .27f;
-            const float gapAngle = unweaver::angleOf(u.gap) + gapRotation;
-            const Point gapA = offset(ringCenter, gapAngle - .40f, 116.f);
-            const Point gapB = offset(ringCenter, gapAngle + .40f, 116.f);
-            DrawLineEx(vec(gapA), vec(gapB), 2.f, withAlpha(gold, 185.f * fade));
+
         }
     }
 
@@ -380,7 +374,7 @@ void draw(const Boss& boss, float alpha, float time) {
 
     if (transition) {
         const float ring = 54.f + (1.f - transitionFade) * 104.f;
-        splitRing(p, ring, unweaver::angleOf(u.gap), clock * .3f, .48f,
+        splitRing(p, ring, unweaver::angleOf(u.gap), clock * .3f, 0.f,
                   withAlpha(pale, 125.f * fade));
         DrawCircleLines(static_cast<int>(p.x), static_cast<int>(p.y), radius + 18.f,
                         withAlpha(gold, 150.f * fade));

@@ -99,7 +99,7 @@ void familyAdmissionAndExecution(uw::Attack attack) {
     CHECK(state.planCommitted);
     CHECK(state.rayCount > 0 && state.rayCount <= static_cast<int>(state.rays.size()));
     gPeakRays = std::max(gPeakRays, state.rayCount);
-    CHECK(state.rayCount == (attack == uw::Attack::FinalConvergence ? 36 : 24));
+    CHECK(state.rayCount == (attack == uw::Attack::FinalConvergence ? 54 : 36));
     CHECK(state.warningTicks == 102);
     CHECK(state.sequenceTicks <= state.warningTicks + 54 * 2 + 320);
     CHECK(boss.p.x >= kArena.left + root::vulnerableRadius(boss));
@@ -120,7 +120,7 @@ void familyAdmissionAndExecution(uw::Attack attack) {
     }
 
     // The committed bearings and captured echo remain fixed while the target moves.
-    std::array<uw::Ray, 48> committed{};
+    std::array<uw::Ray, 54> committed{};
     for (int i = 0; i < state.rayCount; ++i) committed[static_cast<std::size_t>(i)] = state.rays[static_cast<std::size_t>(i)];
     const uw::Echo lockedEcho = state.echo;
     for (int i = 0; i < 30; ++i) {
@@ -683,7 +683,17 @@ void deterministicRealCorePolicyStress(){
 }
 }
 
+void fullCircleAndPositioning(){
+ for(int family=0;family<5;++family){uw::State u;uw::makeRays(u,{450,250},(uw::Attack)family,.17f);
+  for(int i=0;i<18;++i)CHECK(uw::angleDistance(uw::angleOf(u.rays[i].direction),.17f+i*2*uw::kPi/18)<.001f);
+ }
+ auto boss=root::State{};boss.p={450,250};auto& u=boss.unweaver;u.playerVelocity={-255,0};
+ uw::position(boss,{560,250},kArena,false);CHECK(u.goal.x<450); // Chase is met by spacing, not following.
+ u.think=0;u.silkObstacleCount=1;u.silkObstacles[0]={Point{300,140},Point{600,140}};
+ uw::position(boss,{560,250},kArena,true);CHECK(u.goal.y>180); // Penalize the dangerous silk side.
+}
 int main() {
+ fullCircleAndPositioning();
     familyAdmissionAndExecution(uw::Attack::ShatteredHalo);
     familyAdmissionAndExecution(uw::Attack::RotatingEclipse);
     familyAdmissionAndExecution(uw::Attack::FracturedRhythm);

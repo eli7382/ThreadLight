@@ -173,6 +173,14 @@ int main() {
         if(sparks!=initial.sparks||score!=initial.score||remaining.sparks||remaining.score||ledger.counters().killed!=16)return 1;
     }
 
+    for(int seed=0;seed<64;++seed){
+        const float a=seed*.618f;const threadlight::foundation::Point boss{450,250};
+        const threadlight::foundation::Point player{450+std::cos(a)*300,250+std::sin(a)*180};
+        const auto placement=threadlight::support_formations::unweaverPlacement(boss,{12,12,912,496},player,boss,28);
+        if(!placement.valid)return 1;
+        const float dx=placement.point.x-boss.x,dy=placement.point.y-boss.y;
+        if(dx*dx+dy*dy<120*120)return 1;
+    }
     testTemplateIdentitiesRolesAndTiming();
     testEarlierBossWaveOverridesAreFiniteAndOrdered();
     testDesiredPositionsKeepGuardBetweenCallerAndPlayer();

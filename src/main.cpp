@@ -1001,6 +1001,12 @@ int main(int argc, char** argv){
          for(const auto& x:ground.items())if(x.state==field::SlotState::Warning||x.state==field::SlotState::Active){
           if(u.externalFieldCount<(int)u.externalFields.size())u.externalFields[u.externalFieldCount++]={x.spec.shape==field::Shape::Capsule?x.spec.a:x.spec.center,x.spec.shape==field::Shape::Capsule?x.spec.b:x.spec.center,
            x.spec.shape==field::Shape::Capsule?x.spec.halfWidth:x.spec.radius,x.warningRemaining,x.warningRemaining+x.activeRemaining};}
+         u.silkObstacleCount=0;
+         for(size_t i=firstActiveSilk;i<thread.size()&&u.silkObstacleCount<32;i+=std::max(size_t(1),thread.size()/32))
+          if(i>0&&!thread[i].severed&&thread[i].corruptedTicks==0)u.silkObstacles[u.silkObstacleCount++]={foundation::Point{thread[i-1].p.x,thread[i-1].p.y},foundation::Point{thread[i].p.x,thread[i].p.y}};
+         // Resolve overlap before capturing static volley bodies; never move them after commitment.
+         if(!u.planCommitted)for(auto& f:foes){const V d=f.p-V{boss.p.x,boss.p.y};const float minimum=f.r+88;
+          if(len(d)<minimum){const V away=len(d)>.01f?norm(d):V{1,0};f.p=V{boss.p.x,boss.p.y}+away*minimum;f.p.x=std::clamp(f.p.x,playArea.left+f.r,playArea.right-f.r);f.p.y=std::clamp(f.p.y,playArea.top+f.r,playArea.bottom-f.r);f.previousP=f.p;}}
          int committed=0;for(const auto& f:foes)if(f.health.alive()){
           if(u.bodyCount<(int)u.bodies.size())u.bodies[u.bodyCount++]={{f.p.x,f.p.y},{},f.r,0,600};
           committed+=skitter::committed(f.skitterState)||ranged::committed(f.rangedState)||sower::committed(f.sowerState);}
@@ -1063,7 +1069,7 @@ int main(int argc, char** argv){
          const auto* member=support_formations::memberForOrdinal(config,boss.kind==root::Kind::Unweaver?boss.unweaver.formationReleased++:supportSpawned%8);
          const auto kind=member?member->kind:root::supportKind(boss,supportSpawned);
          addFoe(kind,chapter::kPi*.25f+supportSpawned*chapter::kPi*.5f);
-         if(member){const auto desired=support_formations::desiredPosition(*member,boss.p,{player.x,player.y});const auto pos=support_formations::safePlacement(desired,{playArea.left,playArea.top,playArea.right,playArea.bottom},{player.x,player.y},foes.back().r+8,180);
+         if(member){const auto desired=support_formations::desiredPosition(*member,boss.p,{player.x,player.y});const auto pos=boss.kind==root::Kind::Unweaver?support_formations::unweaverPlacement(desired,{playArea.left,playArea.top,playArea.right,playArea.bottom},{player.x,player.y},boss.p,foes.back().r):support_formations::safePlacement(desired,{playArea.left,playArea.top,playArea.right,playArea.bottom},{player.x,player.y},foes.back().r+8,180);
           if(pos.valid)foes.back().p=foes.back().previousP={pos.point.x,pos.point.y};}
          --supportQueued;++supportSpawned;
         }
@@ -1170,7 +1176,7 @@ int main(int argc, char** argv){
         }
         const bool nowCommitted=f.kind==battle::EnemyKind::Skitter?skitter::committed(f.skitterState):f.kind==battle::EnemyKind::Sower?sower::committed(f.sowerState):f.kind==battle::EnemyKind::Spitter&&ranged::committed(f.rangedState);
         if(!wasCommitted&&!nowCommitted)f.p=oldPosition+(f.p-oldPosition)*pursuitFactor;
-        if(boss.kind==root::Kind::Unweaver&&boss.unweaver.planCommitted&&boss.unweaver.sealTicks==0){f.p=oldPosition;f.vel={};}
+        if(boss.kind==root::Kind::Unweaver&&boss.unweaver.planCommitted&&boss.stage!=root::Stage::Recover&&boss.unweaver.sealTicks==0){f.p=oldPosition;f.vel={};}
         commitments+=(nowCommitted?1:0)-(wasCommitted?1:0);
         if(f.health.silkCooldownTicks==0)for(size_t i=firstActiveSilk;i<thread.size();i++){
          if(thread[i].severed||thread[i].corruptedTicks>0)continue;
