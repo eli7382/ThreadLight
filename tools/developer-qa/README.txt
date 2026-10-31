@@ -21,9 +21,13 @@ Overlay: FPS, wave, phase, centi-HP, tactical style, selected tactical action,
 attack stage, last radial family, radial occupancy, charge count and forecast
 error. Late waves show Director review and changed deployment counts.
 Start-Unweaver.cmd and Start-Phase-IV.cmd are direct shortcuts.
-Test-Event-Loom.cmd forces the new portal/lattice attack for inspection. Use
+Test-Event-Loom.cmd forces the redesigned reactive portal/barrier attack. Use
 Start-Unweaver.cmd for normal varied combat. Only the bright moving spindle
 heads cause damage; the ghosted braided paths are warnings.
+Test-Barriers.cmd isolates mixed solid cyan and damaging pink spiked walls.
+Test-Kill-Mode.cmd starts at 5:00 with the defense build. This debug shortcut
+exposes the hidden escalation for testing; normal gameplay has no announcement.
+The escalation can eventually cover the arena with warned spike pressure.
 Each launcher saves unique diagnostic logs and seed/argument records under Logs.
 Add -Performance to QA.ps1 to record frame timings alongside those logs.
 Boss shrapnel and Spitter shots now continue to arena boundaries. Interception,
@@ -39,8 +43,9 @@ PowerShell examples from this folder:
  ./QA.ps1 -Wave 32 -Build offense -Seed 42
  ./QA.ps1 -Wave 35 -Phase 2 -Mechanic 5 -Build mixed
  ./QA.ps1 -Wave 35 -Attack 1 -Build mobility
+ ./QA.ps1 -Wave 35 -FightSeconds 300 -Build defense
 The executable also accepts existing --unweaver-attack 0..4 and
---unweaver-mechanic 0..5 (5 = Event Loom) with --unweaver-fixture mixed (see source report).
+--unweaver-mechanic 0..6 (5 = Event Loom; 6 = barriers) with --unweaver-fixture mixed (see source report).
 
 All scenarios, including direct EXE startup, suppress profile saving, legitimate
 records and cosmetic unlocks. In-run sparks and upgrades still function.
@@ -48,10 +53,10 @@ No public practice menu is added. This separate Debug binary includes QA
 instrumentation and a PDB. It is not the trusted Release game and its performance
 is not representative of Release. No extra assets/DLLs are required.
 
-Validation: 44/44 Debug CTest suites passed. Packaged launcher smoke runs cover
+Validation: 46/46 Debug CTest suites passed. Packaged launcher smoke runs cover
 every requested starting wave and all four Unweaver phases with real gameplay.
 These short automated launches verify startup/stepping, not full survival through
 Waves 29–35 or human menu/input acceptance. Interactive QA remains yours.
 
-Revision details and before/after evidence: UNWEAVER-EVENT-LOOM-QA.md.
+Revision details and before/after evidence: UNWEAVER-SIEGE-QA.md.
 Earlier experimental packages remain available for comparison. No merge authorized.

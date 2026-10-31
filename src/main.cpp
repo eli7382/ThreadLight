@@ -91,7 +91,7 @@ int main(int argc, char** argv){
  int waveFixture=-1;
  int waveFixtureWave=7;
  int bossFixtureWave=6;
- int devPhase=1,devAttack=-1,devMechanic=-1,devFormation=-1,devTicks=0;bool devAutoplay=false,devCapture=false,devFast=false;int directorStyle=0;
+ int devPhase=1,devAttack=-1,devMechanic=-1,devFormation=-1,devFightSeconds=-1,devTicks=0;bool devAutoplay=false,devCapture=false,devFast=false;int directorStyle=0;
  int fixtureOptions=0;
  int rewardFixture=0;bool utilityFixture=false,minimumQaWindow=false;
  std::uint32_t spawnSeed=7382;
@@ -99,13 +99,14 @@ int main(int argc, char** argv){
  for(int i=1;i<argc;i++){
   const std::string_view arg=argv[i];
    if(arg=="--perf-log"&&i+1<argc){if(!perfLogPath.empty())return 2;perfLogPath=argv[++i];if(perfLogPath.empty())return 2;}
-   else if((arg=="--unweaver-phase"||arg=="--unweaver-attack"||arg=="--unweaver-mechanic"||arg=="--unweaver-formation"||arg=="--dev-ticks")&&i+1<argc){
+   else if((arg=="--unweaver-phase"||arg=="--unweaver-attack"||arg=="--unweaver-mechanic"||arg=="--unweaver-formation"||arg=="--dev-ticks"||arg=="--unweaver-time")&&i+1<argc){
      const std::string_view value=argv[++i];int parsed=-1;const auto r=std::from_chars(value.data(),value.data()+value.size(),parsed);
      if(r.ec!=std::errc{}||r.ptr!=value.data()+value.size())return 2;
      if(arg=="--unweaver-phase"){if(parsed<1||parsed>4)return 2;devPhase=parsed;}
      else if(arg=="--unweaver-attack"){if(parsed<0||parsed>4)return 2;devAttack=parsed;}
-     else if(arg=="--unweaver-mechanic"){if(parsed<0||parsed>5)return 2;devMechanic=parsed;}
+     else if(arg=="--unweaver-mechanic"){if(parsed<0||parsed>6)return 2;devMechanic=parsed;}
      else if(arg=="--unweaver-formation"){if(parsed<0||parsed>3)return 2;devFormation=parsed;}
+     else if(arg=="--unweaver-time"){if(parsed<0||parsed>3600)return 2;devFightSeconds=parsed;devPhase=std::min(4,1+parsed/60);}
      else{if(parsed<1||parsed>120000)return 2;devTicks=parsed;}
     }else if(arg=="--dev-autoplay")devAutoplay=true;
     else if(arg=="--dev-capture")devCapture=true;
@@ -183,9 +184,9 @@ int main(int argc, char** argv){
  if(bossFixture<0&&waveFixture<0){waveFixture=4;waveFixtureWave=28;} // Even direct executable launch is profile-isolated.
 #endif
  if(bossFixture>=0&&waveFixture>=0)return 2;
- if((devPhase!=1||devAttack>=0||devMechanic>=0||devFormation>=0)&&(bossFixture<0||bossFixtureWave!=34))return 2;
+ if((devPhase!=1||devAttack>=0||devMechanic>=0||devFormation>=0||devFightSeconds>=0)&&(bossFixture<0||bossFixtureWave!=34))return 2;
  if(devCapture)m6RenderCheck=true;
- if((devAutoplay||devCapture||devFast||devTicks||devPhase!=1||devAttack>=0||devMechanic>=0||devFormation>=0)&&bossFixture<0&&waveFixture<0)return 2;
+ if((devAutoplay||devCapture||devFast||devTicks||devPhase!=1||devAttack>=0||devMechanic>=0||devFormation>=0||devFightSeconds>=0)&&bossFixture<0&&waveFixture<0)return 2;
  if(m6RenderCheck&&rewardFixture==0&&!utilityFixture&&bossFixture<0&&!(waveFixture>=0&&waveFixtureWave>=28))return 2;
  if(minimumQaWindow&&!m6RenderCheck)return 2;
  if((pacingVsync!=-1&&!pacingCheck)||(pacingCheck&&m6RenderCheck))return 2;
@@ -391,7 +392,7 @@ int main(int argc, char** argv){
    boss.experimentalSupports=wave==13||wave==20||wave==27;
    if(boss.kind==root::Kind::Unweaver){boss.unweaver.profile=observations.summary();boss.unweaver.forcedAttack=devAttack;boss.unweaver.forcedMechanic=devMechanic;
     if(bossFixture>=0){boss.phase=devPhase;boss.unweaver.progress.phase=devPhase;boss.unweaver.progress.generation=devPhase;
-     boss.unweaver.progress.elapsedTicks=(devPhase-1)*7200;boss.unweaver.progress.credited=(devPhase-1)*boss.health.maxHp/4;boss.health.hp=boss.unweaver.progress.vitality();
+     boss.unweaver.progress.elapsedTicks=devFightSeconds>=0?devFightSeconds*120:(devPhase-1)*7200;boss.unweaver.progress.credited=(devPhase-1)*boss.health.maxHp/4;boss.health.hp=boss.unweaver.progress.vitality();
      if(devFormation>=0){boss.unweaver.formationKind=devFormation;boss.unweaver.formationEvents=1;
       supportQueued=support_formations::configure((support_formations::Kind)devFormation,8,4).memberCount;}
     }}
@@ -906,8 +907,8 @@ int main(int argc, char** argv){
         if(boss.kind==root::Kind::Unweaver){const auto& u=boss.unweaver;const float a=threadlight::unweaver::angleOf(u.gap);
          const bool attack=boss.stage==root::Stage::RootWarning||boss.stage==root::Stage::RootActive;
          if(attack&&u.planCommitted&&u.sealTicks==0){const auto d=threadlight::unweaver::responseDirection(u,{player.x,player.y},u.clock,u.safeRoute,threadlight::unweaver::length(u.playerVelocity)>.01f?threadlight::unweaver::unit(u.playerVelocity):foundation::Point{});
-          target=player+V{d.x,d.y}*100;devDash=u.safeUsesDash&&u.clock%4==0&&dashTime<=0&&dashCd<=0&&u.clock>=u.warningTicks-12&&u.clock<u.warningTicks+120;}
-         else if(u.validCharge){const auto d=threadlight::unweaver::responseDirection(u,{player.x,player.y},u.clock,u.safeRoute,threadlight::unweaver::length(u.playerVelocity)>.01f?threadlight::unweaver::unit(u.playerVelocity):foundation::Point{});target=player+V{d.x,d.y}*100;devDash=u.safeUsesDash&&u.clock%4==0&&dashTime<=0&&dashCd<=0&&u.clock>=u.warningTicks-12&&u.clock<u.warningTicks+120;}
+          target=player+V{d.x,d.y}*100;devDash=u.safeUsesDash&&u.clock%4==0&&dashTime<=0&&dashCd<=0&&threadlight::unweaver::dashWindow(u,u.clock);}
+         else if(u.validCharge){const auto d=threadlight::unweaver::responseDirection(u,{player.x,player.y},u.clock,u.safeRoute,threadlight::unweaver::length(u.playerVelocity)>.01f?threadlight::unweaver::unit(u.playerVelocity):foundation::Point{});target=player+V{d.x,d.y}*100;devDash=u.safeUsesDash&&u.clock%4==0&&dashTime<=0&&dashCd<=0&&threadlight::unweaver::dashWindow(u,u.clock);}
          else if(boss.stage==root::Stage::StepWarning||boss.stage==root::Stage::StepActive){const auto d=threadlight::unweaver::unit(threadlight::unweaver::sub(boss.stepEnd,boss.stepStart));const V side{-d.y,d.x};
           const V relative=player-V{boss.stepStart.x,boss.stepStart.y};const float sign=relative.x*side.x+relative.y*side.y<0?-1.f:1.f;target=player+side*(sign*120);}
          else if(u.sealTicks>0&&boss.budCount>0){int anchor=0;for(int i=0;i<boss.budCount;++i)if(boss.buds[i].health.alive()){anchor=i;break;}const auto& bud=boss.buds[anchor];target={bud.p.x+std::cos((float)simulationTick*.018f)*20,bud.p.y+std::sin((float)simulationTick*.018f)*20};}
@@ -948,6 +949,7 @@ int main(int argc, char** argv){
       if(tutorial&&dashTime>0&&!tutorialDashed){tutorialDashed=true;tutorialSpawnStart=phaseElapsedAtStart;}
       bossPhaseNotice=std::max(0.f,bossPhaseNotice-dt);
       const bool dashActiveThisFrame=threadlight::dashProtectsCollisionThisFrame(dashTime);dashVisualActive=dashVisualActive||dashActiveThisFrame;dashEchoFade=std::max(0.f,dashEchoFade-dt);float mult=dashActiveThisFrame?stats.dashMultiplier:1.f;if(dashActiveThisFrame)dashTime=std::max(0.f,dashTime-dt);player=player+mv*(stats.moveSpeed*mult*dt);player.x=threadlight::layout::clampPlayerX(player.x,playArea);player.y=threadlight::layout::clampPlayerY(player.y,playArea);
+      if(boss.kind==root::Kind::Unweaver){const auto bounded=threadlight::unweaver::barriers::move(boss.unweaver.walls,{previousPlayer.x,previousPlayer.y},{player.x,player.y},radius);player={bounded.x,bounded.y};}
       if(dashActiveThisFrame){
        afterimage::appendDash(offensiveEcho,{previousPlayer.x,previousPlayer.y},{player.x,player.y},combat);
        if(dashTime<=0){
@@ -1021,11 +1023,9 @@ int main(int argc, char** argv){
          u.silkObstacleCount=0;
          for(size_t i=firstActiveSilk;i<thread.size()&&u.silkObstacleCount<32;i+=std::max(size_t(1),thread.size()/32))
           if(i>0&&!thread[i].severed&&thread[i].corruptedTicks==0)u.silkObstacles[u.silkObstacleCount++]={foundation::Point{thread[i-1].p.x,thread[i-1].p.y},foundation::Point{thread[i].p.x,thread[i].p.y}};
-         // Resolve overlap before capturing static volley bodies; never move them after commitment.
-         if(!u.planCommitted&&!u.validCharge)for(auto& f:foes){const V d=f.p-V{boss.p.x,boss.p.y};const float minimum=f.r+88;
-          if(len(d)<minimum){const V away=len(d)>.01f?norm(d):V{1,0};f.p=V{boss.p.x,boss.p.y}+away*minimum;f.p.x=std::clamp(f.p.x,playArea.left+f.r,playArea.right-f.r);f.p.y=std::clamp(f.p.y,playArea.top+f.r,playArea.bottom-f.r);f.previousP=f.p;}}
+         // Snapshot moving supports for bounded response checks; their ordinary AI continues during casts.
          int committed=0;for(const auto& f:foes)if(f.health.alive()){
-          if(u.bodyCount<(int)u.bodies.size())u.bodies[u.bodyCount++]={{f.p.x,f.p.y},{},f.r,0,600};
+          if(u.bodyCount<(int)u.bodies.size())u.bodies[u.bodyCount++]={{f.p.x,f.p.y},{f.vel.x,f.vel.y},f.r,0,600};
           committed+=skitter::committed(f.skitterState)||ranged::committed(f.rangedState)||sower::committed(f.sowerState);}
          if(boss.stage==root::Stage::Stalk&&boss.remaining<=1&&committed)boss.remaining=2;
         }
@@ -1082,7 +1082,7 @@ int main(int argc, char** argv){
        if(bossEncounter&&root::alive(boss)&&supportQueued&&(boss.kind!=root::Kind::Unweaver||(!boss.unweaver.planCommitted&&!boss.unweaver.validCharge)||boss.unweaver.sealTicks>0)){
         int available=std::max(0,root::supportCapacity(boss)-(int)foes.size());
         while(supportQueued&&available--){
-         const auto config=boss.kind==root::Kind::Unweaver?support_formations::configure((support_formations::Kind)boss.unweaver.formationKind,8,4):support_formations::earlierBossWave(wave+1);
+         const auto config=boss.kind==root::Kind::Unweaver?support_formations::configure((support_formations::Kind)boss.unweaver.formationKind,8,boss.unweaver.drive.active?6:4):support_formations::earlierBossWave(wave+1);
          const auto* member=support_formations::memberForOrdinal(config,boss.kind==root::Kind::Unweaver?boss.unweaver.formationReleased++:supportSpawned%8);
          const auto kind=member?member->kind:root::supportKind(boss,supportSpawned);
          addFoe(kind,chapter::kPi*.25f+supportSpawned*chapter::kPi*.5f);
@@ -1198,7 +1198,11 @@ int main(int argc, char** argv){
         }
         const bool nowCommitted=f.kind==battle::EnemyKind::Skitter?skitter::committed(f.skitterState):f.kind==battle::EnemyKind::Sower?sower::committed(f.sowerState):f.kind==battle::EnemyKind::Spitter&&ranged::committed(f.rangedState);
         if(!wasCommitted&&!nowCommitted)f.p=oldPosition+(f.p-oldPosition)*pursuitFactor;
-        if(boss.kind==root::Kind::Unweaver&&(boss.unweaver.planCommitted||boss.unweaver.validCharge)&&boss.stage!=root::Stage::Recover&&boss.unweaver.sealTicks==0){f.p=oldPosition;f.vel={};}
+        if(boss.kind==root::Kind::Unweaver&&!wasCommitted&&!nowCommitted){
+         const auto bounded=threadlight::unweaver::steerSupport({oldPosition.x,oldPosition.y},{f.p.x,f.p.y},boss.p,{player.x,player.y},root::vulnerableRadius(boss)+f.r+8,caller::boostedSpeed(f.speed,f.callerSpeedBoost)*pursuitFactor*dt,f.rewardId%2?1:-1,{playArea.left+f.r,playArea.right-f.r,playArea.top+f.r,playArea.bottom-f.r});
+         const auto resolved=threadlight::unweaver::barriers::navigate(boss.unweaver.walls,{oldPosition.x,oldPosition.y},bounded,{player.x,player.y},f.r,caller::boostedSpeed(f.speed,f.callerSpeedBoost)*pursuitFactor*dt);f.p={std::clamp(resolved.x,playArea.left+f.r,playArea.right-f.r),std::clamp(resolved.y,playArea.top+f.r,playArea.bottom-f.r)};f.vel=(f.p-oldPosition)*(1.f/dt);
+         if((boss.stage==root::Stage::RootWarning||boss.stage==root::Stage::RootActive)&&dist(f.p,oldPosition)>.01f)++boss.unweaver.supportMovingSteps;
+        }
         commitments+=(nowCommitted?1:0)-(wasCommitted?1:0);
         if(f.health.silkCooldownTicks==0)for(size_t i=firstActiveSilk;i<thread.size();i++){
          if(thread[i].severed||thread[i].corruptedTicks>0)continue;
@@ -1284,6 +1288,7 @@ int main(int argc, char** argv){
           {f.previousP.x,f.previousP.y},{f.p.x,f.p.y},f.r))considerDamage(battle::definition(f.kind,chapter::encounter(wave).chapter).contactDamage,f.rewardId,0);
        if(bossEncounter&&root::alive(boss)){
         if(bodyCanHurt)considerDamage(root::incomingDamage(boss,{previousPlayer.x,previousPlayer.y},{player.x,player.y},radius),bossRewardId,1);
+       if(boss.kind==root::Kind::Unweaver){auto block=[&](ranged::Pool& pool){for(const auto& shot:pool.items())if(shot.state==ranged::SlotState::Flying){const auto next=root::add(shot.p,root::scale(shot.velocity,1.f/120));if(threadlight::unweaver::barriers::blocksProjectile(boss.unweaver.walls,shot.p,next,shot.spec.radius))pool.intercept(shot.id);}};block(projectiles);block(boss.bullets);}
         const auto bossImpacts=root::projectileTick(boss,{previousPlayer.x,previousPlayer.y},{player.x,player.y},radius,bossArena());
         for(int i=0;i<bossImpacts.count;++i)considerDamage(bossImpacts.items[i].damage,bossRewardId,1);
         const auto fieldHit=boss.fields.tick({previousPlayer.x,previousPlayer.y},{player.x,player.y},radius);
@@ -1301,6 +1306,7 @@ int main(int argc, char** argv){
        const int barrierBefore=cocoonState.barrierCenti;
        const int damage=battle::applyIncoming(health,incoming,dashActiveThisFrame,cocoon::barrierActive(cocoonState)?&cocoonState.barrierCenti:nullptr,stats.damageReductionPercent);
        if(barrierBefore>cocoonState.barrierCenti){barrierAbsorbed+=barrierBefore-cocoonState.barrierCenti;burst(player,C(221,239,185),8,90);traceM1("cocoon_absorbed",incoming.sourceId,barrierBefore-cocoonState.barrierCenti);}
+       if(boss.kind==root::Kind::Unweaver&&damage>0)boss.unweaver.drive.outcome(boss.unweaver.executedAction,damage,!health.alive());
        if(damage){
         observations.onIncoming(damage,dashActiveThisFrame);if(boss.kind==root::Kind::Unweaver)boss.unweaver.hitDuringSequence=1;
         runDamageTaken[incomingKind]+=damage;
@@ -2197,6 +2203,7 @@ int main(int argc, char** argv){
  if(boss.kind==root::Kind::Unweaver){const auto& u=boss.unweaver;
   std::printf("STATES");for(int i=0;i<8;++i)std::printf(" %s=%llu",root::stageName((root::Stage)i),(unsigned long long)u.stageTicks[i]);
   std::printf("\nTACTICS fight_ticks=%llu active=%llu radial=%llu charges=%llu reactions=%d predictions=%llu curved_error=%.2f linear_error=%.2f\n",(unsigned long long)u.progress.elapsedTicks,(unsigned long long)u.activeTicks,(unsigned long long)u.radialTicks,(unsigned long long)u.chargeAttempts,u.reactions,(unsigned long long)u.predictions,u.predictions?u.forecastError/u.predictions:0,u.predictions?u.linearError/u.predictions:0);
+  std::printf("OVERDRIVE active=%d age=%llu damage_reward=%d terminal_rewards=%d support_move_steps=%llu\n",u.drive.active,(unsigned long long)u.drive.age,u.drive.damage,u.drive.kills,(unsigned long long)u.supportMovingSteps);
   std::printf("DECISIONS");for(size_t i=0;i<u.actionChoices.size();++i)std::printf(" %s=%llu",threadlight::unweaver::actionName((threadlight::unweaver::Action)i),(unsigned long long)u.actionChoices[i]);std::printf("\n");
  }
 

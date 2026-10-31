@@ -123,6 +123,7 @@ void actionSelectionAdaptsAndPenalizesRepeats() {
     const Point farPlayer{850.f, 500.f};
     state.activeTicks = 100;
     state.radialTicks = 30;
+    state.recentActions[static_cast<std::size_t>(uw::Action::Barriers)] = 1.f;
     state.recentActions[static_cast<std::size_t>(uw::Action::EventLoom)] = 1.f;
     state.profile.perimeter = 1.f;
     state.recentActions[static_cast<std::size_t>(uw::Action::Hunt)] = .5f;

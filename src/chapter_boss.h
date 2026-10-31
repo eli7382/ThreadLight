@@ -45,8 +45,8 @@ struct State:legacy::State {
 };
 inline bool spatial(const State& s){return s.kind==Kind::Hollow||s.kind==Kind::Heart;}
 inline int maxHp(Kind kind){return kind==Kind::Unweaver?84000:kind==Kind::Heart?36000:kind==Kind::Hollow?28500:kind==Kind::Dancer?13500:kind==Kind::Conductor?21000:7000;}
-inline float vulnerableRadius(const State& s){return s.kind==Kind::Unweaver?76.f:s.kind==Kind::Heart?78.f:s.kind==Kind::Hollow?74.f:s.kind==Kind::Conductor?66.f:s.kind==Kind::Dancer?52.f:54.f;}
-inline float contactRadius(const State& s){return s.kind==Kind::Unweaver?32.f:s.kind==Kind::Heart?30.f:s.kind==Kind::Hollow?28.f:s.kind==Kind::Conductor?28.f:s.kind==Kind::Dancer?22.f:26.f;}
+inline float vulnerableRadius(const State& s){return s.kind==Kind::Unweaver?unweaver::kVulnerableRadius:s.kind==Kind::Heart?78.f:s.kind==Kind::Hollow?74.f:s.kind==Kind::Conductor?66.f:s.kind==Kind::Dancer?52.f:54.f;}
+inline float contactRadius(const State& s){return s.kind==Kind::Unweaver?unweaver::kContactRadius:s.kind==Kind::Heart?30.f:s.kind==Kind::Hollow?28.f:s.kind==Kind::Conductor?28.f:s.kind==Kind::Dancer?22.f:26.f;}
 inline const char* name(const State& s){return s.kind==Kind::Unweaver?"THE UNWEAVER":s.kind==Kind::Heart?"THE BRIAR HEART":s.kind==Kind::Hollow?"THE HOLLOW WEAVER":s.kind==Kind::Dancer?"THE NEEDLE DANCER":s.kind==Kind::Conductor?"THE THORN CONDUCTOR":"THE ROOTWARDEN";}
 inline combat::EnemyKind supportKind(const State& s,int ordinal){
     if(s.experimentalSupports){const auto config=support_formations::earlierBossWave(s.kind==Kind::Dancer?14:s.kind==Kind::Conductor?21:28);
@@ -66,9 +66,9 @@ inline void visitSupportBatch(const State& s,int count,Visitor visitor){
         visitor(supportKind(s,ordinal),offset,ordinal);
     }
 }
-inline int supportCapacity(const State& s){return s.kind==Kind::Unweaver||s.experimentalSupports?4:spatial(s)?3:s.kind==Kind::Dancer?2:6;}
+inline int supportCapacity(const State& s){return s.kind==Kind::Unweaver?(s.unweaver.drive.active?6:4):s.experimentalSupports?4:spatial(s)?3:s.kind==Kind::Dancer?2:6;}
 inline int supportSlots(const State& s){
-    if(s.kind==Kind::Unweaver)return s.stage==Stage::Recover?1:2;
+    if(s.kind==Kind::Unweaver)return s.unweaver.drive.active||s.stage==Stage::Recover?0:1;
     if(s.kind==Kind::Rootwarden)return 0;
     const bool priority=s.stage==Stage::Stalk&&s.remaining<=30;
     if(s.kind==Kind::Dancer)return(priority||s.counterstepping||s.stage==Stage::StepWarning||s.stage==Stage::StepActive)?1:0;

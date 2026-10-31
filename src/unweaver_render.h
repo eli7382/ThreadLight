@@ -1,8 +1,11 @@
 #pragma once
 
 #include "unweaver.h"
+#include "unweaver_barriers.h"
 #include "rootwarden.h"
+#include "game_layout.h"
 #include <raylib.h>
+#include <rlgl.h>
 
 #include <algorithm>
 #include <cmath>
@@ -73,15 +76,112 @@ inline void splitRing(Point center, float radius, float gapAngle, float rotation
     }
 }
 
+inline void drawWallState(const unweaver::barriers::State& state, float fade,
+                          Color pale, Color mint, Color coral, Color gold) {
+    using namespace unweaver::barriers;
+    const int count = std::clamp(state.count, 0, kWallCount);
+    for (int i = 0; i < count; ++i) {
+        const Wall& wall = state.walls[static_cast<std::size_t>(i)];
+        if (!unweaver::barriers::detail::live(wall)) continue;
+
+        const float dx = wall.b.x - wall.a.x;
+        const float dy = wall.b.y - wall.a.y;
+        const float length = std::hypot(dx, dy);
+        const Point normal = length > .001f ? Point{-dy / length, dx / length} : Point{0.f, 1.f};
+        const float halfwidth = std::max(0.f, wall.halfwidth);
+
+        if (wall.warning > 0) {
+            const Color warning = withAlpha(gold, 225.f * fade);
+            dashed(wall.a, wall.b, 2.f, warning, 12);
+            const Point offsetA{normal.x * halfwidth, normal.y * halfwidth};
+            const Point offsetB{-offsetA.x, -offsetA.y};
+            dashed({wall.a.x + offsetA.x, wall.a.y + offsetA.y},
+                   {wall.b.x + offsetA.x, wall.b.y + offsetA.y}, 1.2f,
+                   withAlpha(pale, 165.f * fade), 12);
+            dashed({wall.a.x + offsetB.x, wall.a.y + offsetB.y},
+                   {wall.b.x + offsetB.x, wall.b.y + offsetB.y}, 1.2f,
+                   withAlpha(pale, 165.f * fade), 12);
+            crosshatch(wall.a, wall.b, withAlpha(gold, 190.f * fade));
+            continue;
+        }
+
+        const Color edge = wall.spiked ? coral : mint;
+        const Color fill = withAlpha(wall.spiked ? coral : mint, 78.f * fade);
+        const Point offset{normal.x * halfwidth, normal.y * halfwidth};
+        const Point aPlus{wall.a.x + offset.x, wall.a.y + offset.y};
+        const Point bPlus{wall.b.x + offset.x, wall.b.y + offset.y};
+        const Point aMinus{wall.a.x - offset.x, wall.a.y - offset.y};
+        const Point bMinus{wall.b.x - offset.x, wall.b.y - offset.y};
+
+        // The quad, centerline, and round caps match the collision capsule's
+        // halfwidth. A bounded number of details keeps arena-wide walls cheap.
+        DrawTriangle(vec(aPlus), vec(bPlus), vec(bMinus), fill);
+        DrawTriangle(vec(aPlus), vec(bMinus), vec(aMinus), fill);
+        DrawLineEx(vec(wall.a), vec(wall.b), std::max(1.f, halfwidth * 2.f),
+                   withAlpha(edge, 210.f * fade));
+        DrawCircleV(vec(wall.a), halfwidth, fill);
+        DrawCircleV(vec(wall.b), halfwidth, fill);
+        DrawCircleLines(static_cast<int>(wall.a.x), static_cast<int>(wall.a.y), halfwidth,
+                        withAlpha(pale, 190.f * fade));
+        DrawCircleLines(static_cast<int>(wall.b.x), static_cast<int>(wall.b.y), halfwidth,
+                        withAlpha(pale, 190.f * fade));
+
+        const int details = std::clamp(static_cast<int>(length / 28.f), 1, 48);
+        if (wall.spiked && length > .001f) {
+            // Paired teeth signal traversable damage on both sides of the
+            // capsule; their bases sit on its exact collision edge.
+            for (int tooth = 0; tooth < details; ++tooth) {
+                const Point center = mix(wall.a, wall.b,
+                    (static_cast<float>(tooth) + .5f) / details);
+                const float halfStep = length / details * .26f;
+                for (float side : {-1.f, 1.f}) {
+                    const Point baseA{center.x - dx / length * halfStep + normal.x * halfwidth * side,
+                                      center.y - dy / length * halfStep + normal.y * halfwidth * side};
+                    const Point baseB{center.x + dx / length * halfStep + normal.x * halfwidth * side,
+                                      center.y + dy / length * halfStep + normal.y * halfwidth * side};
+                    const float spikeReach = halfwidth + layout::kPlayerRadius;
+                    const Point tip{center.x + normal.x * spikeReach * side,
+                                    center.y + normal.y * spikeReach * side};
+                    DrawTriangle(vec(baseA), vec(baseB), vec(tip), withAlpha(gold, 225.f * fade));
+                }
+            }
+        } else if (!wall.spiked && length > .001f) {
+            for (int mark = 0; mark < details; ++mark) {
+                const Point center = mix(wall.a, wall.b,
+                    (static_cast<float>(mark) + .5f) / details);
+                DrawLineEx({center.x - normal.x * halfwidth * .55f,
+                            center.y - normal.y * halfwidth * .55f},
+                           {center.x + normal.x * halfwidth * .55f,
+                            center.y + normal.y * halfwidth * .55f},
+                           1.2f, withAlpha(pale, 145.f * fade));
+            }
+        }
+
+        if (wall.fresh) {
+            // Fresh activation is harmless for one update, shown as a bright
+            // outline so the state change is readable without implying damage.
+            DrawLineEx(vec(wall.a), vec(wall.b), std::max(2.f, halfwidth * 2.f + 2.f),
+                       withAlpha(pale, 245.f * fade));
+        }
+    }
+}
+
+inline void drawBarriers(const unweaver::barriers::State& walls,
+                         const unweaver::barriers::State& pressure, float fade,
+                         Color pale, Color mint, Color coral, Color gold) {
+    drawWallState(walls, fade, pale, mint, coral, gold);
+    drawWallState(pressure, fade, pale, mint, coral, gold);
+}
+
 inline void drawEventLoom(const unweaver::State& u, float clock, float fade,
                           Color pale, Color mint, Color violet, Color gold) {
     constexpr int segments = 32;
     DrawPolyLinesEx(vec(u.anchor),8,112.f+4.f*std::sin(clock*2.f),clock*12.f,1.f,withAlpha(violet,60.f*fade));
-    for (int lane = 0; lane < 4; ++lane) {
-        const int rayIndex = lane * 2;
+    for (int lane = 0; lane < 8; ++lane) {
+        const int rayIndex = lane;
         if (rayIndex >= u.rayCount) break;
         const auto& ray = u.rays[rayIndex];
-        if (ray.curveTicks <= 0) continue;
+        if (ray.curveTicks <= 0 || !ray.committed || ray.removed) continue;
 
         // Render the exact committed route. The four lanes are each stored
         // twice for their delayed pulses, so laneIndex is always 2 * lane.
@@ -142,6 +242,12 @@ void draw(const Boss& boss, float alpha, float time) {
     const Color coral = ink(255, 126, 151, static_cast<unsigned char>(220 * fade));
     const Color gold = ink(255, 217, 139, static_cast<unsigned char>(220 * fade));
     const Color dark = ink(12, 23, 35, static_cast<unsigned char>(245 * fade));
+
+    // Barrier geometry shares the world-space collision capsules and stays
+    // outside the boss-only scale transform below.
+    if constexpr (requires { u.walls; u.pressure; }) {
+        drawBarriers(u.walls, u.pressure, fade, pale, mint, coral, gold);
+    }
 
     // Draw vulnerable geometry and the pending rays before the body.
     if (!transition && boss.stage != State::Recover) {
@@ -274,14 +380,18 @@ void draw(const Boss& boss, float alpha, float time) {
         DrawPoly(vec(boss.stepEnd), 3, 8.f, std::atan2(boss.stepEnd.y - boss.stepStart.y,
                  boss.stepEnd.x - boss.stepStart.x) * 57.2957795f, withAlpha(gold, 230.f * fade));
     } else if (!transition && boss.stage == State::StepActive) {
-        DrawLineEx(vec(boss.stepStart), vec(boss.stepEnd), 64.f, withAlpha(coral, 30.f * fade));
+        DrawLineEx(vec(boss.stepStart), vec(boss.stepEnd), 2*unweaver::kContactRadius, withAlpha(coral, 30.f * fade));
         DrawLineEx(vec(boss.stepStart), vec(boss.stepEnd), 3.f, withAlpha(coral, 225.f * fade));
         DrawCircleLines(static_cast<int>(boss.stepEnd.x), static_cast<int>(boss.stepEnd.y),
-                        32.f, withAlpha(coral, 220.f * fade));
+                        unweaver::kContactRadius, withAlpha(coral, 220.f * fade));
     }
 
     // Collision radii are quiet guides behind the body art; neither ring is
     // used as the creature's silhouette.
+    rlPushMatrix();
+    rlTranslatef(p.x, p.y, 0.f);
+    rlScalef(.88f, .88f, 1.f);
+    rlTranslatef(-p.x, -p.y, 0.f);
     DrawCircleLines(static_cast<int>(p.x), static_cast<int>(p.y), 76.f,
                     withAlpha(gold, 48.f * fade));
     DrawCircleLines(static_cast<int>(p.x), static_cast<int>(p.y), 32.f,
@@ -424,6 +534,8 @@ void draw(const Boss& boss, float alpha, float time) {
         DrawPoly(vec(shard), 3, 4.5f, angle * 57.2957795f,
                  withAlpha(i == 1 ? gold : pale, 175.f * fade));
     }
+
+    rlPopMatrix();
 
     for (const auto& projectile : boss.bullets.items()) {
         if (projectile.state != ranged::SlotState::Flying) continue;

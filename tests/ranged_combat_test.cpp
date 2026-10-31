@@ -372,6 +372,69 @@ void curvedShotsMatchBezierAndPublishExactNextStepVelocity() {
     CHECK(pool.flyingCount() == 0);
 }
 
+void boundaryBoundCurveContinuesAlongItsEndpointTangent() {
+    const Point origin{10000.0f, 10000.0f};
+    const Point control{10000.0f, 6000.0f};
+    const Point end{10000.0f, 5000.0f};
+    constexpr int travelTicks = 6;
+    const ranged::Bounds arena{0.0f, 20000.0f, 0.0f, 20000.0f};
+    const float dt = static_cast<float>(threadlight::timing::kFixedStepSeconds);
+    ranged::ShotSpec spec{};
+    spec.untilBoundary = true;
+    ranged::Pool pool;
+    const auto ticket = pool.reserve(93);
+    CHECK(pool.launchCurve(ticket, origin, control, end, travelTicks, spec));
+
+    for (int age = 0; age < travelTicks; ++age) {
+        const auto* before = findTicket(pool, ticket);
+        CHECK(before != nullptr);
+        if (!before) return;
+        const Point predicted{before->p.x + before->velocity.x * dt,
+                              before->p.y + before->velocity.y * dt};
+        const Point expected = ranged::quadraticBezier(origin, control, end,
+            static_cast<float>(age + 1) / travelTicks);
+        CHECK(near(predicted, expected));
+        const auto result = pool.tick({19000.0f, 19000.0f}, {19000.0f, 19000.0f},
+                                      0.0f, arena);
+        CHECK(result.count == 0 && result.expired == 0);
+    }
+
+    const auto* atTangent = findTicket(pool, ticket);
+    CHECK(atTangent != nullptr);
+    if (!atTangent) return;
+    CHECK(near(atTangent->p, end));
+    CHECK(!atTangent->curved);
+    const Point expectedTangent{0.0f, -ranged::kProjectileSpeed};
+    CHECK(near(atTangent->velocity, expectedTangent));
+
+    const Point predictedNext{atTangent->p.x + atTangent->velocity.x * dt,
+                              atTangent->p.y + atTangent->velocity.y * dt};
+    const auto firstTangentStep = pool.tick({19000.0f, 19000.0f}, {19000.0f, 19000.0f},
+                                            0.0f, arena);
+    CHECK(firstTangentStep.count == 0 && firstTangentStep.expired == 0);
+    const auto* afterTangentStep = findTicket(pool, ticket);
+    CHECK(afterTangentStep != nullptr);
+    CHECK(afterTangentStep && near(afterTangentStep->p, predictedNext));
+
+    for (int tick = 0; tick < ranged::kProjectileLifetimeTicks; ++tick) {
+        const auto result = pool.tick({19000.0f, 19000.0f}, {19000.0f, 19000.0f},
+                                      0.0f, arena);
+        CHECK(result.count == 0 && result.expired == 0);
+    }
+    const auto* afterLegacyLifetime = findTicket(pool, ticket);
+    CHECK(afterLegacyLifetime != nullptr);
+    CHECK(afterLegacyLifetime && afterLegacyLifetime->remainingTicks >= 1);
+
+    bool reachedBoundary = false;
+    for (int tick = 0; tick < 4000 && pool.flyingCount() > 0; ++tick) {
+        const auto result = pool.tick({19000.0f, 19000.0f}, {19000.0f, 19000.0f},
+                                      0.0f, arena);
+        if (result.expired == 1) reachedBoundary = true;
+    }
+    CHECK(reachedBoundary);
+    CHECK(pool.flyingCount() == 0);
+}
+
 void pauseAndRemapPreserveClocksAndTransformCommittedGeometry() {
     ranged::Pool pool;
     const auto ticket = pool.reserve(7);
@@ -426,6 +489,7 @@ int main() {
     lifetimeExpiresOnTick360ButFinalTickContactWins();
     boundaryShotsOutliveLegacyLifetimeAndStillHitAtArenaEdge();
     curvedShotsMatchBezierAndPublishExactNextStepVelocity();
+    boundaryBoundCurveContinuesAlongItsEndpointTangent();
     pauseAndRemapPreserveClocksAndTransformCommittedGeometry();
 
     if (failures != 0) {

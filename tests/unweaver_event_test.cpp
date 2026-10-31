@@ -39,6 +39,7 @@ constexpr std::array<PositionCase, 5> kPositions{{
 
 struct LoomSnapshot {
     std::array<uw::Ray, 8> rays{};
+    std::array<bool, 8> locked{};
 };
 
 root::State startLoom(Point player, bool dashReady) {
@@ -60,13 +61,19 @@ root::State startLoom(Point player, bool dashReady) {
     CHECK(boss.stage == root::Stage::RootWarning);
     CHECK(state.planCommitted && state.loom);
     CHECK(state.mechanic == uw::Mechanic::EventLoom);
-    CHECK(state.warningTicks == 120);
-    CHECK(state.sequenceTicks == state.safetyTicks);
+    CHECK(state.warningTicks == 96);
+    CHECK(state.sequenceTicks == 481);
+    CHECK(state.sequenceTicks != state.safetyTicks);
     CHECK(state.rayCount == 8);
     for (int i = 0; i < state.rayCount; ++i) {
-        CHECK(state.rays[i].curveTicks == 180);
+        CHECK(state.rays[i].curveTicks == 132);
         CHECK(state.rays[i].ticket != 0);
+        CHECK(state.rays[i].committed == (i < 2));
+        CHECK(state.rays[i].emitted == 0 && !state.rays[i].removed);
     }
+    CHECK(state.loomStage == 0 && state.loomStageTick == 0);
+    CHECK(state.walls.count == 6);
+    for (int i = 0; i < state.walls.count; ++i) CHECK(state.walls.walls[i].warning == 120);
     CHECK(ranged::kProjectileCapacity == 64);
     CHECK(boss.bullets.freeSlots() == 56);
     CHECK(boss.bullets.reservedCount() == 8);
@@ -78,7 +85,11 @@ root::State startLoom(Point player, bool dashReady) {
 
 LoomSnapshot snapshot(const uw::State& state) {
     LoomSnapshot result;
-    for (int i = 0; i < 8; ++i) result.rays[i] = state.rays[i];
+    for (int i = 0; i < 8; ++i) {
+        if (!state.rays[i].committed) continue;
+        result.rays[i] = state.rays[i];
+        result.locked[i] = true;
+    }
     return result;
 }
 
@@ -86,19 +97,23 @@ bool sameCurve(const uw::Ray& a, const uw::Ray& b) {
     return a.origin.x == b.origin.x && a.origin.y == b.origin.y &&
            a.control.x == b.control.x && a.control.y == b.control.y &&
            a.end.x == b.end.x && a.end.y == b.end.y &&
-           a.curveTicks == b.curveTicks && a.fireTick == b.fireTick;
+           a.curveTicks == b.curveTicks && a.flightTicks == b.flightTicks &&
+           a.fireTick == b.fireTick;
 }
 
 struct ReplayResult { bool admitted = false; int unsafeContacts = 0; int ticks = 0; };
 ReplayResult replayLoom(const PositionCase& scenario, bool dashReady) {
     auto boss = startLoom(scenario.player, dashReady);
     auto& state = boss.unweaver;
-    ReplayResult result{true, 0, 0};
-    const LoomSnapshot planned = snapshot(state);
+    ReplayResult result;
+    if (!state.planCommitted || !state.loom) return result;
+    result.admitted = true;
     Point player = scenario.player;
     Point held{};
     float dashTime = 0.f;
     float dashCooldown = state.dashCooldown;
+    LoomSnapshot locked = snapshot(state);
+    int lastStage = state.loomStage;
     for (int frame = 0; frame < state.sequenceTicks + 2 &&
          (boss.stage == root::Stage::RootWarning || boss.stage == root::Stage::RootActive); ++frame) {
         const int clock = state.clock;
@@ -106,8 +121,7 @@ ReplayResult replayLoom(const PositionCase& scenario, bool dashReady) {
         const Point movement = uw::responseDirection(state, player, clock, state.safeRoute, held);
         held = movement;
         const bool dashPressed = state.safeUsesDash && dashTime <= 0.f && dashCooldown <= 0.f &&
-                                 clock % 4 == 0 && clock >= state.warningTicks - 12 &&
-                                 clock < state.warningTicks + 120;
+                                 clock % 4 == 0 && uw::dashWindow(state, clock);
         if (dashPressed) {
             dashTime = threadlight::kDashDurationSeconds;
             dashCooldown = threadlight::kDashCooldownSeconds;
@@ -117,12 +131,42 @@ ReplayResult replayLoom(const PositionCase& scenario, bool dashReady) {
         const float multiplier = dashProtected ? state.playerDashMultiplier : 1.f;
         player = uw::clamp(uw::add(player, uw::scale(movement, state.playerSpeed * multiplier / 120.f)),
                            state.playerBounds);
+        if (dashProtected) dashTime = std::max(0.f, dashTime - kStep);
+        const Point unblocked = player;
+        player = uw::barriers::move(state.walls, previous, player, kPlayerRadius);
         state.playerVelocity = uw::scale(uw::sub(player, previous), 120.f);
+        state.dashCooldown = dashCooldown;
+        state.dashRemaining = dashTime;
 
         root::tick(boss, player, kArena);
-        for (int i = 0; i < state.rayCount; ++i)
-            if (clock < state.warningTicks) CHECK(sameCurve(planned.rays[i], state.rays[i]));
+        for (int i = 0; i < state.rayCount; ++i) {
+            if (locked.locked[i]) CHECK(sameCurve(locked.rays[i], state.rays[i]));
+            if (state.rays[i].committed && !locked.locked[i]) {
+                locked.rays[i] = state.rays[i];
+                locked.locked[i] = true;
+            }
+        }
+        if (state.loomStage != lastStage) {
+            CHECK(state.loomStage == lastStage + 1);
+            CHECK(state.loomStageTick == clock + 1);
+            CHECK(state.loomStageTick % 84 == 0);
+            const int firstRay = state.loomStage * 2;
+            CHECK(state.rays[firstRay].committed && state.rays[firstRay + 1].committed);
+            CHECK(state.rays[firstRay].fireTick == state.loomStageTick + state.warningTicks);
+            CHECK(state.rays[firstRay + 1].fireTick == state.loomStageTick + state.warningTicks);
+            lastStage = state.loomStage;
+        }
+        CHECK(std::isfinite(unblocked.x) && std::isfinite(unblocked.y));
         const int incoming = root::incomingDamage(boss, previous, player, kPlayerRadius);
+        auto block = [&](ranged::Pool& pool) {
+            for (const auto& shot : pool.items()) {
+                if (shot.state != ranged::SlotState::Flying) continue;
+                const Point next = uw::add(shot.p, uw::scale(shot.velocity, 1.f / 120.f));
+                if (uw::barriers::blocksProjectile(state.walls, shot.p, next, shot.spec.radius))
+                    pool.intercept(shot.id);
+            }
+        };
+        block(boss.bullets);
         const auto impacts = root::projectileTick(boss, previous, player, kPlayerRadius, kArena);
         if (!dashProtected && (incoming > 0 || impacts.count > 0)) {
             ++result.unsafeContacts;
@@ -133,7 +177,6 @@ ReplayResult replayLoom(const PositionCase& scenario, bool dashReady) {
         }
         CHECK(boss.bullets.freeSlots() + boss.bullets.reservedCount() +
               boss.bullets.flyingCount() == ranged::kProjectileCapacity);
-        if (dashProtected) dashTime = std::max(0.f, dashTime - kStep);
         (void)uw::finish(boss);
         ++result.ticks;
     }
@@ -164,6 +207,27 @@ void admissionAndReplayMatrix() {
             std::cerr << "event loom never admitted position=" << kPositions[i].name << '\n';
     }
     CHECK(totalAdmitted > 0 && admittedReady > 0 && admittedExhausted > 0);
+}
+
+void stationaryCornerTakesRealFirstCastDamage() {
+    const Point player{28.f, 28.f};
+    auto boss = startLoom(player, true);
+    CHECK(boss.unweaver.planCommitted && boss.unweaver.loom);
+    int contacts = 0;
+    const int endTick = boss.unweaver.rays[0].fireTick +
+                        boss.unweaver.rays[0].flightTicks + 2;
+    for (int frame = 0; frame < endTick + 2 &&
+         (boss.stage == root::Stage::RootWarning || boss.stage == root::Stage::RootActive); ++frame) {
+        boss.unweaver.playerVelocity = {};
+        boss.unweaver.dashRemaining = 0.f;
+        root::tick(boss, player, kArena);
+        const int incoming = root::incomingDamage(boss, player, player, kPlayerRadius);
+        const auto impacts = root::projectileTick(boss, player, player, kPlayerRadius, kArena);
+        if (incoming > 0 || impacts.count > 0) ++contacts;
+        (void)uw::finish(boss);
+    }
+    CHECK(contacts > 0);
+    if (contacts == 0) std::cerr << "stationary corner had no first-cast Loom damage\n";
 }
 
 bool launchFirstCurve(root::State& boss, Point player) {
@@ -225,6 +289,7 @@ void phaseCleanupClearsLoomCurves() {
     CHECK(boundary.phaseChanged && boss.phase == 2);
     CHECK(!boss.unweaver.loom && boss.unweaver.rayCount == 0);
     CHECK(boss.bullets.flyingCount() == 0 && boss.bullets.reservedCount() == 0);
+    CHECK(boss.unweaver.walls.count == 0 && boss.unweaver.pressure.count == 0);
 }
 void earnedFormationOpeningPrecedesCounter() {
     const Point player{460.f,110.f};auto boss=startLoom(player,true);auto& u=boss.unweaver;
@@ -236,14 +301,31 @@ void earnedFormationOpeningPrecedesCounter() {
     CHECK(boss.remaining==300&&u.recoveryBonus==160&&u.opening==1);
     CHECK(!u.formationBreakPending&&!u.validCharge);
 }
+void wallCommitIsTransactional() {
+    const Point player{460.f,110.f};
+    auto active=startLoom(player,true);
+    const auto wall=active.unweaver.walls.walls[0];
+    CHECK(!uw::commit(active,{600.f,300.f},kArena));
+    CHECK(active.unweaver.walls.walls[0].a.x==wall.a.x);
+    CHECK(active.unweaver.walls.walls[0].a.y==wall.a.y);
+    CHECK(active.unweaver.walls.walls[0].warning==wall.warning);
+    root::State full;
+    root::start(full,{460.f,254.f},kArena,root::Kind::Unweaver);
+    full.unweaver.forcedMechanic=(int)uw::Mechanic::EventLoom;
+    while(full.bullets.freeSlots())CHECK(full.bullets.reserve(full.nextSource++)!=0);
+    CHECK(!uw::commit(full,player,kArena));
+    CHECK(full.unweaver.walls.count==0);
+}
 
 }
 
 int main() {
     admissionAndReplayMatrix();
+    stationaryCornerTakesRealFirstCastDamage();
     curvedNeedlecatchUsesNextSweep();
     phaseCleanupClearsLoomCurves();
     earnedFormationOpeningPrecedesCounter();
+    wallCommitIsTransactional();
     if (failures) {
         std::cerr << failures << " / " << checks << " event loom checks failed\n";
         return 1;

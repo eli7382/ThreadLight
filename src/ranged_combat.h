@@ -449,6 +449,19 @@ public:
                 continue;
             }
 
+            // Boundary-bound curves transition into a straight shard at the
+            // stored endpoint. Publish its tangent now so pre-tick intercept
+            // checks predict the exact next linear sweep.
+            if (projectile.curved && projectile.curveAge >= projectile.curveTicks &&
+                projectile.spec.untilBoundary) {
+                const Point tangent{projectile.curveEnd.x - projectile.curveControl.x,
+                                    projectile.curveEnd.y - projectile.curveControl.y};
+                const Point direction = detail::unitOr(tangent, projectile.velocity);
+                projectile.velocity = {direction.x * projectile.spec.speed,
+                                       direction.y * projectile.spec.speed};
+                projectile.curved = false;
+            }
+
             if ((projectile.curved && projectile.curveAge >= projectile.curveTicks) ||
                 (!projectile.spec.untilBoundary && projectile.remainingTicks <= 1) ||
                 !detail::inside(projectile.p, fullArena)) {
