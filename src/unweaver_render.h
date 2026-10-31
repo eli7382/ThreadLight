@@ -106,7 +106,8 @@ inline void drawWallState(const unweaver::barriers::State& state, float fade,
         }
 
         const Color edge = wall.spiked ? coral : mint;
-        const Color fill = withAlpha(wall.spiked ? coral : mint, 78.f * fade);
+        const bool broad = halfwidth > 24.f;
+        const Color fill = withAlpha(wall.spiked ? coral : mint, (broad ? 6.f : 78.f) * fade);
         const Point offset{normal.x * halfwidth, normal.y * halfwidth};
         const Point aPlus{wall.a.x + offset.x, wall.a.y + offset.y};
         const Point bPlus{wall.b.x + offset.x, wall.b.y + offset.y};
@@ -118,7 +119,7 @@ inline void drawWallState(const unweaver::barriers::State& state, float fade,
         DrawTriangle(vec(aPlus), vec(bPlus), vec(bMinus), fill);
         DrawTriangle(vec(aPlus), vec(bMinus), vec(aMinus), fill);
         DrawLineEx(vec(wall.a), vec(wall.b), std::max(1.f, halfwidth * 2.f),
-                   withAlpha(edge, 210.f * fade));
+                   withAlpha(edge, (broad ? 12.f : 210.f) * fade));
         DrawCircleV(vec(wall.a), halfwidth, fill);
         DrawCircleV(vec(wall.b), halfwidth, fill);
         DrawCircleLines(static_cast<int>(wall.a.x), static_cast<int>(wall.a.y), halfwidth,
