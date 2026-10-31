@@ -35,7 +35,7 @@ This section is updated after the final candidate's verification. Never interpre
 - `settings_test` checks the Violet Ascendant grant gate: victory on completed wave 35 in a normal non-tutorial, non-fixture run grants once; losses, wave 34, tutorial and fixtures do not. It also verifies palette selection persists. The test isolates settings policy; it does not simulate a complete real-time Wave 35 win or write the owner's profile.
 - The native completion path at `main.cpp` only considers grants after a normal `Won`/`Lost` transition with `!tutorial`, `bossFixture < 0` and `waveFixture < 0`; it passes `wave+1` to `grantVioletAscendant`. Thus QA fixture victories cannot award it. The separate QA-OFF build compiles this normal game path; no real owner profile was changed.
 - The candidate changes no player or boss HP, attack damage, movement speed, warning/recovery timings outside the already-authored five-minute Kill Mode behavior, or reward scales. No manual full campaign or human combat acceptance is claimed.
-- Fetched `origin/develop` at `4dead78a30b88f7536b385da82c572d4132db8e9`; it remains an ancestor of the feature candidate. Merge is held for final review. Nothing was pushed.
+- The source changes verified above are committed at code checkpoint `803f732662e25869f15c60401cb76cf5249b6888`. Local `develop` was fast-forwarded to that reviewed feature commit after confirming the fetched `origin/develop` at `4dead78a30b88f7536b385da82c572d4132db8e9` was an ancestor. Remote synchronization and final ref hashes are recorded in the task's finalization evidence.
 
 ## Owner QA controls
 
