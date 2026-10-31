@@ -13,35 +13,35 @@ using rootwarden::length;using rootwarden::unit;using rootwarden::clamp;
 constexpr float kPi=3.14159265359f;
 enum class Style {Predator,Architect,Puppeteer};
 enum class Attack {ShatteredHalo,RotatingEclipse,FracturedRhythm,PredictedEscape,FinalConvergence};
-enum class Action {Radial,Charge,Hunt,Flank,Focused,Bait,Unique};
-inline const char* actionName(Action a){constexpr const char* n[]={"RADIAL","INTERCEPT","CONTACT HUNT","FLANK","FOCUSED FAN","BAIT/COUNTER","WEAVE TRAP"};return n[(int)a];}
-enum class Mechanic {Hunt,Echo,Sever,Corrupt,Seal};
+enum class Action {Radial,Charge,Hunt,Flank,Focused,Bait,Unique,EventLoom};
+inline const char* actionName(Action a){constexpr const char* n[]={"RADIAL","INTERCEPT","CONTACT HUNT","FLANK","FOCUSED FAN","BAIT/COUNTER","WEAVE TRAP","EVENT LOOM"};return n[(int)a];}
+enum class Mechanic {Hunt,Echo,Sever,Corrupt,Seal,EventLoom};
 enum class Objective {Intercept,CounterDash,Displace,Protect,Engage};
 inline const char* styleName(Style x){return x==Style::Predator?"PREDATOR":x==Style::Architect?"ARCHITECT":"PUPPETEER";}
 inline const char* attackName(Attack x){constexpr const char* names[]={"SHATTERED HALO","ROTATING ECLIPSE","FRACTURED RHYTHM","PREDICTED ESCAPE","FINAL CONVERGENCE"};return names[(int)x];}
-struct Ray {Point origin{},direction{};int fireTick=0;ranged::Pool::Ticket ticket=0;};
+struct Ray {Point origin{},direction{};int fireTick=0;ranged::Pool::Ticket ticket=0;Point control{},end{};int curveTicks=0;float speed=210;int flightTicks=0;};
 struct Echo {std::array<Point,24> path{};int count=0,warning=0,active=0;bool fresh=false;};
 struct Strand {std::uint64_t id=0;Point a{},b{};int warning=0,active=0;bool sever=false,fresh=false;};
 struct MovingThreat {Point p{},velocity{};float radius=0;int warning=0,lifetime=0;};
 struct CapsuleThreat {Point a{},b{};float width=0;int warning=0,lifetime=0;};
 struct State {
-    Action action=Action::Radial;bool focused=false,unique=false,chargePreview=false,validCharge=false;
+    Action action=Action::Radial;bool loom=false;int reactions=0,reactionCooldown=0,comboDepth=0;bool responseDashUsed=false;bool focused=false,unique=false,chargePreview=false,validCharge=false;
     bool chargeIsRetreat=false;std::uint64_t chargePredictionHits=0,chargePredictionMisses=0;Point chargeForecast{},aimTarget{},chargeStart{},chargeEnd{},forecast{},linearForecast{};int forecastTicks=0,tacticTicks=0;float predictionError=0;
-    std::array<float,5> recentFamilies{};std::array<float,7> recentActions{};std::array<std::uint64_t,7> actionChoices{};std::array<std::uint64_t,5> familyChoices{};
+    std::array<float,5> recentFamilies{};std::array<float,8> recentActions{};std::array<std::uint64_t,8> actionChoices{};std::array<std::uint64_t,5> familyChoices{};
     std::uint64_t activeTicks=0,radialTicks=0,chargeAttempts=0,contactTicks=0,predictions=0;double forecastError=0,linearError=0;
     std::array<std::uint64_t,8> stageTicks{};
     Progress progress{};Style style=Style::Predator;Attack attack=Attack::ShatteredHalo;Mechanic mechanic=Mechanic::Hunt;
     observation::Summary profile{};Objective objective=Objective::Intercept;
-    std::array<Ray,54> rays{};int rayCount=0,clock=0,warningTicks=102,sequenceTicks=0;
+    std::array<Ray,54> rays{};int rayCount=0,clock=0,warningTicks=102,sequenceTicks=0,safetyTicks=0;
     std::array<Point,360> history{};int historyHead=0,historyCount=0;
     Echo echo{};std::array<Strand,4> strands{};
-    std::array<MovingThreat,72> externalShots{};int externalShotCount=0;
+    std::array<MovingThreat,64> externalShots{},ownShots{};int externalShotCount=0,ownShotCount=0;
     std::array<CapsuleThreat,12> externalFields{};int externalFieldCount=0;
     std::array<MovingThreat,8> bodies{};int bodyCount=0;
     std::array<std::array<Point,2>,32> silkObstacles{};int silkObstacleCount=0;
     Point playerVelocity{},commitVelocity{},goal{},gap{1,0},anchor{};int safeRoute=0;bool safeUsesDash=false;
     float playerSpeed=255,playerDashMultiplier=3.7f,dashCooldown=0,dashRemaining=0;
-    Arena playerBounds{};
+    Arena playerBounds{},arenaBounds{};
     std::array<float,3> success{},attempts{},styleScores{};
     int cycles=0,styleCycles=0,think=0,sealTicks=0,sealBroken=0,silkActiveTicks=144;
     bool interceptUsed=false,followup=false,resultPending=false,formationBreakPending=false,lastDamageOrdinary=false;int consecutiveRejects=0,responseTicks=0;Point responseDirection{};
@@ -55,6 +55,7 @@ inline Point direction(float angle){return {std::cos(angle),std::sin(angle)};}
 inline float angleDistance(float a,float b){return std::abs(std::remainder(a-b,2*kPi));}
 inline Point predict(const State& u,Point player,float horizon,bool curved=true){
  Point velocity=u.playerVelocity;float turn=0;
+ if(u.dashRemaining>0&&length(velocity)>u.playerSpeed&&horizon>0){const float distance=u.playerSpeed*horizon+(length(velocity)-u.playerSpeed)*std::min(horizon,u.dashRemaining);velocity=scale(unit(velocity),distance/horizon);}
  if(u.historyCount>=25){const auto now=u.history[(u.historyHead-1+360)%360],mid=u.history[(u.historyHead-13+360)%360],old=u.history[(u.historyHead-25+360)%360];
   const Point a=sub(mid,old),b=sub(now,mid);
   if(length(a)>1&&length(b)>1){turn=std::clamp(std::atan2(a.x*b.y-a.y*b.x,a.x*b.x+a.y*b.y)*10.f,-3.f,3.f);
@@ -91,7 +92,7 @@ template<class Segment> void selectStrands(State& u,std::span<const Segment> seg
         for(int i=slot;i>0&&scores[i]>scores[i-1];--i){std::swap(scores[i],scores[i-1]);std::swap(u.strands[i],u.strands[i-1]);}
     }
 }
-inline void clear(State& u){u.tacticTicks=0;u.validCharge=false;u.focused=u.unique=u.chargePreview=false;u.rayCount=0;u.echo={};u.strands={};u.sealTicks=0;u.planCommitted=false;u.needsStrands=false;u.formationRequest=-1;u.followup=false;u.consecutiveRejects=0;u.resultPending=false;u.formationBreakPending=false;}
+inline void clear(State& u){u.loom=false;u.comboDepth=0;u.tacticTicks=0;u.validCharge=false;u.focused=u.unique=u.chargePreview=false;u.rayCount=0;u.echo={};u.strands={};u.sealTicks=0;u.planCommitted=false;u.needsStrands=false;u.formationRequest=-1;u.followup=false;u.consecutiveRejects=0;u.resultPending=false;u.formationBreakPending=false;}
 inline void chooseStyle(State& u,int phase){
     const auto& p=u.profile;
     u.objective=p.confidence<.4f?Objective::Engage:p.dashUse>.12f?Objective::CounterDash:
@@ -103,21 +104,40 @@ inline void chooseStyle(State& u,int phase){
     if(u.styleCycles>=2&&u.styleScores[best]>u.styleScores[(int)u.style]+.15f){u.style=(Style)best;u.styleCycles=0;}
     ++u.styleCycles;
 }
+inline Point rayPoint(const Ray& r,int age){
+ if(r.curveTicks>0)return ranged::quadraticBezier(r.origin,r.control,r.end,std::clamp(age/float(r.curveTicks),0.f,1.f));
+ return add(r.origin,scale(r.direction,40.f+age*r.speed/120));
+}
+inline int rayFlight(const State& u,const Ray& r){if(r.flightTicks>0)return r.flightTicks;return r.curveTicks>0?r.curveTicks:std::max(1,ranged::boundaryFlightTicks(add(r.origin,scale(r.direction,40)),r.direction,r.speed,{u.arenaBounds.left,u.arenaBounds.right,u.arenaBounds.top,u.arenaBounds.bottom}))+2;}
 inline void makeRays(State& u,Point anchor,Attack attack,float bearing){
-    u.rayCount=0;u.anchor=anchor;u.attack=attack;u.gap=direction(bearing);
-    if(u.unique){u.sequenceTicks=u.warningTicks+190;return;}
-    if(u.focused){for(int group=0;group<2;++group)for(int i=0;i<7;++i)u.rays[u.rayCount++]={anchor,direction(bearing+(i-3)*.12f+group*.06f),u.warningTicks+group*40,0};u.sequenceTicks=u.warningTicks+220;return;}
-    const int rings=attack==Attack::ShatteredHalo||attack==Attack::FracturedRhythm?1:attack==Attack::PredictedEscape?2:3;
-    int last=u.warningTicks;
-    for(int ring=0;ring<rings;++ring){
-        const float rotation=attack==Attack::RotatingEclipse?ring*kPi/18:attack==Attack::PredictedEscape?ring*(u.profile.orbitBias>=0?.14f:-.14f):attack==Attack::FinalConvergence?ring*kPi/27:0;
-        for(int ray=0;ray<18;++ray){
-            const int delay=attack==Attack::FracturedRhythm?(ray%3)*42:attack==Attack::RotatingEclipse?ring*80:attack==Attack::PredictedEscape?ring*90:ring*66+(attack==Attack::FinalConvergence?(ray%2)*18:0);
-            auto& shot=u.rays[u.rayCount++];shot={anchor,direction(bearing+ray*2*kPi/18.f+rotation),u.warningTicks+delay,0};last=std::max(last,shot.fireTick);
-        }
-    }
-    u.sequenceTicks=last+320;
-
+ u.rayCount=0;u.anchor=anchor;u.attack=attack;u.gap=direction(bearing);u.safetyTicks=0;
+ if(u.loom){
+  const auto b=u.arenaBounds;const float w=b.right-b.left,h=b.bottom-b.top;const Point center{(b.left+b.right)*.5f,(b.top+b.bottom)*.5f};
+  for(int lane=0;lane<4;++lane)for(int wave=0;wave<2;++wave){
+   const bool horizontal=lane<2,reverse=lane%2;const float sign=reverse?-1.f:1.f;
+   Point origin=horizontal?Point{reverse?b.right-20:b.left+20,b.top+h*(reverse?.72f:.28f)}:Point{b.left+w*(reverse?.7f:.3f),reverse?b.bottom-20:b.top+20};
+   Point target=horizontal?Point{reverse?b.left-8:b.right+8,b.top+h*(reverse?.28f:.72f)}:Point{b.left+w*(reverse?.3f:.7f),reverse?b.top-8:b.bottom+8};
+   Point control=horizontal?Point{center.x,center.y+sign*h*(.4f+.1f*std::sin(bearing))}:Point{center.x+sign*w*(.3f+.08f*std::cos(bearing)),center.y};
+   control=clamp(add(scale(control,.8f),scale(u.aimTarget,.2f)),b,12);
+   auto& r=u.rays[u.rayCount++];r={origin,unit(sub(control,origin)),u.warningTicks+wave*84+lane*18,0,control,target,180,210};
+  }
+ }else if(u.unique){u.sequenceTicks=u.safetyTicks=u.warningTicks+190;return;}
+ else if(u.focused){for(int group=0;group<2;++group)for(int i=0;i<7;++i)u.rays[u.rayCount++]={anchor,direction(bearing+(i-3)*.12f+group*.06f),u.warningTicks+group*40,0};}
+ else {
+  const int rings=attack==Attack::ShatteredHalo||attack==Attack::FracturedRhythm?1:attack==Attack::PredictedEscape?2:3;
+  for(int ring=0;ring<rings;++ring)for(int ray=0;ray<18;++ray){
+   const float rotation=attack==Attack::RotatingEclipse?ring*kPi/18:attack==Attack::PredictedEscape?ring*(u.profile.orbitBias>=0?.14f:-.14f):attack==Attack::FinalConvergence?ring*kPi/27:0;
+   const int delay=attack==Attack::FracturedRhythm?(ray%3)*42:attack==Attack::RotatingEclipse?ring*80:attack==Attack::PredictedEscape?ring*90:ring*66+(attack==Attack::FinalConvergence?(ray%2)*18:0);
+   auto& r=u.rays[u.rayCount++];r={anchor,direction(bearing+ray*2*kPi/18.f+rotation),u.warningTicks+delay,0};
+   // Petals separate into alternating fast/slow lanes without adding shots.
+   if(attack==Attack::ShatteredHalo)r.speed=ray%2?240.f:180.f;
+   if(attack==Attack::RotatingEclipse)r.speed=180.f+ring*30.f;
+  }
+ }
+ int last=u.warningTicks;for(int i=0;i<u.rayCount;++i){auto& r=u.rays[i];r.flightTicks=rayFlight(u,r);last=std::max(last,r.fireTick);u.safetyTicks=std::max(u.safetyTicks,r.fireTick+rayFlight(u,r)+1);}
+ u.sequenceTicks=u.loom?u.safetyTicks:last+120;
+ for(int i=0;i<u.ownShotCount;++i)u.safetyTicks=std::max(u.safetyTicks,u.ownShots[i].lifetime);
+ for(int i=0;i<u.externalShotCount;++i)u.safetyTicks=std::max(u.safetyTicks,u.externalShots[i].lifetime); // Reposition while distant ordinary shots continue to the edge.
 }
 // Bounded response witnesses use keyboard directions, reaction delay, dash
 // protection and the same swept primitives as execution. They cannot establish
@@ -126,6 +146,7 @@ inline Point responseDirection(const State& u,Point p,int tick,int route,Point h
     if(tick%4!=0)return held; // A control change is executable even at 30 FPS.
     Point wanted;
     if(tick<24)wanted=length(u.commitVelocity)>.01f?unit(u.commitVelocity):Point{};
+    else if(u.loom&&route<4)wanted=direction(route*kPi*.5f+kPi*.25f);
     else if(route<4){
         const float bearing=angleOf(u.gap)+kPi/18.f+(route%2?kPi:0)+(u.attack==Attack::RotatingEclipse?std::clamp((tick-u.warningTicks-30)/80,0,2)*kPi/18.f:0);
         wanted=sub(add(u.anchor,scale(direction(bearing),std::clamp(length(sub(p,u.anchor)),130.f,260.f))),p);
@@ -135,7 +156,7 @@ inline Point responseDirection(const State& u,Point p,int tick,int route,Point h
 inline bool witness(const State& u,Point player,float radius,int route,bool useDash){
     radius+=3.f; // Clearance margin for presentation/input sampling uncertainty.
     Point p=player,held{};float cd=u.dashCooldown;int dashTicks=static_cast<int>(std::ceil(u.dashRemaining*120));
-    for(int tick=0;tick<u.sequenceTicks;++tick){
+    for(int tick=0;tick<std::max(u.sequenceTicks,u.safetyTicks);++tick){
         const Point wanted=responseDirection(u,p,tick,route,held);held=wanted;
         if(useDash&&tick%4==0&&dashTicks==0&&cd<=0&&tick>=u.warningTicks-12&&tick<u.warningTicks+120){dashTicks=23;cd=2.f;}
         const bool protectedNow=dashTicks>0;const Point previous=p;
@@ -148,13 +169,18 @@ inline bool witness(const State& u,Point player,float radius,int route,bool useD
         if(combat::bodyContact(previous,p,radius,bodyA,bodyB,32))return false;
         for(const auto& strand:u.strands)if(strand.id&&!strand.sever&&tick>=strand.warning&&tick<strand.warning+strand.active&&
             combat::silkContact(previous,p,radius,strand.a,strand.b,7))return false;
-        for(int i=0;i<u.rayCount;++i){const auto& ray=u.rays[i];const int age=tick+1-ray.fireTick;if(age<0||age>=(u.focused?160:300))continue;
-            const Point a=add(ray.origin,scale(ray.direction,40.f+age*210.f/120));const Point b=add(a,scale(ray.direction,210.f/120));
-            if(combat::bodyContact(previous,p,radius,a,b,5))return false;
+        for(int i=0;i<u.rayCount;++i){const auto& ray=u.rays[i];const int age=tick+1-ray.fireTick;if(age<0||age>=rayFlight(u,ray))continue;
+            const Point a=rayPoint(ray,age),b=rayPoint(ray,age+1);
+            if(!ranged::detail::inside(a,{u.arenaBounds.left,u.arenaBounds.right,u.arenaBounds.top,u.arenaBounds.bottom})&&!ranged::detail::inside(b,{u.arenaBounds.left,u.arenaBounds.right,u.arenaBounds.top,u.arenaBounds.bottom}))continue;
+            if(combat::bodyContact(previous,p,radius,a,b,ray.curveTicks?9.f:5.f))return false;
         }
         if(u.echo.count>1&&tick>=u.echo.warning&&tick<u.echo.warning+u.echo.active)
             for(int i=1;i<u.echo.count;++i)if(combat::silkContact(previous,p,radius,u.echo.path[i-1],u.echo.path[i],8))return false;
         for(int i=0;i<u.externalShotCount;++i){const auto& x=u.externalShots[i];if(tick<x.warning||tick>x.lifetime)continue;
+            const Point a=add(x.p,scale(x.velocity,tick/120.f)),b=add(a,scale(x.velocity,1.f/120));
+            if(combat::bodyContact(previous,p,radius,a,b,x.radius))return false;
+        }
+        for(int i=0;i<u.ownShotCount;++i){const auto& x=u.ownShots[i];if(tick>x.lifetime)continue;
             const Point a=add(x.p,scale(x.velocity,tick/120.f)),b=add(a,scale(x.velocity,1.f/120));
             if(combat::bodyContact(previous,p,radius,a,b,x.radius))return false;
         }
@@ -167,13 +193,24 @@ inline bool witness(const State& u,Point player,float radius,int route,bool useD
     }
     return true;
 }
+// Finish a curved Loom before another commitment; never linearize its path.
+template<class Boss> bool captureOwnShots(Boss& s,Arena arena){
+ auto& u=s.unweaver;u.arenaBounds=arena;u.ownShotCount=0;
+ for(const auto& p:s.bullets.items())if(p.state==ranged::SlotState::Flying){
+  if(p.curved)return false;
+  u.ownShots[u.ownShotCount++]={p.p,p.velocity,p.spec.radius,0,ranged::boundaryFlightTicks(p.p,p.velocity,p.spec.speed,{arena.left,arena.right,arena.top,arena.bottom})+2};
+ }
+ return true;
+}
 template<class Boss> bool commit(Boss& s,Point player,Arena arena){
-    auto& u=s.unweaver;chooseStyle(u,s.phase);++u.plans;
-    u.warningTicks=u.focused?72:102;u.commitVelocity=u.playerVelocity;u.mechanicExecuted=false;u.radialExecuted=false;u.hitDuringSequence=0;
+    auto& u=s.unweaver;if(!captureOwnShots(s,arena))return false;chooseStyle(u,s.phase);++u.plans;
+    u.warningTicks=u.focused?72:102;u.commitVelocity=u.playerVelocity;u.mechanicExecuted=false;u.radialExecuted=false;u.hitDuringSequence=0;u.responseDashUsed=false;
     u.mechanic=s.phase==1?Mechanic::Hunt:s.phase==2?Mechanic::Echo:s.phase==3?Mechanic::Seal:Mechanic::Echo;
     if(s.phase>=3&&u.progress.experiences==3){u.mechanic=u.profile.offense>1.f?Mechanic::Corrupt:u.profile.repetition>.35f?Mechanic::Echo:u.style==Style::Puppeteer?Mechanic::Seal:Mechanic::Sever;}
     if(u.unique)u.mechanic=s.phase<3?Mechanic::Echo:u.style==Style::Puppeteer?Mechanic::Seal:u.profile.offense>1?Mechanic::Corrupt:Mechanic::Sever;
+    if(u.loom)u.mechanic=Mechanic::EventLoom;
     if(u.forcedMechanic>=0)u.mechanic=(Mechanic)u.forcedMechanic;
+    u.loom=u.mechanic==Mechanic::EventLoom;if(u.loom){u.action=Action::EventLoom;u.warningTicks=120;u.focused=u.unique=false;}
     // Once a seal has executed, the next mandatory action is its radial exchange.
     if(u.mechanic==Mechanic::Seal&&(u.progress.experiences&2)&&!(u.progress.experiences&1))u.mechanic=Mechanic::Corrupt;
     if(u.mechanic==Mechanic::Seal&&s.bullets.flyingCount()==0){
@@ -182,7 +219,8 @@ template<class Boss> bool commit(Boss& s,Point player,Arena arena){
         for(int i=0;i<s.budCount;++i)s.buds[i]={clamp(add(s.p,scale(direction(axis+(i?1.f:-1.f)*1.2f),150)),arena,22),{450,450},s.nextBud++};
         s.stage=rootwarden::Stage::RootWarning;s.remaining=102;u.clock=0;u.planCommitted=true;return true;
     }
-    if(u.mechanic==Mechanic::Seal||s.bullets.freeSlots()<54)return false;
+    if(u.mechanic==Mechanic::Seal)return false;
+    for(const auto& p:s.bullets.items())if(p.state==ranged::SlotState::Flying&&p.curved)return false;
     const float distance=length(sub(player,s.p));
     std::array<float,5> familyScore{2.4f+(distance<180?1.f:0.f),2.f+u.profile.movement+u.profile.repetition,2.f+u.profile.dashUse*3.f,2.f+u.profile.confidence*u.profile.perimeter+u.profile.repetition-u.predictionError/150.f,s.phase==4?3.f:-100.f};
     for(int i=0;i<5;++i)familyScore[i]-=u.recentFamilies[i]*3.f;
@@ -195,6 +233,7 @@ template<class Boss> bool commit(Boss& s,Point player,Arena arena){
     if(chosen==Attack::PredictedEscape&&!u.focused)bearing=angleOf(sub(predict(u,player,.6f),s.p))+(u.profile.orbitBias>=0?-.62f:.62f);
     for(int candidate=0;candidate<4;++candidate){
         makeRays(u,s.p,chosen,bearing+candidate*kPi*.5f);
+        if(s.bullets.freeSlots()<(size_t)u.rayCount)return false;
         u.echo={};if(u.mechanic==Mechanic::Echo)captureEcho(u);
         bool safe=false;for(int route=0;route<8&&!safe;++route){
             if(witness(u,player,12,route,false)){safe=true;u.safeRoute=route;u.safeUsesDash=false;}
@@ -204,7 +243,7 @@ template<class Boss> bool commit(Boss& s,Point player,Arena arena){
         if(reserved!=u.rayCount){for(int i=0;i<reserved;++i)s.bullets.cancelReservation(u.rays[i].ticket);return false;}
         u.consecutiveRejects=0;u.clock=0;u.planCommitted=true;u.needsStrands=u.mechanic==Mechanic::Sever||u.mechanic==Mechanic::Corrupt;
         u.mechanicExecuted=u.mechanic==Mechanic::Hunt&&u.huntExecuted;
-        s.stage=rootwarden::Stage::RootWarning;s.remaining=u.warningTicks;++s.warnings;if(!u.focused&&!u.unique){++u.familyChoices[(int)chosen];for(auto& v:u.recentFamilies)v*=.6f;u.recentFamilies[(int)chosen]+=1;}return true;
+        s.stage=rootwarden::Stage::RootWarning;s.remaining=u.warningTicks;++s.warnings;if(!u.focused&&!u.unique&&!u.loom){++u.familyChoices[(int)chosen];for(auto& v:u.recentFamilies)v*=.6f;u.recentFamilies[(int)chosen]+=1;}return true;
     }
     u.echo={};u.rayCount=0;return false;
 }
@@ -231,6 +270,12 @@ template<class Boss> void opening(Boss& s,int ticks,int bonus,int reason){
 template<class Boss> void position(Boss& s,Point player,Arena arena,bool recovering){
  auto& u=s.unweaver;
  if(--u.think<=0){u.think=24;if(s.metrics.ticks%240<24)chooseStyle(u,s.phase);
+  if(u.tacticTicks>0&&u.reactionCooldown==0){
+   const auto d=unit(sub(player,s.p));const float closing=-(u.playerVelocity.x*d.x+u.playerVelocity.y*d.y);
+   const Point prior=u.historyCount>13?scale(sub(u.history[(u.historyHead-1+360)%360],u.history[(u.historyHead-13+360)%360]),10):u.playerVelocity;
+   if(closing>90&&length(sub(player,s.p))<150&&u.action!=Action::Bait){u.action=Action::Bait;u.tacticTicks=240;u.reactionCooldown=180;++u.reactions;}
+   else if(prior.x*u.playerVelocity.x+prior.y*u.playerVelocity.y<0&&u.action!=Action::Flank){u.action=Action::Flank;u.tacticTicks=180;u.reactionCooldown=180;++u.reactions;}
+  }
   const Point toward=unit(sub(player,s.p));const float distance=length(sub(player,s.p));
   const float closing=-(u.playerVelocity.x*toward.x+u.playerVelocity.y*toward.y);
   const Point prediction=predict(u,player,u.tacticTicks>0?.9f:.55f);
@@ -256,25 +301,25 @@ template<class Boss> void position(Boss& s,Point player,Arena arena,bool recover
 template<class Boss> Action selectAction(Boss& s,Point player){
  auto& u=s.unweaver;const float d=length(sub(player,s.p));
  const float share=u.activeTicks?float(u.radialTicks)/u.activeTicks:0;
- std::array<float,7> scores{2.f+(share<.2f?3.f:share>.4f?-5.f:0.f),2.8f+u.profile.repetition+(length(sub(predict(u,player,.85f),s.p))<260?1.5f:-3.f),2.f+(d>180?2.f:1.f),2.f+u.profile.perimeter,2.5f+u.profile.dashUse,1.5f+u.profile.offense*.3f,s.phase>=2?2.4f:-100.f};
- for(int i=0;i<7;++i){scores[i]-=u.recentActions[i]*2.8f;u.recentActions[i]*=.65f;}
+ std::array<float,8> scores{2.f+(share<.2f?3.f:share>.4f?-5.f:0.f),2.8f+u.profile.repetition+(length(sub(predict(u,player,.85f),s.p))<260?1.5f:-3.f),2.f+(d>180?2.f:1.f),2.f+u.profile.perimeter,2.5f+u.profile.dashUse,1.5f+u.profile.offense*.3f,s.phase>=2?2.4f:-100.f,3.f+u.profile.perimeter+u.profile.responseRate*.5f};
+ for(int i=0;i<8;++i){scores[i]-=u.recentActions[i]*2.8f;u.recentActions[i]*=.65f;}
  const auto a=(Action)(std::max_element(scores.begin(),scores.end())-scores.begin());u.recentActions[(int)a]+=1;++u.actionChoices[(int)a];return a;
 }
 template<class Boss> bool charge(Boss& s,Point player,Arena arena,bool retreat=false){
- auto& u=s.unweaver;if(s.bullets.flyingCount()||s.bullets.reservedCount())return false;
+ auto& u=s.unweaver;if(s.bullets.reservedCount()||!captureOwnShots(s,arena))return false;
  u.chargeStart=s.p;const Point target=retreat?add(s.p,scale(unit(sub(s.p,player)),180)):predict(u,player,.85f);const Point delta=sub(target,s.p);
  if(!retreat&&length(delta)>300)return false;
  u.chargeEnd=clamp(add(s.p,scale(unit(delta),std::min(260.f,length(delta)))),arena,82);
  if(length(sub(u.chargeEnd,s.p))<35)return false;
- u.chargePreview=true;u.anchor=s.p;u.rayCount=0;u.commitVelocity=u.playerVelocity;u.sequenceTicks=108;u.warningTicks=66;bool safe=false;
+ u.chargePreview=true;u.anchor=s.p;u.rayCount=0;u.commitVelocity=u.playerVelocity;u.sequenceTicks=u.safetyTicks=108;u.warningTicks=66;bool safe=false;
  for(int r=0;r<8&&!safe;++r){if(witness(u,player,12,r,false)){safe=true;u.safeRoute=r;u.safeUsesDash=false;}else if(witness(u,player,12,r,true)){safe=true;u.safeRoute=r;u.safeUsesDash=true;}}
  u.chargePreview=false;if(!safe)return false;
  u.chargeForecast=target;u.chargeIsRetreat=retreat;u.validCharge=true;u.clock=0;u.action=Action::Charge;s.stepStart=s.p;s.stepEnd=u.chargeEnd;s.stage=rootwarden::Stage::StepWarning;s.remaining=66;u.planCommitted=false;u.followup=true;++u.chargeAttempts;return true;
 }
 template<class Boss> rootwarden::Events tick(Boss& s,Point player,Arena arena){
     rootwarden::Events events;auto& u=s.unweaver;if(u.progress.defeated)return events;
-    s.previousP=s.p;++u.stageTicks[(int)s.stage];++s.metrics.ticks;combat::tick(s.health);record(u,player);
-    if(s.stage!=rootwarden::Stage::Transition){++u.activeTicks;if(u.planCommitted&&u.sealTicks==0&&!u.focused&&!u.unique&&s.stage!=rootwarden::Stage::Recover)++u.radialTicks;}
+    u.progress.advanceTick();if(u.reactionCooldown>0)--u.reactionCooldown;s.previousP=s.p;++u.stageTicks[(int)s.stage];++s.metrics.ticks;combat::tick(s.health);record(u,player);if(u.planCommitted&&u.dashRemaining>0)u.responseDashUsed=true;
+    if(s.stage!=rootwarden::Stage::Transition){++u.activeTicks;if(u.planCommitted&&u.sealTicks==0&&!u.focused&&!u.unique&&!u.loom&&s.stage!=rootwarden::Stage::Recover)++u.radialTicks;}
     if(u.forecastTicks>0&&--u.forecastTicks==0){const float error=length(sub(player,u.forecast));u.predictionError=.7f*u.predictionError+.3f*error;u.forecastError+=error;u.linearError+=length(sub(player,u.linearForecast));++u.predictions;}
     if(u.forecastTicks==0&&u.historyCount>=25){u.forecast=predict(u,player,.5f);u.linearForecast=clamp(add(player,scale(u.playerVelocity,.5f)),u.playerBounds);u.forecastTicks=60;}
     for(int i=0;i<s.budCount;++i)combat::tick(s.buds[i].health);
@@ -295,7 +340,7 @@ template<class Boss> rootwarden::Events tick(Boss& s,Point player,Arena arena){
     }
     if(s.stage==rootwarden::Stage::Recover){
         position(s,player,arena,true);
-        if(--s.remaining<=0){s.stage=rootwarden::Stage::Stalk;s.remaining=72;u.planCommitted=false;u.interceptUsed=false;++u.cycles;++s.metrics.cycles;
+        if(--s.remaining<=0){s.stage=rootwarden::Stage::Stalk;s.remaining=72;u.comboDepth=0;u.planCommitted=false;u.interceptUsed=false;++u.cycles;++s.metrics.cycles;
             if(s.phase>=3&&u.formationEvents<(s.phase-2)*2){const auto& profile=u.profile;
                 const auto callerIndex=static_cast<std::size_t>(observation::OffenseTarget::Caller);
                 const auto rangedIndex=static_cast<std::size_t>(observation::OffenseTarget::Ranged);
@@ -317,13 +362,13 @@ template<class Boss> rootwarden::Events tick(Boss& s,Point player,Arena arena){
     if(s.stage==rootwarden::Stage::Stalk){
         position(s,player,arena,false);
         if(--s.remaining<=0){
-            if(u.forcedAttack>=0||u.forcedMechanic>=0||!(u.progress.experiences&1)||(s.phase>=3&&!(u.progress.experiences&2))){u.focused=u.unique=false;u.action=Action::Radial;
+            if(u.forcedAttack>=0||u.forcedMechanic>=0||!(u.progress.experiences&1)||(s.phase>=3&&!(u.progress.experiences&2))){u.loom=u.focused=u.unique=false;u.action=Action::Radial;
                 if(s.phase==1&&!u.huntExecuted&&charge(s,player,arena)){u.followup=false;events.warning=true;}
                 else if(commit(s,player,arena))events.warning=true;else {s.remaining=48;if(++u.consecutiveRejects>=3&&charge(s,player,arena,true)){u.consecutiveRejects=0;u.followup=false;events.warning=true;}}
             }else if(u.tacticTicks>0){
                 if(--u.tacticTicks==0){if(charge(s,player,arena))events.warning=true;else opening(s,108,80,2);}else s.remaining=1;
             }else {
-                u.action=selectAction(s,player);u.focused=u.action==Action::Focused;u.unique=u.action==Action::Unique;
+                u.action=selectAction(s,player);u.loom=u.action==Action::EventLoom;u.focused=u.action==Action::Focused;u.unique=u.action==Action::Unique;
                 if(u.action==Action::Hunt||u.action==Action::Flank||u.action==Action::Bait){u.tacticTicks=u.action==Action::Hunt?360:240;u.think=0;s.remaining=1;}
                 else if(u.action==Action::Charge){if(charge(s,player,arena))events.warning=true;else {u.tacticTicks=180;u.action=Action::Hunt;s.remaining=1;}}
                 else if(commit(s,player,arena))events.warning=true;
@@ -336,20 +381,25 @@ template<class Boss> rootwarden::Events tick(Boss& s,Point player,Arena arena){
     if(u.planCommitted){
         ++u.clock;--s.remaining;if(u.clock>=u.warningTicks)s.stage=rootwarden::Stage::RootActive;
         for(int i=0;i<u.rayCount;++i){auto& ray=u.rays[i];if(ray.ticket&&u.clock>=ray.fireTick){
-            if(s.bullets.launch(ray.ticket,add(ray.origin,scale(ray.direction,40)),ray.direction,{210,5,2200,u.focused?160:300})){++u.shots;++s.shotsFired;u.radialExecuted=!u.focused&&!u.unique;}ray.ticket=0;}}
+            if(ray.curveTicks?s.bullets.launchCurve(ray.ticket,ray.origin,ray.control,ray.end,ray.curveTicks,{210,9,2200,ray.curveTicks+1}):s.bullets.launch(ray.ticket,add(ray.origin,scale(ray.direction,40)),ray.direction,{ray.speed,5,2200,rayFlight(u,ray),true})){++u.shots;++s.shotsFired;u.radialExecuted=!u.focused&&!u.unique&&!u.loom;}ray.ticket=0;}}
         if(u.clock>=u.sequenceTicks){
+            if(u.loom)u.mechanicExecuted=true;
             if(u.radialExecuted)u.progress.experience(u.progress.generation,1);
             if(u.mechanicExecuted)u.progress.experience(u.progress.generation,2);
             u.resultPending=true;++u.attempts[(int)u.style];u.success[(int)u.style]+=u.hitDuringSequence?1.f:0.f;
             for(int i=0;i<3;++i){u.attempts[i]*=.92f;u.success[i]*=.92f;}
-            if(u.hitDuringSequence&&charge(s,player,arena))events.warning=true;
-            else opening(s,216,130,2);
+            if(u.formationBreakPending)opening(s,300,160,1);
+            else if(u.comboDepth==0&&(u.hitDuringSequence||u.responseDashUsed)){
+                ++u.comboDepth;
+                if(charge(s,player,arena))events.warning=true;
+                else {u.planCommitted=false;u.action=Action::Hunt;u.tacticTicks=120;u.think=0;s.stage=rootwarden::Stage::Stalk;s.remaining=1;++u.reactions;}
+            }else opening(s,216,130,2);
         }
     }
     return events;
 }
 template<class Boss> rootwarden::Events finish(Boss& s){
-    rootwarden::Events e;auto& u=s.unweaver;if(s.stage==rootwarden::Stage::Transition)return e;
+    rootwarden::Events e;auto& u=s.unweaver;
     const auto boundary=u.progress.finishTick();if(boundary==Progress::Boundary::None)return e;
     clear(u);s.bullets.clear();s.fields.clear();s.budCount=0;s.phase=u.progress.phase;
     if(boundary==Progress::Boundary::Defeat){s.stage=rootwarden::Stage::Defeated;e.defeated=true;}

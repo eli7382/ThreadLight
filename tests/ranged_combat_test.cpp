@@ -289,6 +289,89 @@ void lifetimeExpiresOnTick360ButFinalTickContactWins() {
     CHECK(leavesArena.flyingCount() == 0);
 }
 
+void boundaryShotsOutliveLegacyLifetimeAndStillHitAtArenaEdge() {
+    const ranged::Bounds arena{0.0f, 2000.0f, 0.0f, 1200.0f};
+    ranged::ShotSpec spec{};
+    spec.untilBoundary = true;
+    const int flightTicks = ranged::boundaryFlightTicks({100.0f, 600.0f},
+                                                        {1.0f, 0.0f}, spec.speed, arena);
+    CHECK(flightTicks > ranged::kProjectileLifetimeTicks);
+    CHECK(ranged::boundaryFlightTicks({100.0f, 600.0f}, {1.0f, 0.0f},
+                                      spec.speed, arena) == flightTicks);
+    ranged::Pool pool;
+    const auto ticket = pool.reserve(81);
+    CHECK(pool.launch(ticket, {100.0f, 600.0f}, {1.0f, 0.0f}, spec));
+    for (int tick = 0; tick < ranged::kProjectileLifetimeTicks; ++tick) {
+        const auto impacts = pool.tick({1900.0f, 1100.0f}, {1900.0f, 1100.0f},
+                                       0.0f, arena);
+        CHECK(impacts.count == 0);
+        CHECK(impacts.expired == 0);
+    }
+    const auto* afterLegacyLifetime = findTicket(pool, ticket);
+    CHECK(afterLegacyLifetime != nullptr);
+    CHECK(afterLegacyLifetime && afterLegacyLifetime->remainingTicks >= 1);
+    CHECK(afterLegacyLifetime && afterLegacyLifetime->p.x > 100.0f +
+          ranged::kProjectileSpeed * ranged::kProjectileLifetimeTicks /
+          static_cast<float>(1.0 / threadlight::timing::kFixedStepSeconds) - 0.01f);
+
+    const ranged::Bounds narrow{0.0f, 1.5f, 0.0f, 10.0f};
+    ranged::Pool edge;
+    const auto edgeTicket = edge.reserve(82);
+    CHECK(edge.launch(edgeTicket, {0.0f, 5.0f}, {1.0f, 0.0f}, spec));
+    const auto finalStep = edge.tick({1.5f, 5.0f}, {1.5f, 5.0f}, 0.0f, narrow);
+    CHECK(finalStep.count == 1);
+    CHECK(finalStep.expired == 0);
+    CHECK(finalStep.items[0].projectileId == edgeTicket);
+
+    ranged::Pool intercept;
+    const auto interceptedTicket = intercept.reserve(83);
+    CHECK(intercept.launch(interceptedTicket, {20.0f, 20.0f}, {1.0f, 0.0f}, spec));
+    CHECK(intercept.intercept(interceptedTicket));
+    CHECK(intercept.flyingCount() == 0);
+}
+
+void curvedShotsMatchBezierAndPublishExactNextStepVelocity() {
+    const Point origin{20.0f, 30.0f};
+    const Point control{180.0f, 260.0f};
+    const Point end{380.0f, 60.0f};
+    constexpr int travelTicks = 8;
+    const float dt = static_cast<float>(threadlight::timing::kFixedStepSeconds);
+    ranged::Pool pool;
+    const auto ticket = pool.reserve(91);
+    CHECK(pool.launchCurve(ticket, origin, control, end, travelTicks));
+    for (int age = 0; age < travelTicks - 1; ++age) {
+        const auto* before = findTicket(pool, ticket);
+        CHECK(before != nullptr);
+        if (!before) break;
+        const Point predicted{before->p.x + before->velocity.x * dt,
+                              before->p.y + before->velocity.y * dt};
+        const Point expected = ranged::quadraticBezier(origin, control, end,
+            static_cast<float>(age + 1) / travelTicks);
+        CHECK(near(predicted, expected));
+        const auto result = pool.tick({1000.0f, 1000.0f}, {1000.0f, 1000.0f},
+                                      0.0f, {0.0f, 500.0f, 0.0f, 500.0f});
+        CHECK(result.count == 0 && result.expired == 0);
+        const auto* after = findTicket(pool, ticket);
+        CHECK(after != nullptr);
+        if (after) {
+            CHECK(near(after->p, expected));
+            const Point next = ranged::quadraticBezier(origin, control, end,
+                static_cast<float>(age + 2) / travelTicks);
+            CHECK(near({after->p.x + after->velocity.x * dt,
+                        after->p.y + after->velocity.y * dt}, next));
+        }
+    }
+    const auto completed = pool.tick({1000.0f, 1000.0f}, {1000.0f, 1000.0f},
+                                     0.0f, {0.0f, 500.0f, 0.0f, 500.0f});
+    CHECK(completed.count == 0 && completed.expired == 1);
+    CHECK(pool.flyingCount() == 0);
+
+    const auto remapTicket = pool.reserve(92);
+    CHECK(pool.launchCurve(remapTicket, origin, control, end, travelTicks));
+    pool.remap({0.0f, 500.0f, 0.0f, 500.0f}, {0.0f, 1000.0f, 0.0f, 800.0f});
+    CHECK(pool.flyingCount() == 0);
+}
+
 void pauseAndRemapPreserveClocksAndTransformCommittedGeometry() {
     ranged::Pool pool;
     const auto ticket = pool.reserve(7);
@@ -341,6 +424,8 @@ int main() {
     poolReservationsCountTowardCapacityAndOnlyCancelBeforeLaunch();
     sweptRelativeContactConsumesThePhysicalProjectile();
     lifetimeExpiresOnTick360ButFinalTickContactWins();
+    boundaryShotsOutliveLegacyLifetimeAndStillHitAtArenaEdge();
+    curvedShotsMatchBezierAndPublishExactNextStepVelocity();
     pauseAndRemapPreserveClocksAndTransformCommittedGeometry();
 
     if (failures != 0) {

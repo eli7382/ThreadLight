@@ -77,7 +77,7 @@ void predictionTracksCircularMotionAndBoundsConfidence() {
     CHECK(distance(afterReversal, {400.f, 300.f}) <= 18.01f);
 }
 
-void chargeLocksItsTargetAndRejectsBusyPools() {
+void chargeLocksItsTargetAndModelsFlyingShots() {
     auto boss = makeUnweaver({462.f, 254.f}, 1);
     auto& state = boss.unweaver;
     const Point initialPlayer{690.f, 254.f};
@@ -100,8 +100,10 @@ void chargeLocksItsTargetAndRejectsBusyPools() {
     CHECK(ticket != 0);
     CHECK(busy.bullets.launch(ticket, {180.f, 120.f}, {1.f, 0.f}, {180.f, 5.f, 500, 360}));
     CHECK(busy.bullets.flyingCount() == 1);
-    CHECK(!uw::charge(busy, initialPlayer, kArena));
-    CHECK(busy.unweaver.chargeAttempts == 0);
+    CHECK(uw::charge(busy, initialPlayer, kArena));
+    CHECK(busy.unweaver.ownShotCount == 1);
+    CHECK(busy.bullets.flyingCount() == 1);
+    CHECK(busy.unweaver.chargeAttempts == 1);
     CHECK(!busy.unweaver.chargePreview);
 }
 
@@ -121,6 +123,7 @@ void actionSelectionAdaptsAndPenalizesRepeats() {
     const Point farPlayer{850.f, 500.f};
     state.activeTicks = 100;
     state.radialTicks = 30;
+    state.recentActions[static_cast<std::size_t>(uw::Action::EventLoom)] = 1.f;
     state.profile.perimeter = 1.f;
     state.recentActions[static_cast<std::size_t>(uw::Action::Hunt)] = .5f;
     CHECK(uw::selectAction(boss, farPlayer) == uw::Action::Flank);
@@ -140,11 +143,11 @@ void actionSelectionAdaptsAndPenalizesRepeats() {
     state.recentActions.fill(0.f);
     state.recentActions[static_cast<std::size_t>(uw::Action::Hunt)] = 1.f;
     state.recentActions[static_cast<std::size_t>(uw::Action::Focused)] = .1f;
-    CHECK(uw::selectAction(boss, farPlayer) == uw::Action::Unique);
+    CHECK(uw::selectAction(boss, farPlayer) == uw::Action::EventLoom);
     const auto afterFatigue = uw::selectAction(boss, farPlayer);
-    CHECK(afterFatigue == uw::Action::Focused);
-    CHECK(state.actionChoices[static_cast<std::size_t>(uw::Action::Unique)] == 1);
-    CHECK(state.actionChoices[static_cast<std::size_t>(afterFatigue)] == 2);
+    CHECK(afterFatigue == uw::Action::Unique);
+    CHECK(state.actionChoices[static_cast<std::size_t>(uw::Action::EventLoom)] == 1);
+    CHECK(state.actionChoices[static_cast<std::size_t>(afterFatigue)] == 1);
 }
 
 void focusedAndUniquePlansDoNotEarnRadialExperience() {
@@ -171,7 +174,7 @@ void focusedAndUniquePlansDoNotEarnRadialExperience() {
 
 int main() {
     predictionTracksCircularMotionAndBoundsConfidence();
-    chargeLocksItsTargetAndRejectsBusyPools();
+    chargeLocksItsTargetAndModelsFlyingShots();
     actionSelectionAdaptsAndPenalizesRepeats();
     focusedAndUniquePlansDoNotEarnRadialExperience();
     std::cout << "Unweaver tactical prediction, action choice, charge and progression checks passed\n";

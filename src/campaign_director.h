@@ -77,6 +77,128 @@ inline chapter::Schedule schedule(int wave, std::uint32_t seed, const observatio
     return direct(wave, seed, player).schedule;
 }
 
+enum class Intent : std::uint8_t { Pursuit, Intercept, Encircle, Protect };
+
+inline const char* intentName(Intent i){constexpr const char* n[]={"PURSUIT","INTERCEPT","ENCIRCLE","PROTECT"};return n[(int)i];}
+
+inline Intent chooseIntent(const observation::Summary& player) {
+    const float movement = std::clamp(player.movement, 0.f, 1.f);
+    const float perimeter = std::clamp(player.perimeter, 0.f, 1.f);
+    const float repetition = std::clamp(player.repetition, 0.f, 1.f);
+    const float offense = std::clamp(player.offense * .25f, 0.f, 1.f);
+    if (perimeter >= .68f || (perimeter >= .48f && offense >= .62f)) return Intent::Protect;
+    if (movement >= .50f && repetition >= .56f) return Intent::Encircle;
+    if (movement >= .62f || offense >= .72f) return Intent::Intercept;
+    return Intent::Pursuit;
+}
+
+struct ReviewState {
+    int lastReviewTick = 0;
+    int reviews = 0;
+    observation::Summary lastProfile{};
+};
+
+inline bool reviewDue(ReviewState& state, int elapsedTick, const observation::Summary& player) {
+    constexpr int kMinimumReviewSpacingTicks = 300;
+    constexpr int kPeriodicReviewSpacingTicks = 600;
+    constexpr int kMaximumReviewsPerWave = 6;
+    if (state.reviews >= kMaximumReviewsPerWave || elapsedTick < state.lastReviewTick + kMinimumReviewSpacingTicks)
+        return false;
+
+    const auto& previous = state.lastProfile;
+    const float offense = std::clamp(player.offense * .25f, 0.f, 1.f);
+    const float previousOffense = std::clamp(previous.offense * .25f, 0.f, 1.f);
+    const bool significantChange = player.confidence >= .25f &&
+        (std::abs(std::clamp(player.movement, 0.f, 1.f) - std::clamp(previous.movement, 0.f, 1.f)) >= .20f ||
+         std::abs(std::clamp(player.perimeter, 0.f, 1.f) - std::clamp(previous.perimeter, 0.f, 1.f)) >= .20f ||
+         std::abs(std::clamp(player.repetition, 0.f, 1.f) - std::clamp(previous.repetition, 0.f, 1.f)) >= .20f ||
+         std::abs(offense - previousOffense) >= .20f ||
+         std::hypot(player.horizontalBias - previous.horizontalBias,
+                    player.verticalBias - previous.verticalBias) >= .45f);
+    const bool periodic = elapsedTick >= state.lastReviewTick + kPeriodicReviewSpacingTicks;
+    if (!significantChange && !periodic) return false;
+
+    state.lastReviewTick = elapsedTick;
+    state.lastProfile = player;
+    ++state.reviews;
+    return true;
+}
+
+namespace detail {
+inline foundation::Point add(foundation::Point a, foundation::Point b) { return {a.x + b.x, a.y + b.y}; }
+inline foundation::Point subtract(foundation::Point a, foundation::Point b) { return {a.x - b.x, a.y - b.y}; }
+inline foundation::Point scale(foundation::Point p, float amount) { return {p.x * amount, p.y * amount}; }
+inline float length(foundation::Point p) { return std::sqrt(p.x * p.x + p.y * p.y); }
+inline foundation::Point unit(foundation::Point p, foundation::Point fallback = {1.f, 0.f}) {
+    const float magnitude = length(p);
+    return magnitude > 1.e-4f ? scale(p, 1.f / magnitude) : fallback;
+}
+inline foundation::Point clampToBounds(foundation::Point p, observation::Bounds bounds, float margin) {
+    const float centerX = (bounds.left + bounds.right) * .5f;
+    const float centerY = (bounds.top + bounds.bottom) * .5f;
+    const float left = std::min(bounds.left + margin, centerX);
+    const float right = std::max(bounds.right - margin, centerX);
+    const float top = std::min(bounds.top + margin, centerY);
+    const float bottom = std::max(bounds.bottom - margin, centerY);
+    return {std::clamp(p.x, left, right), std::clamp(p.y, top, bottom)};
+}
+} // namespace detail
+
+// Returns a foe movement destination. It never supplies an attack aim point.
+// The side argument selects a stable left/right flank for Encircle.
+inline foundation::Point tacticalTarget(Intent intent, combat::EnemyKind kind,
+                                        foundation::Point enemy, foundation::Point player,
+                                        foundation::Point playerVelocity, observation::Bounds bounds,
+                                        int side) {
+    const float maxSpeed = 350.f;
+    const float velocityLength = detail::length(playerVelocity);
+    if (velocityLength > maxSpeed)
+        playerVelocity = detail::scale(playerVelocity, maxSpeed / velocityLength);
+    const float margin = combat::definition(kind, 5).radius + 12.f;
+    const auto center = foundation::Point{(bounds.left + bounds.right) * .5f,
+                                          (bounds.top + bounds.bottom) * .5f};
+    const auto inward = detail::unit(detail::subtract(center, player),
+                                     detail::unit(detail::subtract(player, enemy)));
+    const int flankSide = side < 0 ? -1 : 1;
+    foundation::Point target = player;
+
+    switch (intent) {
+    case Intent::Pursuit:
+        break;
+    case Intent::Intercept: {
+        // Cap velocity before applying the 0.6 second lead to keep dash-speed
+        // samples from producing an unreachable point outside the arena.
+        auto lead = detail::scale(playerVelocity, .6f);
+        const float leadLength = detail::length(lead);
+        if (leadLength > 210.f) lead = detail::scale(lead, 210.f / leadLength);
+        target = detail::add(player, lead);
+        break;
+    }
+    case Intent::Encircle: {
+        const auto heading = detail::unit(playerVelocity, detail::unit(detail::subtract(player, enemy)));
+        const foundation::Point flank{ -heading.y * static_cast<float>(flankSide),
+                                         heading.x * static_cast<float>(flankSide) };
+        const float radius = kind == combat::EnemyKind::Skitter ? 105.f : 135.f;
+        auto predicted = detail::add(player, detail::scale(playerVelocity, .25f));
+        const float edgeDistance = std::min({
+            (player.x - bounds.left) / std::max(1.f, bounds.right - bounds.left),
+            (bounds.right - player.x) / std::max(1.f, bounds.right - bounds.left),
+            (player.y - bounds.top) / std::max(1.f, bounds.bottom - bounds.top),
+            (bounds.bottom - player.y) / std::max(1.f, bounds.bottom - bounds.top)});
+        const float wallCutoff = std::clamp((.22f - edgeDistance) / .22f, 0.f, 1.f);
+        target = detail::add(predicted, detail::scale(flank, radius));
+        target = detail::add(target, detail::scale(inward, radius * .8f * wallCutoff));
+        break;
+    }
+    case Intent::Protect:
+        // Hold an interior guard post just ahead of the player rather than
+        // driving directly into the player's position.
+        target = kind==combat::EnemyKind::Hunter||kind==combat::EnemyKind::Skitter?detail::add(detail::add(player,detail::scale(playerVelocity,.45f)),detail::scale(inward,45.f)):detail::add(player, detail::scale(inward, 115.f));
+        break;
+    }
+    return detail::clampToBounds(target, bounds, margin);
+}
+
 inline int peakThreat(const chapter::Schedule& value) {
         int peak = 0;
         for (int i = 0; i < value.count; ++i) {
@@ -100,8 +222,8 @@ inline int peakThreat(const chapter::Schedule& value) {
 inline int reassess(chapter::Schedule& current, int nextSpawnIndex, int elapsedTick,
                     const observation::Summary& player) {
     constexpr int kCommitHorizonTicks = 120;
-    constexpr float kMaximumReviewAngleDelta = .5f;
-    constexpr int kMaximumReviewTimingDeltaTicks = 24;
+    constexpr float kMaximumReviewAngleDelta = .8f;
+    constexpr int kMaximumReviewTimingDeltaTicks = 48;
     const int begin = std::clamp(nextSpawnIndex, 0, current.count);
     const float confidence = std::clamp(player.confidence, 0.f, 1.f);
     if (begin >= current.count || confidence <= 0.f) return 0;

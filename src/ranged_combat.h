@@ -229,11 +229,41 @@ inline Point muzzle(Point position, Point direction) {
             position.y + direction.y * kMuzzleOffset};
 }
 
+// Number of fixed updates to reach the first arena edge along a ray. The
+// returned update lands on or beyond that edge; invalid inputs return zero.
+inline int boundaryFlightTicks(Point origin, Point direction, float speed,
+                               Bounds bounds) {
+    bounds = detail::ordered(bounds);
+    if (!detail::finite(origin) || !detail::finite(direction) ||
+        !std::isfinite(speed) || speed <= 0.0f ||
+        !(bounds.right > bounds.left) || !(bounds.bottom > bounds.top)) return 0;
+    const float directionLengthSquared = detail::lengthSquared(direction);
+    if (!(directionLengthSquared > 1.0e-8f) || !std::isfinite(directionLengthSquared)) return 0;
+    direction = detail::unitOr(direction);
+    float distance = std::numeric_limits<float>::infinity();
+    if (direction.x > 0.0f) distance = std::min(distance, (bounds.right - origin.x) / direction.x);
+    else if (direction.x < 0.0f) distance = std::min(distance, (bounds.left - origin.x) / direction.x);
+    if (direction.y > 0.0f) distance = std::min(distance, (bounds.bottom - origin.y) / direction.y);
+    else if (direction.y < 0.0f) distance = std::min(distance, (bounds.top - origin.y) / direction.y);
+    if (!std::isfinite(distance) || distance < 0.0f) return 0;
+    const double rate = 1.0 / timing::kFixedStepSeconds;
+    const double ticks = std::ceil(static_cast<double>(distance) * rate / speed);
+    if (ticks > static_cast<double>(std::numeric_limits<int>::max())) return 0;
+    return std::max(1, static_cast<int>(ticks));
+}
+
+inline Point quadraticBezier(Point origin, Point control, Point end, float t) {
+    const float oneMinusT = 1.0f - t;
+    return {oneMinusT * oneMinusT * origin.x + 2.0f * oneMinusT * t * control.x + t * t * end.x,
+            oneMinusT * oneMinusT * origin.y + 2.0f * oneMinusT * t * control.y + t * t * end.y};
+}
+
 enum class SlotState { Empty, Reserved, Flying };
 
 struct ShotSpec {
     float speed=kProjectileSpeed, radius=kProjectileRadius;
     int damage=kProjectileDamage, lifetimeTicks=kProjectileLifetimeTicks;
+    bool untilBoundary=false;
 };
 
 struct Projectile {
@@ -245,6 +275,12 @@ struct Projectile {
     int remainingTicks{};
     SlotState state = SlotState::Empty;
     ShotSpec spec{};
+    Point curveOrigin{};
+    Point curveControl{};
+    Point curveEnd{};
+    int curveTicks{};
+    int curveAge{};
+    bool curved{};
 };
 
 struct Impact {
@@ -307,6 +343,32 @@ public:
         return true;
     }
 
+    bool launchCurve(Ticket ticket, Point origin, Point control, Point end,
+                     int travelTicks, ShotSpec spec={}) {
+        const auto slot = find(ticket);
+        if (slot == kProjectileCapacity || items_[slot].state != SlotState::Reserved ||
+            !detail::finite(origin) || !detail::finite(control) || !detail::finite(end) ||
+            travelTicks <= 0 || !std::isfinite(spec.speed) || spec.speed <= 0.0f ||
+            !std::isfinite(spec.radius) || spec.radius <= 0.0f || spec.damage <= 0 ||
+            spec.lifetimeTicks <= 0) return false;
+        Projectile& projectile = items_[slot];
+        projectile.p = origin;
+        projectile.previousP = origin;
+        projectile.spec = spec;
+        projectile.curveOrigin = origin;
+        projectile.curveControl = control;
+        projectile.curveEnd = end;
+        projectile.curveTicks = travelTicks;
+        projectile.curveAge = 0;
+        projectile.curved = true;
+        const Point next = quadraticBezier(origin, control, end, 1.0f / travelTicks);
+        const float rate = static_cast<float>(1.0 / timing::kFixedStepSeconds);
+        projectile.velocity = {(next.x - origin.x) * rate, (next.y - origin.y) * rate};
+        projectile.remainingTicks = spec.lifetimeTicks;
+        projectile.state = SlotState::Flying;
+        return true;
+    }
+
     std::size_t freeSlots() const {
         std::size_t count = 0;
         for (const Projectile& projectile : items_)
@@ -357,8 +419,17 @@ public:
             const float contactDistanceSquared=contactRadius*contactRadius;
 
             projectile.previousP = projectile.p;
-            projectile.p = {projectile.p.x + projectile.velocity.x * stepSeconds,
-                            projectile.p.y + projectile.velocity.y * stepSeconds};
+            if (projectile.curved) {
+                ++projectile.curveAge;
+                const float t = std::min(1.0f, static_cast<float>(projectile.curveAge) /
+                                              static_cast<float>(projectile.curveTicks));
+                projectile.p = quadraticBezier(projectile.curveOrigin,
+                                               projectile.curveControl,
+                                               projectile.curveEnd, t);
+            } else {
+                projectile.p = {projectile.p.x + projectile.velocity.x * stepSeconds,
+                                projectile.p.y + projectile.velocity.y * stepSeconds};
+            }
 
             bool hit = false;
             if (detail::finite(previousPlayer) && detail::finite(player) &&
@@ -378,12 +449,24 @@ public:
                 continue;
             }
 
-            if (projectile.remainingTicks <= 1 || !detail::inside(projectile.p, fullArena)) {
+            if ((projectile.curved && projectile.curveAge >= projectile.curveTicks) ||
+                (!projectile.spec.untilBoundary && projectile.remainingTicks <= 1) ||
+                !detail::inside(projectile.p, fullArena)) {
                 ++impacts.expired;
                 projectile = {};
                 continue;
             }
-            --projectile.remainingTicks;
+            if (!projectile.spec.untilBoundary && projectile.remainingTicks > 1)
+                --projectile.remainingTicks;
+            if (projectile.curved) {
+                const float nextT = std::min(1.0f, static_cast<float>(projectile.curveAge + 1) /
+                                                  static_cast<float>(projectile.curveTicks));
+                const Point next = quadraticBezier(projectile.curveOrigin,
+                                                   projectile.curveControl,
+                                                   projectile.curveEnd, nextT);
+                projectile.velocity = {(next.x - projectile.p.x) / stepSeconds,
+                                        (next.y - projectile.p.y) / stepSeconds};
+            }
         }
         return impacts;
     }
@@ -399,6 +482,12 @@ public:
         to = detail::ordered(to);
         for (Projectile& projectile : items_) {
             if (projectile.state != SlotState::Flying) continue;
+            // A resize changes the coordinate frame; discard curved paths so
+            // their stored control points cannot imply a false trajectory.
+            if (projectile.curved) {
+                projectile = {};
+                continue;
+            }
             const Point oldPosition = projectile.p;
             projectile.p = detail::mapPoint(projectile.p, from, to);
             projectile.previousP = detail::mapPoint(projectile.previousP, from, to);

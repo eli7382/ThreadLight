@@ -287,24 +287,45 @@ void cancellationClearsCommittedWork() {
 
 void fourSequentialPhasesAndLethalOverflow() {
     auto boss = makeUnweaver();
-    CHECK(runToExperiencePair(boss, kPlayer)); // Real Hunt step plus radial sequence.
-    CHECK(boss.unweaver.progress.experiences == 3u);
-    const auto lethal = root::applySignature(boss, 90000);
-    CHECK(lethal.damage == boss.unweaver.progress.maximum && boss.unweaver.progress.credited == boss.unweaver.progress.maximum);
-    auto boundary = uw::finish(boss);
-    CHECK(boundary.phaseChanged && !boundary.defeated && boss.phase == 2);
-
-    for (int phase = 2; phase <= 4; ++phase) {
-        int guard = 0;
-        while (boss.stage == root::Stage::Transition && guard++ < 220) step(boss, kPlayer);
-        CHECK(boss.phase == phase && boss.stage == root::Stage::Stalk);
-        CHECK(boss.unweaver.progress.vitality() == 0 && !boss.unweaver.progress.defeated);
-        CHECK(runToExperiencePair(boss, kPlayer));
-        CHECK(boss.unweaver.progress.experiences == 3u);
+    root::Events boundary;
+    for (int tick = 1; tick <= 21600; ++tick) {
+        root::tick(boss, kPlayer, kArena);
+        pumpProjectiles(boss, kPlayer);
         boundary = uw::finish(boss);
-        if (phase < 4) CHECK(boundary.phaseChanged && !boundary.defeated && boss.phase == phase + 1);
-        else CHECK(boundary.defeated && boss.unweaver.progress.defeated && boss.stage == root::Stage::Defeated);
+        if (tick == 7199) CHECK(boss.phase == 1 && !boundary.phaseChanged);
+        if (tick == 7200) CHECK(boss.phase == 2 && boundary.phaseChanged);
+        if (tick == 14399) CHECK(boss.phase == 2 && !boundary.phaseChanged);
+        if (tick == 14400) CHECK(boss.phase == 3 && boundary.phaseChanged);
+        if (tick == 21599) CHECK(boss.phase == 3 && !boundary.phaseChanged);
+        if (tick == 21600) CHECK(boss.phase == 4 && boundary.phaseChanged);
     }
+    CHECK(boss.stage == root::Stage::Transition);
+    CHECK(boss.unweaver.progress.vitality() == boss.unweaver.progress.maximum);
+    CHECK(!boss.unweaver.progress.defeated);
+
+    // Phase IV begins while the boss is transitioning. Lethal damage must
+    // resolve immediately rather than waiting for the transition to finish.
+    const auto phaseFourLethal = root::applySignature(boss, 90000);
+    CHECK(phaseFourLethal.damage == boss.unweaver.progress.maximum);
+    boundary = uw::finish(boss);
+    CHECK(boundary.defeated && !boundary.phaseChanged);
+    CHECK(boss.phase == 4 && boss.unweaver.progress.defeated);
+    CHECK(boss.stage == root::Stage::Defeated);
+    CHECK(uw::finish(boss).defeated == false);
+
+    // A separate Phase I encounter also ends on its first lethal hit, with
+    // overflow and later stale damage receiving no further credit.
+    auto early = makeUnweaver();
+    const auto earlyLethal = root::applySignature(early, 90000);
+    CHECK(earlyLethal.damage == early.unweaver.progress.maximum);
+    CHECK(early.unweaver.progress.credited == early.unweaver.progress.maximum);
+    CHECK(root::applySignature(early, 2000).damage == 0);
+    boundary = uw::finish(early);
+    CHECK(boundary.defeated && !boundary.phaseChanged);
+    CHECK(early.phase == 1 && early.unweaver.progress.defeated);
+    CHECK(early.stage == root::Stage::Defeated);
+    CHECK(root::applySignature(early, 2000).damage == 0);
+    CHECK(!uw::finish(early).defeated);
 }
 
 void deterministicStyleSelection() {

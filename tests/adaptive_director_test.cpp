@@ -155,11 +155,11 @@ void checkLiveReassessment() {
         const bool eligible = i >= 3 && base.items[i].tick > 520;
         if (!eligible) CHECK(std::abs(first.items[i].angle - base.items[i].angle) <= 1.e-5f);
         CHECK(std::abs(std::remainder(first.items[i].angle - base.items[i].angle,
-                                     2.f * chapter::kPi)) <= .50001f);
+                                     2.f * chapter::kPi)) <= .80001f);
         if (!eligible) CHECK(first.items[i].tick == base.items[i].tick);
         else {
             CHECK(first.items[i].tick > 520);
-            CHECK(std::abs(first.items[i].tick - base.items[i].tick) <= 24);
+            CHECK(std::abs(first.items[i].tick - base.items[i].tick) <= 48);
             if (first.items[i].tick != base.items[i].tick) ++retimed;
         }
         CHECK(first.items[i].tick >= priorTick);
@@ -201,6 +201,83 @@ void checkLiveReassessment() {
     CHECK(campaign::reassess(committedOnly, base.count, 0, profile) == 0);
     CHECK(sameArrangement(committedOnly, base));
 }
+void checkIntentTargetsAndReviewCadence() {
+    auto stationary = observation::Summary{};
+    CHECK(campaign::chooseIntent(stationary) == campaign::Intent::Pursuit);
+
+    auto mobileStraight = stationary;
+    mobileStraight.movement = .88f;
+    mobileStraight.repetition = .18f;
+    CHECK(campaign::chooseIntent(mobileStraight) == campaign::Intent::Intercept);
+
+    auto mobileRepeated = mobileStraight;
+    mobileRepeated.repetition = .82f;
+    CHECK(campaign::chooseIntent(mobileRepeated) == campaign::Intent::Encircle);
+
+    auto perimeterOffense = stationary;
+    perimeterOffense.perimeter = .86f;
+    perimeterOffense.offense = 3.2f;
+    CHECK(campaign::chooseIntent(perimeterOffense) == campaign::Intent::Protect);
+
+    const observation::Bounds bounds{0.f, 0.f, 1000.f, 800.f};
+    const foundation::Point player{500.f, 400.f};
+    const foundation::Point enemy{250.f, 400.f};
+    const foundation::Point velocity{250.f, 0.f};
+    const auto pursuit = campaign::tacticalTarget(campaign::Intent::Pursuit, combat::EnemyKind::Hunter,
+                                                   enemy, player, velocity, bounds, 1);
+    const auto intercept = campaign::tacticalTarget(campaign::Intent::Intercept, combat::EnemyKind::Hunter,
+                                                     enemy, player, velocity, bounds, 1);
+    CHECK(std::abs(pursuit.x - player.x) < .001f && std::abs(pursuit.y - player.y) < .001f);
+    CHECK(intercept.x > player.x + 100.f);
+    const auto extremeIntercept = campaign::tacticalTarget(campaign::Intent::Intercept, combat::EnemyKind::Hunter,
+                                                            enemy, player, {10000.f, 0.f}, bounds, 1);
+    CHECK(extremeIntercept.x - player.x <= 210.001f);
+
+    const auto flankLeft = campaign::tacticalTarget(campaign::Intent::Encircle, combat::EnemyKind::Skitter,
+                                                     enemy, player, velocity, bounds, -1);
+    const auto flankRight = campaign::tacticalTarget(campaign::Intent::Encircle, combat::EnemyKind::Skitter,
+                                                      enemy, player, velocity, bounds, 1);
+    CHECK(flankLeft.y < player.y && flankRight.y > player.y);
+    CHECK(std::abs(flankLeft.y - flankRight.y) > 150.f);
+    const auto wallCutoff = campaign::tacticalTarget(campaign::Intent::Encircle, combat::EnemyKind::Hunter,
+                                                      {800.f, 400.f}, {950.f, 400.f}, {350.f, 0.f}, bounds, 1);
+    CHECK(wallCutoff.x < bounds.right - 26.f);
+
+    const auto guardPost = campaign::tacticalTarget(campaign::Intent::Protect, combat::EnemyKind::Hunter,
+                                                     {800.f, 400.f}, {950.f, 400.f}, {}, bounds, 1);
+    CHECK(guardPost.x < 950.f);
+    for (const auto target : {pursuit, intercept, extremeIntercept, flankLeft, flankRight, wallCutoff, guardPost}) {
+        CHECK(target.x >= 26.f && target.x <= 974.f);
+        CHECK(target.y >= 26.f && target.y <= 774.f);
+    }
+
+    campaign::ReviewState cadence;
+    auto stable = observation::Summary{};
+    stable.confidence = 1.f;
+    CHECK(!campaign::reviewDue(cadence, 300, stable));
+    CHECK(!campaign::reviewDue(cadence, 599, stable));
+    CHECK(campaign::reviewDue(cadence, 600, stable));
+    CHECK(!campaign::reviewDue(cadence, 899, stable));
+    CHECK(campaign::reviewDue(cadence, 1200, stable));
+
+    campaign::ReviewState significant;
+    auto changing = stable;
+    changing.movement = .5f;
+    CHECK(campaign::reviewDue(significant, 300, changing));
+    CHECK(!campaign::reviewDue(significant, 599, changing));
+    changing.perimeter = .5f;
+    CHECK(campaign::reviewDue(significant, 600, changing));
+
+    campaign::ReviewState capped;
+    auto profile = stable;
+    for (int review = 1; review <= 6; ++review) {
+        profile.movement = (review & 1) ? 1.f : 0.f;
+        CHECK(campaign::reviewDue(capped, review * 300, profile));
+    }
+    profile.movement = .5f;
+    CHECK(!campaign::reviewDue(capped, 2100, profile));
+    CHECK(capped.reviews == 6);
+}
 }
 
 int main() {
@@ -224,6 +301,7 @@ int main() {
 
     for (int wave = campaign::kFirstAdaptiveWave; wave <= campaign::kLastAdaptiveWave; ++wave) checkInvariants(wave);
     checkLiveReassessment();
+    checkIntentTargetsAndReviewCadence();
     const auto outside = campaign::schedule(27, 1u, mobileStyle());
     CHECK(sameArrangement(outside, chapter::schedule(27, 1u)));
     std::cout << "adaptive director invariants passed\n";

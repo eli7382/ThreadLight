@@ -2,6 +2,8 @@ param(
  [ValidateSet(7,14,21,28,29,30,31,32,33,34,35)][int]$Wave=29,
  [ValidateSet('offense','defense','mobility','mixed')][string]$Build='mixed',
  [ValidateRange(1,4)][int]$Phase=1,
+ [ValidateRange(-1,5)][int]$Mechanic=-1,
+ [ValidateRange(-1,4)][int]$Attack=-1,
  [uint32]$Seed=7382,
  [switch]$Menu,
  [switch]$Performance,
@@ -16,13 +18,18 @@ if($Menu){
  if($Wave -eq 35){$Phase=[int](Read-Host 'Phase: 1-4')}
 }
 if($Wave -notin @(7,14,21,28,29,30,31,32,33,34,35) -or $Build -notin @('offense','defense','mobility','mixed') -or $Phase -lt 1 -or $Phase -gt 4){throw 'Invalid scenario selection'}
+if($Wave -ne 35 -and ($Mechanic -ge 0 -or $Attack -ge 0)){throw 'Boss attack overrides require Wave 35'}
 $game=Join-Path $PSScriptRoot 'ThreadLight-Unweaver-DeveloperQA.exe'
 $arguments=@('--m7-seed',"$Seed",'--m7-telemetry')
 if($Wave -ge 29 -and $Wave -le 34){$arguments+=@('--director-fixture',"$Wave",'--qa-build',$Build)}
 else {
  $fixture=switch($Wave){7 {'--m3-boss-fixture'} 14 {'--m5-dancer-fixture'} 21 {'--m5-conductor-fixture'} 28 {'--m6-hollow-fixture'} 35 {'--unweaver-fixture'}}
  $arguments+=@($fixture,$Build)
- if($Wave -eq 35){$arguments+=@('--unweaver-phase',"$Phase")}
+ if($Wave -eq 35){
+  $arguments+=@('--unweaver-phase',"$Phase")
+  if($Mechanic -ge 0){$arguments+=@('--unweaver-mechanic',"$Mechanic")}
+  if($Attack -ge 0){$arguments+=@('--unweaver-attack',"$Attack")}
+ }
 }
 if($Smoke){$arguments+=@('--dev-autoplay','--dev-fast','--dev-ticks','360')}
 $logRoot=Join-Path $PSScriptRoot 'Logs'

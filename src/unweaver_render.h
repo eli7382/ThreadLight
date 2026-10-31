@@ -73,6 +73,56 @@ inline void splitRing(Point center, float radius, float gapAngle, float rotation
     }
 }
 
+inline void drawEventLoom(const unweaver::State& u, float clock, float fade,
+                          Color pale, Color mint, Color violet, Color gold) {
+    constexpr int segments = 32;
+    DrawPolyLinesEx(vec(u.anchor),8,112.f+4.f*std::sin(clock*2.f),clock*12.f,1.f,withAlpha(violet,60.f*fade));
+    for (int lane = 0; lane < 4; ++lane) {
+        const int rayIndex = lane * 2;
+        if (rayIndex >= u.rayCount) break;
+        const auto& ray = u.rays[rayIndex];
+        if (ray.curveTicks <= 0) continue;
+
+        // Render the exact committed route. The four lanes are each stored
+        // twice for their delayed pulses, so laneIndex is always 2 * lane.
+        Point previous = ray.origin;
+        const float dashPhase = std::fmod(clock * .21f + lane * .23f + 1.f, 1.f);
+        for (int segment = 1; segment <= segments; ++segment) {
+            const Point next = ranged::quadraticBezier(ray.origin, ray.control, ray.end,
+                                                       static_cast<float>(segment) / segments);
+            const float along = static_cast<float>(segment - 1) / segments;
+            const auto tangent=unweaver::unit(unweaver::sub(next,previous));const Point normal{-tangent.y,tangent.x};
+            const float braidA=std::sin(along*18.8495559f-clock*3.5f+lane)*11.f;
+            const float braidB=std::sin(segment/float(segments)*18.8495559f-clock*3.5f+lane)*11.f;
+            DrawLineEx(vec(previous),vec(next),15.f,withAlpha(violet,14.f*fade));
+            for(int side:{-1,1})DrawLineEx(vec(unweaver::add(previous,unweaver::scale(normal,braidA*side))),vec(unweaver::add(next,unweaver::scale(normal,braidB*side))),1.6f,withAlpha(side<0?mint:violet,72.f*fade));
+            if(segment%4==0)DrawLineEx(vec(unweaver::add(next,unweaver::scale(normal,braidB))),vec(unweaver::add(next,unweaver::scale(normal,-braidB))),1.f,withAlpha(gold,45.f*fade));
+            if(segment%8==0)DrawPolyLinesEx(vec(next),4,5.f,clock*20.f+lane*45.f,1.f,withAlpha(mint,65.f*fade));
+            const float moving = std::fmod(along - dashPhase + 1.f, 1.f);
+            const bool warningGlow = moving < .19f || moving > .92f;
+            const Color thread = warningGlow
+                ? withAlpha(gold, (105.f + 85.f * (.5f + .5f * std::sin(clock * 5.f + lane))) * fade)
+                : withAlpha((segment / 4 + lane) % 2 ? mint : violet, 52.f * fade);
+            // One bounded stroke per segment: low-opacity lattice gaps stay
+            // readable beneath a short, moving warning dash.
+            DrawLineEx(vec(previous), vec(next), warningGlow ? 2.6f : 1.35f, thread);
+            previous = next;
+        }
+
+        const Point eye = ray.origin;
+        const float aperture = 8.f + 1.8f * std::sin(clock * 3.f + lane * 1.3f);
+        DrawPolyLinesEx(vec(eye),6,23.f,clock*12.f+lane*60.f,1.5f,withAlpha(gold,150.f*fade));
+        DrawCircleV(vec(eye), 18.f, withAlpha(ink(8, 15, 31, 220), 205.f * fade));
+        DrawCircleLines(static_cast<int>(eye.x), static_cast<int>(eye.y), 14.f,
+                        withAlpha(violet, 205.f * fade));
+        DrawCircleLines(static_cast<int>(eye.x), static_cast<int>(eye.y), aperture,
+                        withAlpha(gold, 205.f * fade));
+        DrawEllipse(static_cast<int>(eye.x), static_cast<int>(eye.y), aperture * .62f,
+                    aperture * .3f, withAlpha(mint, 215.f * fade));
+        DrawCircleV(vec(eye), 2.3f, withAlpha(pale, 245.f * fade));
+    }
+}
+
 template<class Boss>
 void draw(const Boss& boss, float alpha, float time) {
     const auto& u = boss.unweaver;
@@ -96,11 +146,17 @@ void draw(const Boss& boss, float alpha, float time) {
     // Draw vulnerable geometry and the pending rays before the body.
     if (!transition && boss.stage != State::Recover) {
         const int rayCount = std::clamp(u.rayCount, 0, static_cast<int>(u.rays.size()));
+        if (u.loom) drawEventLoom(u, clock, fade, pale, mint, violet, gold);
+        const float arenaWidth = u.arenaBounds.right - u.arenaBounds.left;
+        const float arenaHeight = u.arenaBounds.bottom - u.arenaBounds.top;
+        const float fullArenaRayLength = std::hypot(arenaWidth, arenaHeight) + 80.f;
         for (int i = 0; i < rayCount; ++i) {
             const auto& ray = u.rays[i];
             if (!ray.ticket || ray.fireTick < u.clock || ray.fireTick > u.clock + u.warningTicks) continue;
+            if (ray.curveTicks > 0) continue;
             const Point start = ray.origin;
-            const Point end=rootwarden::rayEnd(start,ray.direction,700.f,u.playerBounds);
+            const Point end = rootwarden::rayEnd(start, ray.direction, fullArenaRayLength,
+                                                 u.arenaBounds);
             const Color cue=u.focused?coral:u.attack==unweaver::Attack::RotatingEclipse?violet:u.attack==unweaver::Attack::FracturedRhythm?mint:gold;
             const float pulse=.6f+.4f*std::sin(clock*4.f-ray.fireTick*.025f);
             dashed(start, end, 1.8f, withAlpha(cue, static_cast<float>(cue.a) * (.6f+.22f*pulse)), u.attack==unweaver::Attack::FracturedRhythm?5:10);
@@ -110,12 +166,12 @@ void draw(const Boss& boss, float alpha, float time) {
                      withAlpha(gold, static_cast<float>(gold.a) * .85f));
         }
         if(u.planCommitted&&boss.stage==State::RootWarning){
-            const char* label=u.focused?"ESCAPE FAN":u.unique?"WEAVE TRAP":unweaver::attackName(u.attack);
+            const char* label=u.loom?"THE EVENT LOOM":u.focused?"ESCAPE FAN":u.unique?"WEAVE TRAP":unweaver::attackName(u.attack);
             DrawText(label,(int)boss.p.x-65,(int)boss.p.y+104,10,withAlpha(gold,220.f*fade));
             if(u.focused){dashed(u.anchor,u.aimTarget,2.f,withAlpha(coral,180.f*fade),8);DrawCircleLines((int)u.aimTarget.x,(int)u.aimTarget.y,12,coral);}
         }
         // Complete outlines accompany the full-circle committed rays.
-        if (boss.phase >= 4 && u.planCommitted&&!u.focused&&!u.unique) {
+        if (boss.phase >= 4 && u.planCommitted&&!u.focused&&!u.unique&&!u.loom) {
             const float rotation = clock * .72f;
             const Point ringCenter = u.anchor;
             for (int i = 0; i < (u.attack==unweaver::Attack::FinalConvergence?3:2); ++i) {
@@ -373,10 +429,39 @@ void draw(const Boss& boss, float alpha, float time) {
         if (projectile.state != ranged::SlotState::Flying) continue;
         const Point shot = mix(projectile.previousP, projectile.p, interpolation);
         const float shotRadius = std::clamp(projectile.spec.radius, 1.f, 12.f);
-        DrawLineEx(vec(projectile.previousP), vec(shot), shotRadius * 1.5f,
-                   withAlpha(coral, 72.f * fade));
-        DrawPoly(vec(shot), 4, shotRadius, clock * 18.f, withAlpha(coral, 245.f * fade));
-        DrawCircleV(vec(shot), std::max(1.5f, shotRadius * .35f), withAlpha(pale, 235.f * fade));
+        if (projectile.curved && projectile.curveTicks > 0) {
+            const float t = std::clamp((projectile.curveAge - 1.f + interpolation) /
+                                       static_cast<float>(projectile.curveTicks), 0.f, 1.f);
+            Point tail = ranged::quadraticBezier(projectile.curveOrigin, projectile.curveControl,
+                                                  projectile.curveEnd,
+                                                  std::max(0.f, t - 8.f / projectile.curveTicks));
+            for (int segment = 1; segment <= 4; ++segment) {
+                const float trailT = std::max(0.f, t - 8.f / projectile.curveTicks +
+                                                   (8.f / projectile.curveTicks) * segment / 4.f);
+                const Point next = ranged::quadraticBezier(projectile.curveOrigin,
+                    projectile.curveControl, projectile.curveEnd, trailT);
+                const Color lattice = segment % 2 ? mint : violet;
+                DrawLineEx(vec(tail), vec(next), segment == 4 ? 2.3f : 1.2f,
+                           withAlpha(lattice, (segment == 4 ? 150.f : 64.f) * fade));
+                tail = next;
+            }
+            // The ribbon is a quiet route cue; only this bright 9 px knot is
+            // the actual swept collision head of an Event Loom pulse.
+            DrawCircleV(vec(shot), 14.f, withAlpha(violet, 34.f * fade));
+            DrawCircleV(vec(shot), 9.f, withAlpha(ink(16, 23, 43, 225), 230.f * fade));
+            DrawCircleLines(static_cast<int>(shot.x), static_cast<int>(shot.y), 9.f,
+                            withAlpha(gold, 230.f * fade));
+            DrawCircleLines(static_cast<int>(shot.x), static_cast<int>(shot.y), 5.4f,
+                            withAlpha(mint, 240.f * fade));
+            DrawPoly(vec(shot), 4, 4.4f, clock * 42.f,
+                     withAlpha(pale, 250.f * fade));
+            DrawCircleV(vec(shot), 1.8f, withAlpha(gold, 255.f * fade));
+        } else {
+            DrawLineEx(vec(projectile.previousP), vec(shot), shotRadius * 1.5f,
+                       withAlpha(coral, 72.f * fade));
+            DrawPoly(vec(shot), 4, shotRadius, clock * 18.f, withAlpha(coral, 245.f * fade));
+            DrawCircleV(vec(shot), std::max(1.5f, shotRadius * .35f), withAlpha(pale, 235.f * fade));
+        }
     }
 
     if (transition) {
