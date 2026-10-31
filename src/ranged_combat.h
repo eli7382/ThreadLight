@@ -269,6 +269,7 @@ struct ShotSpec {
 struct Projectile {
     std::uint64_t id{};
     std::uint64_t sourceId{};
+    int actionTag=-1;
     Point p{};
     Point previousP{};
     Point velocity{};
@@ -287,6 +288,7 @@ struct Impact {
     std::uint64_t sourceId{};
     std::uint64_t projectileId{};
     int damage = kProjectileDamage;
+    int actionTag=-1;
 };
 
 struct Impacts {
@@ -299,7 +301,7 @@ class Pool {
 public:
     using Ticket = std::uint64_t;
 
-    Ticket reserve(std::uint64_t sourceId) {
+    Ticket reserve(std::uint64_t sourceId,int actionTag=-1) {
         if (sourceId == 0) return 0;
         for (const Projectile& projectile : items_) {
             if (projectile.state == SlotState::Reserved &&
@@ -314,6 +316,7 @@ public:
         projectile = {};
         projectile.id = ticket;
         projectile.sourceId = sourceId;
+        projectile.actionTag = actionTag;
         projectile.state = SlotState::Reserved;
         return ticket;
     }
@@ -444,7 +447,7 @@ public:
 
             if (hit) {
                 impacts.items[static_cast<std::size_t>(impacts.count++)] =
-                    {projectile.sourceId, projectile.id, projectile.spec.damage};
+                    {projectile.sourceId, projectile.id, projectile.spec.damage, projectile.actionTag};
                 projectile = {};
                 continue;
             }

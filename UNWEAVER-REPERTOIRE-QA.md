@@ -1,5 +1,7 @@
 # Unweaver combat repertoire and live Director QA
 
+Historical implementation and QA snapshot. The current authoritative behavior, final verification status and owner controls are consolidated in [UNWEAVER-SIEGE-QA.md](UNWEAVER-SIEGE-QA.md); use that guide for the final encounter.
+
 Baseline: `b6f962c` on `codex/unweaver-architecture-review-20261030`. Earlier Developer QA packages remain intact. This revision changes neither boss HP/raw damage nor ordinary movement speed (155 px/s). It introduces no runtime services or dependencies.
 
 ## Diagnosis and implementation

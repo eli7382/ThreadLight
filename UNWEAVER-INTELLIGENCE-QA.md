@@ -1,5 +1,7 @@
 # Unweaver intelligence QA revision
 
+Historical implementation and QA snapshot. The current authoritative behavior, final verification status and owner controls are consolidated in [UNWEAVER-SIEGE-QA.md](UNWEAVER-SIEGE-QA.md); use that guide for the final encounter.
+
 Supersedes the boss behavior measurements in UNWEAVER-EXPERIMENT.md. Baseline: 93e91cf. Director source and earlier-boss configurations are unchanged. HP, raw damage and movement speed are unchanged.
 
 ## Diagnosis and changes

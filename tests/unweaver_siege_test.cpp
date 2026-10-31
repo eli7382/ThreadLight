@@ -112,6 +112,39 @@ void rewardUtilityAndReset() {
     CHECK(boss.unweaver.drive.utility(action) == 0.f);
 }
 
+void onlyWinningTaggedBossShotCanTeachOverdrive() {
+    combat::IncomingHit incoming;
+    constexpr std::uint64_t bossShotSource=7001;
+    constexpr std::uint64_t supportSource=8001;
+    constexpr std::uint64_t pressureSource=9001;
+    constexpr int launchAction=static_cast<int>(uw::Action::Radial);
+    constexpr int currentAction=static_cast<int>(uw::Action::Unique);
+    incoming.consider(500,bossShotSource,launchAction);
+    CHECK(currentAction!=launchAction);
+    incoming.consider(450,supportSource);
+    CHECK(incoming.damage==500&&incoming.sourceId==bossShotSource&&incoming.actionTag==launchAction);
+    incoming.consider(600,pressureSource);
+    CHECK(incoming.damage==600&&incoming.sourceId==pressureSource&&incoming.actionTag==-1);
+
+    combat::IncomingHit equal;
+    equal.consider(500,supportSource);
+    equal.consider(500,bossShotSource,launchAction);
+    CHECK(equal.damage==500&&equal.sourceId==bossShotSource&&equal.actionTag==launchAction);
+    equal.consider(500,pressureSource);
+    CHECK(equal.damage==500&&equal.sourceId==bossShotSource&&equal.actionTag==launchAction);
+
+    auto boss=makePhaseFour();
+    auto& drive=boss.unweaver.drive;
+    drive.active=true;
+    drive.attempt(launchAction);
+    drive.outcome(equal.actionTag,equal.damage,false);
+    CHECK(drive.damage==500&&drive.reward[launchAction]>0.f&&drive.reward[currentAction]==0.f);
+    combat::IncomingHit environmental;
+    environmental.consider(600,pressureSource);
+    if(environmental.actionTag>=0)drive.outcome(environmental.actionTag,environmental.damage,false);
+    CHECK(drive.damage==500&&drive.reward[currentAction]==0.f);
+}
+
 void shrunkBodyGeometryAndSupportSteering() {
     auto boss = makePhaseFour();
     CHECK(std::abs(uw::kVulnerableRadius - 76.f * .88f) < .001f);
@@ -212,6 +245,7 @@ void pressureEscalationUsesOrdinaryPlayerDamage() {
 int main() {
     activationBoundaryAndWarningPolicy();
     rewardUtilityAndReset();
+    onlyWinningTaggedBossShotCanTeachOverdrive();
     shrunkBodyGeometryAndSupportSteering();
     cocoonBarrierUsesRealDamageGate();
     pressureEscalationUsesOrdinaryPlayerDamage();

@@ -1,5 +1,8 @@
 THREADLIGHT–UNWEAVER DEVELOPER QA — PRIVATE DEBUG BUILD
 
+Current authoritative encounter behavior, final candidate verification and
+historical evidence are consolidated in ../../UNWEAVER-SIEGE-QA.md.
+
 Double-click Start-Wave-29.cmd (or the executable) to start at Wave 29.
 Normal wave completion, collection and upgrade selection continue through Wave 35.
 The actual Campaign Director uses a deterministic synthetic late-game runner prior,
@@ -25,8 +28,11 @@ Test-Event-Loom.cmd forces the redesigned reactive portal/barrier attack. Use
 Start-Unweaver.cmd for normal varied combat. Only the bright moving spindle
 heads cause damage; the ghosted braided paths are warnings.
 Test-Barriers.cmd isolates mixed solid cyan and damaging pink spiked walls.
-Test-Kill-Mode.cmd starts at 5:00 with the defense build. This debug shortcut
-exposes the hidden escalation for testing; normal gameplay has no announcement.
+Test-Kill-Mode.cmd starts at Phase IV's 5:00 fight time with the defense build.
+This debug shortcut exposes the intentionally hidden Kill Mode; normal gameplay
+has no announcement. Overdrive learns only from tagged Unweaver projectile HP
+damage, using the action captured when the shot was committed. Support, ground,
+contact, barrier, echo, strand and pressure damage are neutral for this utility.
 The escalation can eventually cover the arena with warned spike pressure.
 Each launcher saves unique diagnostic logs and seed/argument records under Logs.
 Add -Performance to QA.ps1 to record frame timings alongside those logs.
@@ -53,10 +59,11 @@ No public practice menu is added. This separate Debug binary includes QA
 instrumentation and a PDB. It is not the trusted Release game and its performance
 is not representative of Release. No extra assets/DLLs are required.
 
-Validation: 46/46 Debug CTest suites passed. Packaged launcher smoke runs cover
-every requested starting wave and all four Unweaver phases with real gameplay.
-These short automated launches verify startup/stepping, not full survival through
-Waves 29–35 or human menu/input acceptance. Interactive QA remains yours.
+Historical package validation: 46/46 Debug CTest suites passed. Packaged launcher
+smoke runs covered the selectable starting waves and all four Unweaver phases.
+These automated launches verified startup/stepping, not full survival through
+Waves 29–35 or human menu/input acceptance. See the consolidated guide for final
+candidate build, regression, campaign and victory results.
 
-Revision details and before/after evidence: UNWEAVER-SIEGE-QA.md.
-Earlier experimental packages remain available for comparison. No merge authorized.
+Revision details and before/after evidence: ../../UNWEAVER-SIEGE-QA.md.
+Earlier experimental packages remain available for comparison.

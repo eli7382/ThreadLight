@@ -1,5 +1,7 @@
 # ThreadLight: Unweaver experiment
 
+Historical experiment snapshot. Current encounter behavior, timed phases, hidden 5:00 Kill Mode, action-attribution limits and final candidate evidence are consolidated in [UNWEAVER-SIEGE-QA.md](UNWEAVER-SIEGE-QA.md).
+
 Baseline: `4dead78a30b88f7536b385da82c572d4132db8e9`.
 Branch: `codex/unweaver-architecture-review-20261030`. Never merge automatically.
 

@@ -107,10 +107,11 @@ inline bool bodyContact(foundation::Point previousPlayer, foundation::Point play
 struct IncomingHit {
     int damage = 0;
     std::uint64_t sourceId = 0;
-    void consider(int candidateDamage, std::uint64_t candidateId) {
+    int actionTag=-1;
+    void consider(int candidateDamage, std::uint64_t candidateId,int candidateActionTag=-1) {
         if (!candidateId || candidateDamage <= 0) return;
         if (candidateDamage > damage || (candidateDamage == damage && candidateId < sourceId)) {
-            damage = candidateDamage; sourceId = candidateId;
+            damage = candidateDamage; sourceId = candidateId; actionTag=candidateActionTag;
         }
     }
 };

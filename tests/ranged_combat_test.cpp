@@ -435,6 +435,21 @@ void boundaryBoundCurveContinuesAlongItsEndpointTangent() {
     CHECK(pool.flyingCount() == 0);
 }
 
+void actionTagSurvivesDelayedProjectileImpact() {
+    ranged::Pool pool;
+    const auto ticket=pool.reserve(801,3);
+    CHECK(ticket!=0);
+    CHECK(pool.launch(ticket,{0.f,0.f},{1.f,0.f},{180.f,5.f,1400,120}));
+    const int currentActionAfterLaunch=6;
+    CHECK(currentActionAfterLaunch!=3);
+    ranged::Impacts impacts;
+    for(int i=0;i<30&&impacts.count==0;++i)
+        impacts=pool.tick({40.f,0.f},{40.f,0.f},4.f,kWideBounds);
+    CHECK(impacts.count==1);
+    CHECK(impacts.items[0].sourceId==801);
+    CHECK(impacts.items[0].actionTag==3);
+}
+
 void pauseAndRemapPreserveClocksAndTransformCommittedGeometry() {
     ranged::Pool pool;
     const auto ticket = pool.reserve(7);
@@ -490,6 +505,7 @@ int main() {
     boundaryShotsOutliveLegacyLifetimeAndStillHitAtArenaEdge();
     curvedShotsMatchBezierAndPublishExactNextStepVelocity();
     boundaryBoundCurveContinuesAlongItsEndpointTangent();
+    actionTagSurvivesDelayedProjectileImpact();
     pauseAndRemapPreserveClocksAndTransformCommittedGeometry();
 
     if (failures != 0) {

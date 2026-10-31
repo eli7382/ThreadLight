@@ -283,7 +283,7 @@ template<class Boss> bool commit(Boss& s,Point player,Arena arena){
             if(witness(u,player,12,route,false)){safe=true;u.safeRoute=route;u.safeUsesDash=false;}
             else if(witness(u,player,12,route,true)){safe=true;u.safeRoute=route;u.safeUsesDash=true;}}
         if(!safe&&!u.drive.active){++u.rejected;continue;}
-        int reserved=0;for(int i=0;i<u.rayCount;++i){u.rays[i].ticket=s.bullets.reserve(s.nextSource++);if(!u.rays[i].ticket)break;++reserved;}
+        int reserved=0;for(int i=0;i<u.rayCount;++i){u.rays[i].ticket=s.bullets.reserve(s.nextSource++,(int)u.action);if(!u.rays[i].ticket)break;++reserved;}
         if(reserved!=u.rayCount){for(int i=0;i<reserved;++i)s.bullets.cancelReservation(u.rays[i].ticket);u.walls=previousWalls;return false;}
         u.consecutiveRejects=0;u.clock=0;u.planCommitted=true;u.needsStrands=u.mechanic==Mechanic::Sever||u.mechanic==Mechanic::Corrupt;
         u.mechanicExecuted=u.mechanic==Mechanic::Hunt&&u.huntExecuted;

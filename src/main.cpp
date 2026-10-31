@@ -1133,7 +1133,7 @@ int main(int argc, char** argv){
        float bossFieldArea=0.f;bool bossFieldAreaKnown=false;
        battle::IncomingHit incoming;
        int incomingKind=0;
-       auto considerDamage=[&](int amount,std::uint64_t id,int kind){const auto before=incoming;incoming.consider(amount,id);if(before.damage!=incoming.damage||before.sourceId!=incoming.sourceId)incomingKind=kind;};
+       auto considerDamage=[&](int amount,std::uint64_t id,int kind,int actionTag=-1){const auto before=incoming;incoming.consider(amount,id,actionTag);if(before.damage!=incoming.damage||before.sourceId!=incoming.sourceId)incomingKind=kind;};
        for(auto &f:foes){
         if(!f.health.alive())continue;
         const V oldPosition=f.p;
@@ -1290,7 +1290,8 @@ int main(int argc, char** argv){
         if(bodyCanHurt)considerDamage(root::incomingDamage(boss,{previousPlayer.x,previousPlayer.y},{player.x,player.y},radius),bossRewardId,1);
        if(boss.kind==root::Kind::Unweaver){auto block=[&](ranged::Pool& pool){for(const auto& shot:pool.items())if(shot.state==ranged::SlotState::Flying){const auto next=root::add(shot.p,root::scale(shot.velocity,1.f/120));if(threadlight::unweaver::barriers::blocksProjectile(boss.unweaver.walls,shot.p,next,shot.spec.radius))pool.intercept(shot.id);}};block(projectiles);block(boss.bullets);}
         const auto bossImpacts=root::projectileTick(boss,{previousPlayer.x,previousPlayer.y},{player.x,player.y},radius,bossArena());
-        for(int i=0;i<bossImpacts.count;++i)considerDamage(bossImpacts.items[i].damage,bossRewardId,1);
+        for(int i=0;i<bossImpacts.count;++i)considerDamage(bossImpacts.items[i].damage,bossRewardId,1,
+         boss.kind==root::Kind::Unweaver?bossImpacts.items[i].actionTag:-1);
         const auto fieldHit=boss.fields.tick({previousPlayer.x,previousPlayer.y},{player.x,player.y},radius);
         considerDamage(fieldHit.damage,fieldHit.sourceId,1);
        }
@@ -1306,7 +1307,8 @@ int main(int argc, char** argv){
        const int barrierBefore=cocoonState.barrierCenti;
        const int damage=battle::applyIncoming(health,incoming,dashActiveThisFrame,cocoon::barrierActive(cocoonState)?&cocoonState.barrierCenti:nullptr,stats.damageReductionPercent);
        if(barrierBefore>cocoonState.barrierCenti){barrierAbsorbed+=barrierBefore-cocoonState.barrierCenti;burst(player,C(221,239,185),8,90);traceM1("cocoon_absorbed",incoming.sourceId,barrierBefore-cocoonState.barrierCenti);}
-       if(boss.kind==root::Kind::Unweaver&&damage>0)boss.unweaver.drive.outcome(boss.unweaver.executedAction,damage,!health.alive());
+       if(boss.kind==root::Kind::Unweaver&&damage>0&&incoming.sourceId==bossRewardId)boss.unweaver.drive.outcome(
+        incoming.actionTag,damage,!health.alive());
        if(damage){
         observations.onIncoming(damage,dashActiveThisFrame);if(boss.kind==root::Kind::Unweaver)boss.unweaver.hitDuringSequence=1;
         runDamageTaken[incomingKind]+=damage;
